@@ -1,0 +1,90 @@
+
+=== 7 v02 chunks to process with gemini-3-flash-preview ===
+
+
+============================================================
+[1/7] 20260323_grading_seminar_v02_norikane_i_chunk00.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk00.mp3 ...
+  Transcribing [1/7] 20260323_grading_seminar_v02_norikane_i_chunk00.mp3 ...
+  Done: 6237 chars, 3256 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk00_transcript.txt (17.6 KB)
+  Cooling down 30s...
+
+============================================================
+[2/7] 20260323_grading_seminar_v02_norikane_i_chunk01.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk01.mp3 ...
+  Transcribing [2/7] 20260323_grading_seminar_v02_norikane_i_chunk01.mp3 ...
+  Done: 3235 chars, 1678 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk01_transcript.txt (8.9 KB)
+  Cooling down 30s...
+
+============================================================
+[3/7] 20260323_grading_seminar_v02_norikane_i_chunk02.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk02.mp3 ...
+  Transcribing [3/7] 20260323_grading_seminar_v02_norikane_i_chunk02.mp3 ...
+  Done: 5232 chars, 2779 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk02_transcript.txt (14.7 KB)
+  Cooling down 30s...
+
+============================================================
+[4/7] 20260323_grading_seminar_v02_norikane_i_chunk03.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  Transcribing [4/7] 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  ERROR: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  Transcribing [4/7] 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  ERROR: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  Transcribing [4/7] 20260323_grading_seminar_v02_norikane_i_chunk03.mp3 ...
+  Done: 6355 chars, 3331 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk03_transcript.txt (17.9 KB)
+  Cooling down 30s...
+
+============================================================
+[5/7] 20260323_grading_seminar_v02_norikane_i_chunk04.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk04.mp3 ...
+  Transcribing [5/7] 20260323_grading_seminar_v02_norikane_i_chunk04.mp3 ...
+  Done: 5236 chars, 2805 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk04_transcript.txt (14.8 KB)
+  Cooling down 30s...
+
+============================================================
+[6/7] 20260323_grading_seminar_v02_norikane_i_chunk05.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk05.mp3 ...
+  ERROR: [Errno 8] nodename nor servname provided, or not known
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk05.mp3 ...
+  ERROR: [Errno 8] nodename nor servname provided, or not known
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk05.mp3 ...
+  ERROR: The write operation timed out
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk05.mp3 ...
+  Transcribing [6/7] 20260323_grading_seminar_v02_norikane_i_chunk05.mp3 ...
+  Done: 6420 chars, 3409 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk05_transcript.txt (17.9 KB)
+  Cooling down 30s...
+
+============================================================
+[7/7] 20260323_grading_seminar_v02_norikane_i_chunk06.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v02_norikane_i_chunk06.mp3 ...
+  Transcribing [7/7] 20260323_grading_seminar_v02_norikane_i_chunk06.mp3 ...
+  Done: 4677 chars, 2504 tokens, finish=STOP
+  Saved: 20260323_grading_seminar_v02_norikane_i_chunk06_transcript.txt (12.4 KB)
+
+============================================================
+SUMMARY
+============================================================
+  20260323_grading_seminar_v02_norikane_i_chunk00.mp3: 17.6 KB
+  20260323_grading_seminar_v02_norikane_i_chunk01.mp3: 8.9 KB
+  20260323_grading_seminar_v02_norikane_i_chunk02.mp3: 14.7 KB
+  20260323_grading_seminar_v02_norikane_i_chunk03.mp3: 17.9 KB
+  20260323_grading_seminar_v02_norikane_i_chunk04.mp3: 14.8 KB
+  20260323_grading_seminar_v02_norikane_i_chunk05.mp3: 17.9 KB
+  20260323_grading_seminar_v02_norikane_i_chunk06.mp3: 12.4 KB
+
+All done.

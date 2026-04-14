@@ -1,0 +1,19 @@
+  SKIP (exists 25KB): 20260323_grading_seminar_v01_norikane_i_chunk00.mp3
+  SKIP (exists 14KB): 20260323_grading_seminar_v01_norikane_i_chunk01.mp3
+  SKIP (exists 16KB): 20260323_grading_seminar_v01_norikane_i_chunk02.mp3
+  SKIP (exists 20KB): 20260323_grading_seminar_v01_norikane_i_chunk03.mp3
+  SKIP (exists 15KB): 20260323_grading_seminar_v01_norikane_i_chunk04.mp3
+  SKIP (exists 7KB): 20260323_grading_seminar_v01_norikane_i_chunk05.mp3
+
+=== 8 chunks to process ===
+
+
+============================================================
+[1/8] 20260323_grading_seminar_v01_norikane_i_chunk06.mp3
+============================================================
+  Uploading 20260323_grading_seminar_v01_norikane_i_chunk06.mp3 ...
+  Transcribing [1/8] 20260323_grading_seminar_v01_norikane_i_chunk06.mp3 ...
+  RATE LIMITED (attempt 1/5), waiting 180s...
+  Uploading 20260323_grading_seminar_v01_norikane_i_chunk06.mp3 ...
+  Transcribing [1/8] 20260323_grading_seminar_v01_norikane_i_chunk06.mp3 ...
+  RATE LIMITED (attempt 2/5), waiting 360s...

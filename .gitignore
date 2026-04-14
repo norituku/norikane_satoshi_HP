@@ -40,3 +40,49 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+._*
+.Spotlight-V100
+.Trashes
+
+# editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# video
+*.mp4
+*.mov
+*.mxf
+*.avi
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.vob
+
+# audio
+*.mp3
+*.wav
+*.aac
+*.flac
+*.ogg
+*.m4a
+*.aif
+*.aiff
+
+# large media / project files
+*.drp
+*.prproj
+*.fcpx
+*.braw
