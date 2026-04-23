@@ -1,17 +1,18 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SITE_BRAND_NAME } from "@/lib/site-brand"
+import { SITE_BRAND_NAME, SITE_OWNER_NAME } from "@/lib/site-brand"
 
 const navItems = [
-  { href: "/", label: "Home" },
-  { href: "/about", label: "About" },
-  { href: "/philosophy", label: "Philosophy" },
-  { href: "/contact", label: "Contact" },
+  { href: "/", label: "ホーム" },
+  { href: "/#profile", label: "プロフィール" },
+  { href: "/#philosophy", label: "ノート" },
+  { href: "/#contact", label: "お問い合わせ" },
 ]
 
 export function NavHeader() {
@@ -19,13 +20,36 @@ export function NavHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-4 md:px-8 md:pt-6">
-      <nav className="neu-raised mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 py-3 xl:px-8">
-        <Link
-          href="/"
-          className="font-[var(--font-inter)] text-lg font-bold tracking-tight text-neu"
-        >
-          {SITE_BRAND_NAME}
+    <header className="fixed top-0 left-0 right-0 z-50">
+      <nav className="glass-bar flex w-full items-center justify-between px-6 py-3 md:px-10 md:py-4 xl:px-14">
+        <Link href="/" className="flex items-center gap-3 md:gap-4">
+          <div
+            className="relative shrink-0 overflow-hidden rounded-full"
+            style={{
+              width: 48,
+              height: 48,
+              boxShadow:
+                "0 0 0 1px rgba(0,0,0,0.06), 0 2px 8px rgba(28,15,110,0.12)",
+            }}
+          >
+            <Image
+              src="/profile-hero.jpg"
+              alt={SITE_OWNER_NAME}
+              fill
+              sizes="48px"
+              className="object-cover"
+              style={{ objectPosition: "center 30%" }}
+              priority
+            />
+          </div>
+          <div className="hidden sm:block">
+            <p className="font-[var(--font-inter)] text-base font-bold tracking-tight text-black md:text-lg">
+              {SITE_BRAND_NAME.toUpperCase()}
+            </p>
+            <p className="mt-1 text-[11px] tracking-wide text-neutral-500 md:text-xs">
+              Norikane Colour Studio Grading
+            </p>
+          </div>
         </Link>
 
         {/* Desktop nav */}
@@ -37,14 +61,22 @@ export function NavHeader() {
                 <Link
                   href={item.href}
                   className={cn(
-                    "px-4 py-2 text-sm font-medium transition-all duration-200",
+                    "relative inline-flex items-center px-4 py-2 text-sm font-medium transition-colors",
                     isActive
-                      ? "neu-inset text-neu"
-                      : "neu-flat text-neu-muted hover:text-neu"
+                      ? "text-black"
+                      : "text-neutral-600 hover:text-black"
                   )}
-                  style={{ borderRadius: "var(--neu-radius-sm)" }}
                 >
                   {item.label}
+                  {isActive && (
+                    <span
+                      className="absolute left-1/2 h-1 w-1 -translate-x-1/2 rounded-full"
+                      style={{
+                        bottom: 2,
+                        background: "var(--accent-primary)",
+                      }}
+                    />
+                  )}
                 </Link>
               </li>
             )
@@ -53,22 +85,21 @@ export function NavHeader() {
 
         {/* Mobile hamburger */}
         <button
-          className="md:hidden neu-btn p-2"
+          className="md:hidden rounded-xl border border-neutral-300 p-2 text-black transition-colors hover:bg-neutral-100"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? "メニューを閉じる" : "メニューを開く"}
         >
-          {mobileOpen ? (
-            <X className="h-5 w-5 text-neu" />
-          ) : (
-            <Menu className="h-5 w-5 text-neu" />
-          )}
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </nav>
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="mx-auto mt-2 w-full max-w-[1440px] md:hidden">
-          <ul className="neu-raised px-4 py-3 flex flex-col gap-1">
+        <div className="md:hidden">
+          <ul
+            className="glass-bar flex flex-col gap-1 px-6 py-3"
+            style={{ borderTop: "1px solid rgba(0, 0, 0, 0.06)" }}
+          >
             {navItems.map((item) => {
               const isActive = pathname === item.href
               return (
@@ -77,13 +108,18 @@ export function NavHeader() {
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
                     className={cn(
-                      "block px-4 py-3 text-sm font-medium transition-all duration-200",
+                      "flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
                       isActive
-                        ? "neu-inset text-neu"
-                        : "neu-flat text-neu-muted hover:text-neu"
+                        ? "text-black"
+                        : "text-neutral-600 hover:text-black hover:bg-black/5"
                     )}
-                    style={{ borderRadius: "var(--neu-radius-sm)" }}
                   >
+                    {isActive && (
+                      <span
+                        className="h-1 w-1 rounded-full"
+                        style={{ background: "var(--accent-primary)" }}
+                      />
+                    )}
                     {item.label}
                   </Link>
                 </li>

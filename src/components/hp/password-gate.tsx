@@ -42,15 +42,15 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="neu-raised p-8 md:p-12">
+    <div className="glass-card p-8 md:p-12">
       <div className="text-center max-w-md mx-auto">
-        <div className="neu-inset w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-          <Lock className="h-7 w-7 text-neu-muted" />
+        <div className="glass-inset w-16 h-16 mx-auto mb-6 flex items-center justify-center rounded-full">
+          <Lock className="h-7 w-7 text-hp-muted" />
         </div>
-        <h2 className="text-xl font-bold text-neu mb-2">
+        <h2 className="text-xl font-semibold text-hp mb-2">
           Schedule
         </h2>
-        <p className="text-sm text-neu-muted mb-6">
+        <p className="text-sm text-hp-muted mb-6">
           予約カレンダーの閲覧にはパスワードが必要です。
           <br />
           お問い合わせ後にパスワードをお伝えします。
@@ -65,14 +65,14 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               setError("")
             }}
             placeholder="パスワードを入力"
-            className="neu-input px-4 py-3 text-center text-sm"
+            className="glass-input px-4 py-3 text-center text-sm"
           />
           {error && (
             <p className="text-sm text-red-500">{error}</p>
           )}
           <button
             type="submit"
-            className="neu-btn px-6 py-3 text-sm font-medium text-neu flex items-center justify-center gap-2"
+            className="glass-btn px-6 py-3 text-sm font-medium text-hp flex items-center justify-center gap-2"
           >
             <Unlock className="h-4 w-4" />
             解除
