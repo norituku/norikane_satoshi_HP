@@ -7,6 +7,9 @@ import { PasswordGate } from "@/components/hp/password-gate"
 import { CalendarEmbed } from "@/components/hp/calendar-embed"
 import { ProfilePhoto } from "@/components/hp/profile-photo"
 import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site-brand"
+import { listPublishedNotes } from "@/lib/notion/fetch-note"
+
+export const revalidate = 3600
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
@@ -18,30 +21,6 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image" },
 }
-
-const noteArticles = [
-  {
-    number: "Note 1",
-    category: "カラーコレクション",
-    title: "カラーコレクションの因数分解",
-    subtitle: "5000カットの迷宮から、設計にたどり着くまで",
-    href: "/notes/correction",
-  },
-  {
-    number: "Note 2",
-    category: "カラーグレーディング",
-    title: "カラーグレーディングの因数分解",
-    subtitle: "「映画っぽく」と言われて、手が止まった日から",
-    href: "/notes/grading",
-  },
-  {
-    number: "Note 3",
-    category: "フィルムルック",
-    title: "フィルムルックについてわかっていること",
-    subtitle: "市販のLUTでも届かない「フィルムっぽく」の正体を、自分のネガで追った日から",
-    href: "/notes/filmlook",
-  },
-]
 
 const timeline = [
   {
@@ -126,7 +105,8 @@ const socialLinks = [
   },
 ]
 
-export default function HomePage() {
+export default async function HomePage() {
+  const notes = await listPublishedNotes()
   return (
     <div className="space-y-10 md:space-y-14">
       <HeroSection />
@@ -150,30 +130,21 @@ export default function HomePage() {
 
         <div className="mt-8 -mx-6 md:-mx-10 xl:-mx-14 overflow-x-auto">
           <div className="flex snap-x snap-mandatory gap-4 px-6 pb-4 md:gap-5 md:px-10 xl:px-14">
-            {noteArticles.map((a) => (
+            {notes.map((note, idx) => (
               <Link
-                key={a.href}
-                href={a.href}
+                key={note.id}
+                href={`/notes/${note.slug}`}
                 className="group flex shrink-0 snap-start flex-col glass-card p-6 md:p-7"
                 style={{ width: "min(84vw, 340px)", minHeight: 200 }}
               >
                 <div className="flex items-baseline gap-3">
                   <span className="font-[var(--font-inter)] text-[11px] font-semibold uppercase tracking-[0.18em] text-hp-muted">
-                    {a.number}
+                    {`Note ${String(idx + 1).padStart(2, "0")}`}
                   </span>
-                  <span className="h-1 w-1 shrink-0 rounded-full bg-[rgba(139,127,255,0.4)]" />
-                  <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
-                    {a.category}
-                  </p>
                 </div>
                 <h3 className="mt-3 text-base md:text-lg font-semibold text-hp leading-snug">
-                  {a.title}
+                  {note.title}
                 </h3>
-                {a.subtitle && (
-                  <p className="mt-2 text-sm text-hp-muted leading-relaxed">
-                    {a.subtitle}
-                  </p>
-                )}
                 <div className="mt-auto pt-6 flex justify-end">
                   <ArrowRight
                     className="h-5 w-5 transition-transform group-hover:translate-x-1"
