@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache"
 import {
   getNotionClient,
   IB_NOTE_DATA_SOURCE_ID,
@@ -65,7 +66,7 @@ function toSummary(page: PageObjectResponse): NoteSummary | null {
 
 type QueryFilter = QueryDataSourceParameters["filter"]
 
-async function queryPublished(
+async function _queryPublishedImpl(
   slugEquals?: string
 ): Promise<PageObjectResponse[]> {
   const notion = getNotionClient()
@@ -106,6 +107,12 @@ async function queryPublished(
   return results
 }
 
+const queryPublished = unstable_cache(
+  _queryPublishedImpl,
+  ["notion-query-published"],
+  { tags: ["notes"] }
+)
+
 export async function listPublishedNotes(): Promise<NoteSummary[]> {
   const pages = await queryPublished()
   const out: NoteSummary[] = []
@@ -122,7 +129,7 @@ function isFullBlock(
   return "type" in b
 }
 
-async function listAllBlocks(pageId: string): Promise<BlockObjectResponse[]> {
+async function _listAllBlocksImpl(pageId: string): Promise<BlockObjectResponse[]> {
   const notion = getNotionClient()
   if (!notion) return []
   const out: BlockObjectResponse[] = []
@@ -141,6 +148,12 @@ async function listAllBlocks(pageId: string): Promise<BlockObjectResponse[]> {
   }
   return out
 }
+
+const listAllBlocks = unstable_cache(
+  _listAllBlocksImpl,
+  ["notion-list-all-blocks"],
+  { tags: ["notes"] }
+)
 
 export async function getPublishedNoteBySlug(
   slug: string
