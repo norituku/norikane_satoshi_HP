@@ -64,7 +64,11 @@ export async function POST(request: NextRequest) {
   }
 
   revalidatePath(`/notes/${payload.slug}`, "page")
-  revalidateTag("notes", "max")
+  // Route Handler では updateTag が使えない (Server-Action-only)。
+  // revalidateTag(tag, "max") は SWR セマンティクスで stale を返し続けるため、
+  // Notion 編集 → 1 visit で fresh を返したい用途では legacy 1-arg form で
+  // blocking invalidate する。Next 16 で deprecated 警告対象だが代替なし。
+  ;(revalidateTag as (tag: string) => void)("notes")
   revalidatePath("/", "page")
 
   return NextResponse.json({
