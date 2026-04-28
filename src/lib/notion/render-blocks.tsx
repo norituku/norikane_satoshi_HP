@@ -201,6 +201,14 @@ export function RenderBlocks({
       )
       return
     }
+    // image block は HP 側では描画しない。
+    // - HP は public/notes/diagrams/<slug>.webp を NoteDiagram で表示しているため、
+    //   Notion 下書きノートに参考プレビューとして挿入された image block を出すと重複する。
+    // - 将来 image block 全般をサポートする場合でも、caption が "HP図解プレビュー:" で始まる
+    //   image block は HP 側では明示的に skip し続ける (HP用 marker [[diagram:<slug>]] 経由のみ表示)。
+    if (block.type === "image") {
+      return
+    }
     // Unsupported block types are intentionally skipped.
   })
 

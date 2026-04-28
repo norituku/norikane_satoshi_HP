@@ -8,8 +8,26 @@
   "quality": "high",
   "output_format": "webp",
   "output_format_actual": "webp",
-  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. Compose a single horizontal banner split into two halves with a soft luminous transition in the middle (no hard line). LEFT HALF — represents an entangled, chaotic state of correction factors before decomposition: a dense knot of intertwined translucent threads in muted blue, magenta, peach and teal, drifting and overlapping like tangled silk, suggesting many independent variables fused into one mass (camera differences, exposure drift, color temperature, skin tone, atmospheric haze, scene tone, overall film look). Soft volumetric light passes through the knot, creating a sense of unresolved layering. No symbols, no glyphs. RIGHT HALF — represents the same factors after being decomposed into five horizontal granularity layers, stacked from top to bottom with generous breathing space: thin clean horizontal bands separated by faint glowing dividers, each band a slightly different muted hue, the topmost band brightest, descending bands progressively cooler and more grounded. The bands feel orderly, calm and structural — clearly five distinct strata, but abstract (no text, no numbers). MIDDLE — a delicate luminous funnel / lens effect channels the tangled threads from the left into the five clean bands on the right, implying that chaos is being factored into layered structure. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
-  "reference_assets": [
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. DESIGN INTENT — illustrate decomposition of correction factors as described in the source spec (Notion: figure spec for 'correction-factor-map'). Five granularity strata to read on the right side from top to bottom: per-camera, per-frame, per-angle, per-scene, per-project (these labels will be overlaid later in HTML/CSS, so do NOT draw any text inside the image). Inherit the visual tone of the existing reference slides 'public/slides/11分解と整理によるアプローチ.png' and 'public/slides/5複合操作の影響と復元性.png' — same calm cinematic feel, same abstraction level — but reframe the composition as a single horizontal banner. Compose a single horizontal banner split into two halves with a soft luminous transition in the middle (no hard line). LEFT HALF — represents an entangled, chaotic state of correction factors before decomposition: a dense knot of seven distinct intertwined translucent threads in muted blue, magenta, peach and teal, drifting and overlapping like tangled silk, each thread suggesting one independent variable (camera differences, exposure drift / VE iris-following, color temperature, skin tone consistency, atmospheric haze from smoke, scene-wide tone, overall project look). Soft volumetric light passes through the knot, creating a sense of unresolved layering. No symbols, no glyphs. Subtle exposure-bracket vibration in the threads (echoing the public/demo +2STOP/+1STOP/normal/-1STOP/-2STOP bracket). RIGHT HALF — represents the same factors after being decomposed into FIVE clearly distinguishable horizontal granularity layers, stacked top-to-bottom with generous breathing space: thin clean horizontal bands separated by faint glowing dividers, each band a slightly different muted hue, the topmost band brightest (per-camera), descending bands progressively cooler and more grounded (per-frame, per-angle, per-scene, per-project at the bottom). The bands feel orderly, calm and structural — clearly five distinct strata, but abstract (no text, no numbers). MIDDLE — a delicate luminous funnel / lens effect channels the tangled threads from the left into the five clean bands on the right, implying that chaos is being factored into layered structure (this is the 'decomposition' moment of the spec). Strong empty negative space below and above the bands so HTML labels (per-camera ... per-project, plus the 'mixed = labyrinth / separated = controllable' headers) can be overlaid later. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "source_spec_notion_url": "https://www.notion.so/a88b4c519ced4773b3b357b45cd0a2d4",
+  "target_article_notion_url": "https://www.notion.so/1510399661d64891aee912320df39b91",
+  "source_spec_summary": "図解仕様書「カラーコレクションの因数分解マップ」。左=混線(7要因), 右=5段の粒度レイヤー(カメラ/フレーム/アングル/シーン/作品), 中央=漏斗。文字なし、HTML/CSS で後載せ。HP slides 11(分解と整理) と 5(複合操作の影響と復元性) のトーンを継承し、抽象化した横長ビジュアルにする方針。",
+  "overlay_labels": [
+    "混ざると迷宮",
+    "分けると制御できる",
+    "カメラ単位",
+    "フレーム単位",
+    "アングル単位",
+    "シーン単位",
+    "作品単位"
+  ],
+  "success_criteria": [
+    "記事本文を読まなくても「混ざると迷う」「分けると制御できる」が一目で伝わる",
+    "5つの粒度が明確に読み取れる",
+    "日本語ラベルはHP側で正確に重ねられる",
+    "図単体が装飾で終わらず、本文の理解を助けている"
+  ],
+  "local_research_assets_used": [
     {
       "path": "public/slides/11分解と整理によるアプローチ.png",
       "exists": true,
@@ -46,9 +64,27 @@
       "bytes": 3289262
     }
   ],
-  "bytes": 155996,
-  "generated_at": "2026-04-28T05:50:25.768Z",
-  "finished_at": "2026-04-28T05:52:56.283Z",
+  "local_research_assets_checked_but_not_used": [
+    {
+      "path": "public/slides/4プライマリーコントロール概要.png",
+      "exists": true,
+      "reason": "コントロール粒度参考だが、本図解の「混線→粒度」軸とはレイヤーが異なるので不採用"
+    }
+  ],
+  "generation_rationale": "仕様書の構図(左:7要因混線 / 右:5段の粒度ストラータ / 中央:漏斗で因数分解)・成功基準(混ざると迷う/分けると制御できるが一目で伝わる/5粒度を読み取れる)・後載せラベル7件・既存素材 (HP slides 11/5 と public/demo STOP連番) を全て prompt 内に明示。後載せラベルは HP 側の HTML/CSS で重ねる前提なので、画像内には文字を描かない。",
+  "notion_draft_preview": {
+    "method": "Notion file_upload API (single_part) → image block を marker paragraph の after に挿入",
+    "page_id": "15103996-61d6-4891-aee9-12320df39b91",
+    "target_article": "カラーコレクションの因数分解",
+    "marker_block_id": "35013ee3-141a-817a-a856-d9686447187e",
+    "preview_image_block_id": "35013ee3-141a-818a-981d-f0e56669f117",
+    "file_upload_id": "35013ee3-141a-8120-933a-00b265a12058",
+    "caption": "HP図解プレビュー: correction-factor-map (対応仕様書: 図解仕様書｜カラーコレクションの因数分解マップ)",
+    "hp_renderer_behavior": "render-blocks.tsx で image block は明示的に skip。HP用 marker [[diagram:correction-factor-map]] が NoteDiagram に差し替わる経路のみ HP に出る。重複なし。"
+  },
+  "bytes": 132830,
+  "generated_at": "2026-04-28T06:49:45.177Z",
+  "finished_at": "2026-04-28T06:52:25.081Z",
   "pipeline_origin": {
     "repo": "x-post-pipeline",
     "file": "lib/image-generator/concept-image-generate.mjs",

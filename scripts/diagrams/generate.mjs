@@ -54,6 +54,21 @@ function summarizeRefs(refs) {
     })
 }
 
+function summarizeUsedRefs(used) {
+  return summarizeRefs(used || [])
+}
+
+function summarizeCheckedRefs(checked) {
+  return (checked || []).map((entry) => {
+    const abs = resolve(REPO_ROOT, entry.path)
+    return {
+      path: entry.path,
+      exists: existsSync(abs),
+      reason: entry.reason,
+    }
+  })
+}
+
 async function callOpenAI({ prompt, size, quality, output_format }) {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set")
@@ -97,14 +112,15 @@ async function ensureWebp(buf, requestedFormat) {
 async function main() {
   const { slug, dryRun } = parseCli()
   const cfg = getDiagramGenConfig(slug)
-  const refs = summarizeRefs(cfg.referenceAssets)
+  const usedRefs = summarizeUsedRefs(cfg.referenceAssets?.used)
+  const checkedRefs = summarizeCheckedRefs(cfg.referenceAssets?.checkedButNotUsed)
 
   ensureOutDir()
   const imgPath = join(OUT_DIR, `${slug}.webp`)
   const metaPath = join(OUT_DIR, `${slug}.meta.json`)
 
   if (dryRun) {
-    process.stdout.write(JSON.stringify({ ok: true, dryRun: true, slug, refs, prompt_preview: cfg.prompt.slice(0, 240) + "..." }, null, 2) + "\n")
+    process.stdout.write(JSON.stringify({ ok: true, dryRun: true, slug, used_refs: usedRefs, checked_refs: checkedRefs, prompt_preview: cfg.prompt.slice(0, 240) + "..." }, null, 2) + "\n")
     return
   }
 
@@ -145,7 +161,18 @@ async function main() {
     output_format: cfg.output_format,
     output_format_actual: "webp",
     prompt: cfg.prompt,
-    reference_assets: refs,
+    source_spec_notion_url: cfg.sourceSpecNotionUrl,
+    target_article_notion_url: cfg.targetArticleNotionUrl,
+    source_spec_summary: cfg.sourceSpecSummary,
+    overlay_labels: cfg.overlayLabels,
+    success_criteria: cfg.successCriteria,
+    local_research_assets_used: usedRefs,
+    local_research_assets_checked_but_not_used: checkedRefs,
+    generation_rationale: cfg.generationRationale,
+    notion_draft_preview: {
+      mechanism: "Notion file_upload API → image block 挿入。caption は 'HP図解プレビュー: <slug> (対応仕様書: <name>)'。HP用 marker paragraph は残す。",
+      filled_at_runtime: "scripts/diagrams/insert-preview.mjs が file_upload → block 挿入し、ここに { method, block_id, file_upload_id, caption } を後追記する",
+    },
     bytes: webp.byteLength,
     generated_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
