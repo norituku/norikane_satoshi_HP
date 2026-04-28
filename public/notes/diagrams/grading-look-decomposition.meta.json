@@ -1,0 +1,42 @@
+{
+  "slug": "grading-look-decomposition",
+  "title": "grading-look-decomposition",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. Compose a single horizontal banner depicting an abstract Look Decomposition map: one central luminous core surrounded by FOUR clearly separated radial axes. CENTER — a soft glowing orb at the visual center of the frame, suggesting a cinematic film frame distilled to its essence: warm-cool subtle aurora gradient inside the orb (deep teal shadow, gentle peach highlight), as if the entire mood of a movie were condensed into one luminous nucleus. The orb is abstract — no eyes, no faces, no scenery. FOUR RADIAL AXES — extending outward from the central orb toward the four cardinal-ish directions (upper-left, upper-right, lower-left, lower-right), each axis reads as a visually distinct treatment of color: AXIS 1 (color spread / hue rotation) — a gentle circular hue gradient, like a soft chromatic ring fragment, hinting at hue rotation and saturation. AXIS 2 (density) — vertical layered bands of varying luminance per color, suggesting how each color's brightness can be pushed independently. AXIS 3 (curve) — a smooth tonal S-curve drawn as a faint luminous line crossing a soft grayscale gradient, hinting at toe and shoulder. AXIS 4 (RGB color balance) — three faint parallel beams (warm red, neutral green, cool blue) gently shifting an underlying gray plane. The four axes are connected to the center via soft luminous filaments, but never cross each other — they read as ORTHOGONAL. Composition feels cinematic, calm, and structural; suggestive of a colorist's mental map, not a technical diagram. Strong empty negative space between axes so HTML labels can be overlaid later. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "reference_assets": [
+    {
+      "path": "public/slides/7カラーグレーディングのフレームワーク.png",
+      "exists": true,
+      "bytes": 1029984
+    },
+    {
+      "path": "public/slides/10カラーグレーディングのフレームワーク - まとめ.png",
+      "exists": true,
+      "bytes": 937960
+    },
+    {
+      "path": "public/slides/8フレームワーク関連コントロール.png",
+      "exists": true,
+      "bytes": 1072528
+    },
+    {
+      "path": "public/slides/3カラーグレーディングの基本概念.png",
+      "exists": true,
+      "bytes": 867776
+    }
+  ],
+  "bytes": 53610,
+  "generated_at": "2026-04-28T06:26:06.849Z",
+  "finished_at": "2026-04-28T06:29:07.887Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}

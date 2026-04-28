@@ -1,0 +1,67 @@
+{
+  "slug": "filmlook-physics-flow",
+  "title": "filmlook-physics-flow",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. Compose a single horizontal banner depicting a left-to-right physical chain that turns a digital signal into a final film look. Read like a cinematic film-lab cross-section: light enters from the left, passes through layered emulsion, density curves, an S-shaped tone response, RGB printer light, and grain, before resolving into a luminous final frame on the right. STAGE 1 (left edge) — a thin vertical column of clean digital scene-linear light: faint cool blue rays, very neutral, slightly grid-like as if sampled. STAGE 2 — exposure: that light fans outward and softens into warm volumetric beams hitting an emulsion plane. STAGE 3 — three translucent dye layers stacked in depth (cyan, magenta, yellow), each layer showing its own subtle absorption color, slightly offset to suggest interlayer scattering. STAGE 4 — spectral density curves: faint luminous wavelength curves crossing the dye stack, drawn as gentle wave-like ridges (no axis labels). STAGE 5 — S-curve: a smooth global S-shaped luminance ridge reshapes the signal, with a soft toe in the shadows and a gentle shoulder in the highlights, rolling off rather than clipping. STAGE 6 — printer light: three faint colored beams (warm red, neutral green, cool blue) recombine the signal as if shining through a printer head. STAGE 7 — grain: a delicate, NON-uniform film-grain texture drifts across midtones — sparser in highlights, slightly denser in shadows, never lying flat over skin-equivalent midtones. STAGE 8 (right edge) — final cinematic frame: a soft warm-cool aurora orb that reads as the resolved film look. Connect the eight stages with a quiet luminous flow line running left to right, so the whole banner reads as a single physical pipeline. Background remains dark and uniform so HTML labels for each stage can be overlaid cleanly afterward. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "reference_assets": [
+    {
+      "path": "../Tetra_Reverse/ANALYSIS.md",
+      "exists": true,
+      "bytes": 3484
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_basis_vectors.png",
+      "exists": true,
+      "bytes": 494544
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_weight_functions.png",
+      "exists": true,
+      "bytes": 482463
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_variance_explained.png",
+      "exists": true,
+      "bytes": 78148
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_mean_residual.png",
+      "exists": true,
+      "bytes": 127741
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/svd_spectrum_iems1.png",
+      "exists": true,
+      "bytes": 55179
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/svd_spectrum_rochp.png",
+      "exists": true,
+      "bytes": 51168
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/separability.png",
+      "exists": true,
+      "bytes": 213087
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/pareto_front.png",
+      "exists": true,
+      "bytes": 84320
+    }
+  ],
+  "bytes": 90218,
+  "generated_at": "2026-04-28T06:26:07.731Z",
+  "finished_at": "2026-04-28T06:28:02.432Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}

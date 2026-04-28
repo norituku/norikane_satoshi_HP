@@ -5,31 +5,55 @@
  * grading / filmlook 等を追加するときは、画像 (public/notes/diagrams/<slug>.webp)
  * と meta (public/notes/diagrams/<slug>.meta.json) を生成したうえで
  * このオブジェクトに 1 エントリ足すだけで済むようにしている。
+ *
+ * layout は 3 種類:
+ *   - "chaos-vs-structured": 左=混線/右=構造化レイヤー (correction)
+ *   - "centered-axes":       中心ルック + 4方向軸 (grading 4軸マップ)
+ *   - "horizontal-flow":     左→右の物理連鎖 (filmlook)
  */
 
-export type DiagramConfig = {
-  /** 本文 marker の slug。public/notes/diagrams/<slug>.webp と一致させる。 */
+type DiagramBase = {
   slug: string
-  /** 図解タイトル (figcaption の見出し)。 */
   title: string
-  /** 1 行説明。図解の意図を本文の流れと繋ぐ。 */
   caption: string
-  /** スクリーンリーダー向け代替テキスト。 */
   alt: string
-  /** 画像の横:縦 比 (next/image の sizes 用)。 */
   aspect: { width: number; height: number }
-  /** 図解の左側 (整理前) に並ぶ要素ラベル。 */
-  chaosLabels: string[]
-  /** 図解の右側 (整理後) に並ぶ階層ラベル。上から順に。 */
-  structuredLayers: string[]
-  /** 左右ブロックの上に出す小見出し。 */
-  chaosHeading: string
-  structuredHeading: string
 }
+
+export type ChaosStructuredDiagram = DiagramBase & {
+  layout: "chaos-vs-structured"
+  chaosHeading: string
+  chaosLabels: string[]
+  structuredHeading: string
+  structuredLayers: string[]
+}
+
+export type CenteredAxesDiagram = DiagramBase & {
+  layout: "centered-axes"
+  centerLabel: string
+  centerSubLabel: string
+  axesHeading: string
+  axes: { label: string; sublabel: string }[]
+  hintHeading: string
+  hints: string[]
+}
+
+export type HorizontalFlowDiagram = DiagramBase & {
+  layout: "horizontal-flow"
+  flowHeading: string
+  steps: { label: string; sublabel: string }[]
+  takeaway: string
+}
+
+export type DiagramConfig =
+  | ChaosStructuredDiagram
+  | CenteredAxesDiagram
+  | HorizontalFlowDiagram
 
 export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
   "correction-factor-map": {
     slug: "correction-factor-map",
+    layout: "chaos-vs-structured",
     title: "カラーコレクションの因数分解マップ",
     caption:
       "5000カットの迷宮を、5段の粒度に畳み直す。ライブのカラコレでは、要因を粒度で分けて管理することがそのまま作業効率になる。",
@@ -53,6 +77,64 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
       "シーン単位",
       "作品単位",
     ],
+  },
+  "grading-look-decomposition": {
+    slug: "grading-look-decomposition",
+    layout: "centered-axes",
+    title: "Look Decomposition 4軸マップ",
+    caption:
+      "抽象的な言葉を、4つの調整軸に落とす。中心の作品ルックから「色の広がり・転がり」「濃度」「カーブ」「RGBカラーバランス」へ手が伸びる足場。",
+    alt: "中心に作品のルックを置き、色の広がり・転がり、濃度、カーブ、RGBカラーバランスの4軸が放射状に分かれることを示す抽象図解",
+    aspect: { width: 1536, height: 1024 },
+    centerLabel: "作品のルック",
+    centerSubLabel: "監督の言葉が、ノードに落ちる場所",
+    axesHeading: "4つの調整軸 — Look Decomposition",
+    axes: [
+      {
+        label: "色の広がり・転がり",
+        sublabel: "色相の回転と彩度。グレーも輝度も動かさない",
+      },
+      {
+        label: "濃度",
+        sublabel: "色ごとの輝度。立体感はここで決まる",
+      },
+      {
+        label: "カーブ",
+        sublabel: "グレースケールの明暗設計",
+      },
+      {
+        label: "RGBカラーバランス",
+        sublabel: "全体グレーのズレ。最下層の色温度",
+      },
+    ],
+    hintHeading: "監督の言葉 → 軸の対応",
+    hints: [
+      "「もう少し暖かく」 → 色の広がり・転がり",
+      "「もう少し抜けを」 → カーブ",
+      "「青を深く」 → 濃度",
+      "「映画っぽく」 → 4軸の合成",
+    ],
+  },
+  "filmlook-physics-flow": {
+    slug: "filmlook-physics-flow",
+    layout: "horizontal-flow",
+    title: "フィルムルックを作る物理の流れ",
+    caption:
+      "フィルムルックは雰囲気ではなく、露光、染料層、曲線、光、粒の物理連鎖として読み直せる。デジタル信号が左から流れ、最終ルックへ収束する。",
+    alt: "デジタル信号が露光、3層の染料、分光密度曲線、S字カーブ、プリンターライト、グレインを通って最終的なフィルムルックへ収束する流れの図解",
+    aspect: { width: 1536, height: 1024 },
+    flowHeading: "物理連鎖 — 8段のパイプライン",
+    steps: [
+      { label: "デジタル信号", sublabel: "scene-linear の入力" },
+      { label: "露光", sublabel: "光がフィルム面に当たる" },
+      { label: "3層の染料", sublabel: "シアン・マゼンタ・イエロー" },
+      { label: "分光密度曲線", sublabel: "波長ごとの吸収応答" },
+      { label: "S字カーブ", sublabel: "トー・ストレート・ショルダー" },
+      { label: "プリンターライト", sublabel: "RGB光で印刷" },
+      { label: "グレイン", sublabel: "非一様な粒子分布" },
+      { label: "最終ルック", sublabel: "映画的な1フレーム" },
+    ],
+    takeaway: "フィルムルックは物理で読める。",
   },
 }
 

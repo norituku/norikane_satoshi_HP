@@ -196,8 +196,7 @@ export function RenderBlocks({
       out.push(
         <hr
           key={key}
-          className="my-10 md:my-12 border-0"
-          style={{ borderTop: "1px solid rgba(139, 127, 255, 0.2)" }}
+          className="my-10 border-0 border-t border-t-[rgba(139,127,255,0.2)] md:my-12"
         />
       )
       return
