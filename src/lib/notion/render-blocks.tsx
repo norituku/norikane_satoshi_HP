@@ -4,6 +4,8 @@ import type {
   BlockObjectResponse,
   RichTextItemResponse,
 } from "@notionhq/client"
+import { NoteDiagram } from "@/components/notes/note-diagram"
+import { getDiagramConfig, parseDiagramMarker } from "@/lib/notes/diagrams"
 
 const LINK_CLASS =
   "underline underline-offset-4 decoration-[rgba(139,127,255,0.5)] hover:text-[var(--accent-primary)] hover:decoration-[var(--accent-primary)] transition-colors"
@@ -169,13 +171,25 @@ export function RenderBlocks({
     if (block.type === "paragraph") {
       if (isEmptyParagraph(block)) {
         out.push(<div key={key} className="h-4 md:h-6" aria-hidden="true" />)
-      } else {
-        out.push(
-          <p key={key} className="leading-relaxed md:leading-[1.9]">
-            {renderRichText(block.paragraph.rich_text, key, slugIndex)}
-          </p>
-        )
+        return
       }
+      // [[diagram:<slug>]] のみで構成された paragraph は図解コンポーネントに差し替える。
+      // 認識できない slug や誤記は通常の paragraph として描画して raw marker を残す
+      // (ただし本文側で誤記に気付ける程度に visible にする方を優先する)。
+      const plain = richToPlain(block.paragraph.rich_text)
+      const diagramSlug = parseDiagramMarker(plain)
+      if (diagramSlug) {
+        const config = getDiagramConfig(diagramSlug)
+        if (config) {
+          out.push(<NoteDiagram key={key} config={config} />)
+          return
+        }
+      }
+      out.push(
+        <p key={key} className="leading-relaxed md:leading-[1.9]">
+          {renderRichText(block.paragraph.rich_text, key, slugIndex)}
+        </p>
+      )
       return
     }
     if (block.type === "divider") {

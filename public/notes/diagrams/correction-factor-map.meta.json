@@ -1,0 +1,57 @@
+{
+  "slug": "correction-factor-map",
+  "title": "correction-factor-map",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. Compose a single horizontal banner split into two halves with a soft luminous transition in the middle (no hard line). LEFT HALF — represents an entangled, chaotic state of correction factors before decomposition: a dense knot of intertwined translucent threads in muted blue, magenta, peach and teal, drifting and overlapping like tangled silk, suggesting many independent variables fused into one mass (camera differences, exposure drift, color temperature, skin tone, atmospheric haze, scene tone, overall film look). Soft volumetric light passes through the knot, creating a sense of unresolved layering. No symbols, no glyphs. RIGHT HALF — represents the same factors after being decomposed into five horizontal granularity layers, stacked from top to bottom with generous breathing space: thin clean horizontal bands separated by faint glowing dividers, each band a slightly different muted hue, the topmost band brightest, descending bands progressively cooler and more grounded. The bands feel orderly, calm and structural — clearly five distinct strata, but abstract (no text, no numbers). MIDDLE — a delicate luminous funnel / lens effect channels the tangled threads from the left into the five clean bands on the right, implying that chaos is being factored into layered structure. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "reference_assets": [
+    {
+      "path": "public/slides/11分解と整理によるアプローチ.png",
+      "exists": true,
+      "bytes": 1076883
+    },
+    {
+      "path": "public/slides/5複合操作の影響と復元性.png",
+      "exists": true,
+      "bytes": 1104537
+    },
+    {
+      "path": "public/demo/+2STOP.jpg",
+      "exists": true,
+      "bytes": 2000319
+    },
+    {
+      "path": "public/demo/+1STOP.jpg",
+      "exists": true,
+      "bytes": 2305029
+    },
+    {
+      "path": "public/demo/チャートノーマル.jpg",
+      "exists": true,
+      "bytes": 2692856
+    },
+    {
+      "path": "public/demo/-1STOP.jpg",
+      "exists": true,
+      "bytes": 2970406
+    },
+    {
+      "path": "public/demo/-2STOP.jpg",
+      "exists": true,
+      "bytes": 3289262
+    }
+  ],
+  "bytes": 155996,
+  "generated_at": "2026-04-28T05:50:25.768Z",
+  "finished_at": "2026-04-28T05:52:56.283Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}
