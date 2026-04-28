@@ -1,0 +1,61 @@
+{
+  "slug": "correction-scope-map",
+  "title": "correction-scope-map",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. DESIGN INTENT — illustrate a 'scope-of-effect mini-map' for the 5 granularity strata of color correction (per-camera / per-frame / per-angle / per-scene / per-project). Inherit the calm cinematic tone of reference slides 'public/slides/11分解と整理によるアプローチ.png' and 'public/slides/5複合操作の影響と復元性.png'. These granularity labels (カメラ単位 / フレーム単位 / アングル単位 / シーン単位 / 作品単位 / 粒度 = 適用範囲) will be overlaid later in HTML/CSS, so do NOT draw any text inside the image. Compose a single horizontal banner with FIVE softly glowing concentric-ring clusters arranged left-to-right, each cluster representing one granularity. Each cluster is a stack of 2-4 nested rings, where the OUTERMOST ring depicts how wide that granularity's effect reaches. From left to right, the rings progressively GROW: leftmost cluster has the smallest outer ring (per-camera, narrow scope), then a slightly wider one (per-frame), then wider (per-angle), wider still (per-scene), and the rightmost cluster has the largest outer ring (per-project, widest scope). Each ring is a soft luminous outline (no filled disks), with subtle aurora gradient (deep purple, dim teal, faint warm orange). The rings feel like radio waves, calm and ordered. Connect the clusters with a faint horizontal flow line so the eye reads left-to-right. Strong empty negative space below and between clusters so HTML labels (per-camera ... per-project, plus the 'granularity = scope of effect' header and a takeaway) can be overlaid later. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "source_spec_notion_url": "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+  "target_article_notion_url": "https://www.notion.so/1510399661d64891aee912320df39b91",
+  "source_spec_summary": "図解仕様書「適用範囲ミニ図」。5段の粒度 (カメラ/フレーム/アングル/シーン/作品) それぞれが、どこまでの範囲を支配するかを横並びで示す。文字なし、HTML/CSS で後載せ。HP slides 11 (分解と整理) と HP slides 5 (複合操作の影響と復元性) のトーンを継承。",
+  "overlay_labels": [
+    "カメラ単位",
+    "フレーム単位",
+    "アングル単位",
+    "シーン単位",
+    "作品単位",
+    "粒度 = 適用範囲"
+  ],
+  "success_criteria": [
+    "5つの粒度それぞれが「どこまでの範囲を支配するか」が一目で見える",
+    "粒度を取り違えると戻せなくなる、という本文の核が直感的に伝わる",
+    "日本語ラベルはHP側で正確に重ねられる",
+    "correction-factor-map と並べても重複ではなく補完として読める"
+  ],
+  "local_research_assets_used": [
+    {
+      "path": "public/slides/11分解と整理によるアプローチ.png",
+      "exists": true,
+      "bytes": 1076883
+    },
+    {
+      "path": "public/slides/5複合操作の影響と復元性.png",
+      "exists": true,
+      "bytes": 1104537
+    }
+  ],
+  "local_research_assets_checked_but_not_used": [
+    {
+      "path": "public/slides/4プライマリーコントロール概要.png",
+      "exists": true,
+      "reason": "コントロール粒度よりも適用範囲(支配範囲)を視覚化したいので不採用"
+    }
+  ],
+  "generation_rationale": "仕様書の構図(5段の粒度を横並びで支配範囲ミニ図として描く)・成功基準(粒度ごとの支配範囲が一目で見える/correction-factor-map と並べても補完になる)・後載せラベル6件 を prompt 内に明示。スライド11/5 のトーンを継承し、文字を描かず、HP 側で番号+説明+takeaway を後載せする前提。",
+  "notion_draft_preview": {
+    "mechanism": "Notion file_upload API → image block 挿入。caption は 'HP図解プレビュー: <slug> (対応仕様書: <name>)'。HP用 marker paragraph は残す。",
+    "filled_at_runtime": "scripts/diagrams/insert-preview.mjs が file_upload → block 挿入し、ここに { method, block_id, file_upload_id, caption } を後追記する"
+  },
+  "bytes": 43758,
+  "generated_at": "2026-04-28T08:55:46.152Z",
+  "finished_at": "2026-04-28T08:59:06.202Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}

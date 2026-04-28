@@ -4,6 +4,8 @@ import type {
   ChaosStructuredDiagram,
   DiagramConfig,
   HorizontalFlowDiagram,
+  KeypointRowDiagram,
+  KeypointRowGlyph,
 } from "@/lib/notes/diagrams"
 
 /**
@@ -44,6 +46,14 @@ export function NoteDiagram({ config }: { config: DiagramConfig }) {
         <p className="mt-2 text-sm leading-relaxed text-hp-muted md:text-[0.95rem]">
           {config.caption}
         </p>
+        {config.intro ? (
+          <p className="mt-3 rounded-[12px] border border-white/55 bg-white/35 px-3 py-2 text-[12px] leading-relaxed text-hp md:text-[0.85rem]">
+            <span className="mr-1.5 inline-flex items-center rounded-full bg-[var(--accent-primary,#8B7FFF)]/15 px-1.5 py-0.5 font-[var(--font-geist-mono)] text-[10px] tracking-[0.2em] text-[var(--accent-primary,#8B7FFF)]">
+              5SEC
+            </span>
+            {config.intro}
+          </p>
+        ) : null}
         <div className="mt-5">
           <DiagramBody config={config} />
         </div>
@@ -60,7 +70,107 @@ function DiagramBody({ config }: { config: DiagramConfig }) {
       return <CenteredAxesBody config={config} />
     case "horizontal-flow":
       return <HorizontalFlowBody config={config} />
+    case "keypoint-row":
+      return <KeypointRowBody config={config} />
   }
+}
+
+function StepIcon({ glyph }: { glyph: KeypointRowGlyph }) {
+  // SVG glyph (24x24, currentColor). 文字は描かない。HP のアクセント色に
+  // 寄せず、本文の text-hp-muted トーンに合わせて控えめに置く。
+  switch (glyph) {
+    case "scope":
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-4 w-4 text-[var(--accent-primary,#8B7FFF)]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <circle cx="12" cy="12" r="3" />
+          <circle cx="12" cy="12" r="6" opacity="0.55" />
+          <circle cx="12" cy="12" r="9" opacity="0.3" />
+        </svg>
+      )
+    case "word-axis-knob":
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-4 w-4 text-[var(--accent-primary,#8B7FFF)]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <circle cx="4" cy="12" r="2" />
+          <path d="M6 12 H10" />
+          <circle cx="12" cy="12" r="2" />
+          <path d="M14 12 H18" />
+          <circle cx="20" cy="12" r="2" />
+        </svg>
+      )
+    case "density":
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-4 w-4 text-[var(--accent-primary,#8B7FFF)]"
+          fill="currentColor"
+        >
+          <rect x="4" y="4" width="4" height="16" opacity="0.25" />
+          <rect x="10" y="7" width="4" height="13" opacity="0.55" />
+          <rect x="16" y="11" width="4" height="9" opacity="0.95" />
+        </svg>
+      )
+    case "mixture":
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-4 w-4 text-[var(--accent-primary,#8B7FFF)]"
+          fill="currentColor"
+        >
+          <circle cx="9" cy="10" r="5" opacity="0.45" />
+          <circle cx="15" cy="10" r="5" opacity="0.45" />
+          <circle cx="12" cy="15" r="5" opacity="0.45" />
+        </svg>
+      )
+  }
+}
+
+function KeypointRowBody({ config }: { config: KeypointRowDiagram }) {
+  const cols = config.items.length >= 4 ? "md:grid-cols-4" : "md:grid-cols-2"
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+        {config.itemsHeading}
+      </p>
+      <ol className={`mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 ${cols}`}>
+        {config.items.map((item, i) => (
+          <li
+            key={item.label}
+            className="rounded-[12px] border border-white/55 bg-white/40 px-3 py-2.5"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-hp md:text-[0.82rem]">
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <StepIcon glyph={item.glyph} />
+              <span>{item.label}</span>
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-hp-muted md:text-[0.74rem]">
+              {item.sublabel}
+            </p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
+    </div>
+  )
 }
 
 function ChaosStructuredBody({ config }: { config: ChaosStructuredDiagram }) {

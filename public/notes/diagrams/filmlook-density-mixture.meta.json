@@ -1,0 +1,75 @@
+{
+  "slug": "filmlook-density-mixture",
+  "title": "filmlook-density-mixture",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. DESIGN INTENT — illustrate that 'film-ness' boils down to TWO axes: density (how each brightness sinks) and color mixture (how layers cross-contaminate). Left-right split banner. Inherit S-curve shoulder and 3-layer dye feel from FilmLookEmulator wu8_weight_functions / wu8_basis_vectors plots. These labels (濃度 / 色の混ざり / 暗部の粘り / S字の肩 / 対数応答 / 3層染料 / 分光密度曲線 / DIRカプラー / プリンター光 / 'フィルムの正体は、二軸に絞れる。') will be overlaid later in HTML/CSS, so do NOT draw any text inside the image. Compose a single horizontal banner split LEFT vs RIGHT with a soft luminous transition in the middle (no hard line). LEFT HALF — DENSITY axis. Vertical luminance bands stacked top-to-bottom, like a calibrated grayscale wedge: highlights softly rolling off (a gentle shoulder), midtones neutral, deep shadows that linger (do not crash to black). A faint S-shaped tonal ridge crosses the bands, hinting at a logarithmic response. Inherit the curve shape from FilmLookEmulator wu8_weight_functions plot — but no axis text. RIGHT HALF — COLOR MIXTURE axis. Three translucent dye layers (cyan, magenta, yellow) overlap and cross-contaminate, with subtle DIR-coupler-like inter-layer offsets. Add three faint parallel printer-light beams (warm red, neutral green, cool blue) gently shifting the resulting blend. MIDDLE — a delicate luminous seam where the two halves meet, suggesting that both axes belong to the same film. Strong empty negative space above and below each half so HTML labels (the two axis names plus the supporting tags) can be overlaid cleanly later. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "source_spec_notion_url": "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+  "target_article_notion_url": "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
+  "source_spec_summary": "図解仕様書「フィルムらしさ = 濃度 + 色の混ざり」。4軸のうち、フィルム固有の差はほぼ二軸 (濃度/色の混ざり) に集約される、という本文の核を視覚化する。左右二分割。文字なし、HTML/CSS で後載せ。FilmLookEmulator の wu8_basis_vectors / wu8_weight_functions の曲線形状と3層染料の感覚を継承。",
+  "overlay_labels": [
+    "濃度",
+    "色の混ざり",
+    "暗部の粘り",
+    "S字の肩",
+    "対数応答",
+    "3層染料",
+    "分光密度曲線",
+    "DIRカプラー",
+    "プリンター光",
+    "フィルムの正体は、二軸に絞れる。"
+  ],
+  "success_criteria": [
+    "フィルムルックの正体が「濃度 + 色の混ざり」の二軸に絞れる、という本文の核が直感で伝わる",
+    "左半分 = 濃度、右半分 = 色の混ざり、が一目で違うものとして読める",
+    "filmlook-physics-flow (8段) の補完として、何を取り出した二軸なのかが分かる",
+    "後載せの日本語ラベルが綺麗に乗る"
+  ],
+  "local_research_assets_used": [
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_weight_functions.png",
+      "exists": true,
+      "bytes": 482463
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_basis_vectors.png",
+      "exists": true,
+      "bytes": 494544
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/svd_spectrum_iems1.png",
+      "exists": true,
+      "bytes": 55179
+    }
+  ],
+  "local_research_assets_checked_but_not_used": [
+    {
+      "path": "../FilmLookEmulator_project/analysis/stage2/wu8_variance_explained.png",
+      "exists": true,
+      "reason": "寄与度のバープロットで、二軸の視覚化に直接寄与しないので不採用"
+    },
+    {
+      "path": "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/pareto_front.png",
+      "exists": true,
+      "reason": "別議論(分離可能性)のプロット。本図解の「濃度+色の混ざり」とは関心が違うので不採用"
+    }
+  ],
+  "generation_rationale": "仕様書の構図(左右二分割: 濃度 / 色の混ざり)・成功基準(二軸に絞れることが伝わる/8段 flow の補完になる)・後載せラベル10件 を prompt 内に明示。FilmLookEmulator の wu8 plot 群から S字の肩と3層染料の感覚を継承。文字なし、HP 側で番号+ラベル+takeaway を後載せ。",
+  "notion_draft_preview": {
+    "mechanism": "Notion file_upload API → image block 挿入。caption は 'HP図解プレビュー: <slug> (対応仕様書: <name>)'。HP用 marker paragraph は残す。",
+    "filled_at_runtime": "scripts/diagrams/insert-preview.mjs が file_upload → block 挿入し、ここに { method, block_id, file_upload_id, caption } を後追記する"
+  },
+  "bytes": 73192,
+  "generated_at": "2026-04-28T09:00:31.531Z",
+  "finished_at": "2026-04-28T09:03:31.557Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "slug": "grading-words-to-knobs",
+  "title": "grading-words-to-knobs",
+  "model": "gpt-image-2",
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "auth": "OPENAI_API_KEY (Bearer) — same path as x-post-pipeline lib/image-generator/concept-image-generate.mjs",
+  "size": "1536x1024",
+  "quality": "high",
+  "output_format": "webp",
+  "output_format_actual": "webp",
+  "prompt": "Cinematic editorial illustration. Dark, calm, premium feel. Deep navy / charcoal background with very subtle aurora gradients (deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only. Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable. Output: 16:9 horizontal banner suitable for being embedded inside an article body column. DESIGN INTENT — illustrate a 3-hop translation: a director's abstract phrase → a colorist's axis → a concrete control. Four parallel translation paths, one per phrase. Inherit the calm framework feel of reference slides 'public/slides/8フレームワーク関連コントロール.png' and 'public/slides/7カラーグレーディングのフレームワーク.png'. These labels (the four phrases / the four axes / the four operations / the header '言葉 → 軸 → 操作') will be overlaid later in HTML/CSS, so do NOT draw any text inside the image. Compose a single horizontal banner with FOUR vertical translation lanes side by side. Each lane has THREE stacked stages, top-to-bottom: TOP STAGE — a soft luminous wave or speech ripple (suggesting a spoken word from the director). Each lane's wave has a slightly different temperature: lane1 warm peach, lane2 neutral teal, lane3 cool deep blue, lane4 a balanced warm-cool aurora. MIDDLE STAGE — a small fragment of the colorist's framework: a hue ring slice, an S-curve segment, a vertical density bar, and a subtle 4-axis cross. Each fragment matches the lane's translation target axis. BOTTOM STAGE — a stylized control element (an abstract knob, slider, or wheel) glowing softly in the lane's color, suggesting the concrete operation. Connect TOP→MIDDLE→BOTTOM in each lane with a faint vertical luminous filament so the eye reads top-to-bottom (the 3-hop translation). Lanes are clearly separated by generous empty space so the four parallel translations read as independent. Strong empty negative space at top, between lanes, and at bottom so HTML labels can be overlaid cleanly later. STRICT NEGATIVE CONSTRAINTS — do NOT include any of the following: text, letters, words, numbers, captions, labels, titles, sentences, characters in any language (especially Japanese kana / kanji / Latin / numerals), UI elements, icons with letters, logos, watermarks, signatures, button shapes, screenshots, photos of people, faces, hands.",
+  "source_spec_notion_url": "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+  "target_article_notion_url": "https://www.notion.so/2d61194573e140789602864a9040affe",
+  "source_spec_summary": "図解仕様書「監督の言葉 → 軸 → 操作」。立ち会いの抽象的な指示を、4軸のどれに落とし、どの操作で返すかを4列で示す3段ホップ。文字なし、HTML/CSS で後載せ。HP slides 8 (フレームワーク関連コントロール) と HP slides 7 (フレームワーク) のトーンを継承。",
+  "overlay_labels": [
+    "「もう少し暖かく」",
+    "「もう少し抜けを」",
+    "「青を深く」",
+    "「映画っぽく」",
+    "色の広がり・転がり",
+    "カーブ",
+    "濃度",
+    "4軸の合成",
+    "言葉 → 軸 → 操作"
+  ],
+  "success_criteria": [
+    "監督の抽象的な一言が、軸とノブに落ちる仕組みが直感的に伝わる",
+    "4列(言葉→軸→操作)が等しい重みで並んで見える",
+    "grading-look-decomposition の「4軸そのもの」とは別の角度で、軸の使い方が読める",
+    "後載せの日本語ラベルが綺麗に乗る"
+  ],
+  "local_research_assets_used": [
+    {
+      "path": "public/slides/8フレームワーク関連コントロール.png",
+      "exists": true,
+      "bytes": 1072528
+    },
+    {
+      "path": "public/slides/7カラーグレーディングのフレームワーク.png",
+      "exists": true,
+      "bytes": 1029984
+    }
+  ],
+  "local_research_assets_checked_but_not_used": [
+    {
+      "path": "public/slides/3カラーグレーディングの基本概念.png",
+      "exists": true,
+      "reason": "前提知識スライド。3段ホップ構図とは別レイヤーなので不採用"
+    }
+  ],
+  "generation_rationale": "仕様書の構図(4列の3段ホップ: 言葉→軸→ノブ)・成功基準(言葉が軸とノブに落ちる仕組みが直感で分かる/grading-look-decomposition と補完になる)・後載せラベル9件 を prompt 内に明示。スライド8/7 のトーンを継承し、文字なし。HP 側で番号+ラベル+takeaway を後載せ。",
+  "notion_draft_preview": {
+    "mechanism": "Notion file_upload API → image block 挿入。caption は 'HP図解プレビュー: <slug> (対応仕様書: <name>)'。HP用 marker paragraph は残す。",
+    "filled_at_runtime": "scripts/diagrams/insert-preview.mjs が file_upload → block 挿入し、ここに { method, block_id, file_upload_id, caption } を後追記する"
+  },
+  "bytes": 54768,
+  "generated_at": "2026-04-28T08:56:51.469Z",
+  "finished_at": "2026-04-28T09:00:28.345Z",
+  "pipeline_origin": {
+    "repo": "x-post-pipeline",
+    "file": "lib/image-generator/concept-image-generate.mjs",
+    "summary": "POST https://api.openai.com/v1/images/generations with model gpt-image-2, Bearer OPENAI_API_KEY, b64_json response. HP 用は size/quality/output_format を上書きしつつ同じ認証経路と同じ no-text negative prompt 方針を踏襲。"
+  }
+}

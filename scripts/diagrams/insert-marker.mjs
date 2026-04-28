@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * insert-marker.mjs — Notion ページに [[diagram:<slug>]] paragraph を、
- * 指定見出し直後 (= その章の最初の本文段落の前) に冪等に挿入する。
+ * insert-marker.mjs — Notion ページに [[diagram:<slug>]] paragraph を冪等に挿入する。
+ *
+ * 挿入位置は次の二択 (--after-heading と --after-marker-slug は排他、どちらか必須):
+ *   --after-heading "<text>"        指定見出し直後 (heading_1/2/3 のいずれか、トリミング一致)
+ *   --after-marker-slug <slug>      同ページ内の既存 [[diagram:<slug>]] 段落の直後
  *
  * 使い方:
  *   node scripts/diagrams/insert-marker.mjs \
@@ -9,10 +12,14 @@
  *     --slug <diagram-slug> \
  *     --after-heading "<heading plain text>"
  *
+ *   node scripts/diagrams/insert-marker.mjs \
+ *     --page-id <notion-page-id> \
+ *     --slug <diagram-slug> \
+ *     --after-marker-slug <existing-diagram-slug>
+ *
  * 認証: NOTION_API_KEY (Bearer)
  *
  * 既に同一 slug の marker paragraph がページ内に存在する場合は no-op。
- * heading は heading_1 / heading_2 / heading_3 のいずれかをトリミング一致で探索する。
  */
 import { parseArgs } from "node:util"
 
@@ -25,17 +32,29 @@ function parseCli() {
       "page-id": { type: "string" },
       slug: { type: "string" },
       "after-heading": { type: "string" },
+      "after-marker-slug": { type: "string" },
     },
   })
-  if (!values["page-id"] || !values.slug || !values["after-heading"]) {
+  if (!values["page-id"] || !values.slug) {
+    throw new Error("--page-id and --slug are required")
+  }
+  const ah = values["after-heading"]
+  const ams = values["after-marker-slug"]
+  if (!ah && !ams) {
     throw new Error(
-      "--page-id, --slug, --after-heading are all required",
+      "either --after-heading or --after-marker-slug must be specified",
+    )
+  }
+  if (ah && ams) {
+    throw new Error(
+      "--after-heading and --after-marker-slug are mutually exclusive",
     )
   }
   return {
     pageId: values["page-id"],
     slug: values.slug,
-    afterHeading: values["after-heading"],
+    afterHeading: ah,
+    afterMarkerSlug: ams,
   }
 }
 
@@ -102,7 +121,7 @@ function markerOf(slug) {
 }
 
 async function main() {
-  const { pageId, slug, afterHeading } = parseCli()
+  const { pageId, slug, afterHeading, afterMarkerSlug } = parseCli()
   const marker = markerOf(slug)
 
   const blocks = await listAllChildren(pageId)
@@ -129,18 +148,41 @@ async function main() {
     return
   }
 
-  const target = afterHeading.trim()
-  const heading = blocks.find(
-    (b) => isHeading(b) && headingText(b).trim() === target,
-  )
-  if (!heading) {
-    const headings = blocks
-      .filter(isHeading)
-      .map((b) => `[${b.type}] ${headingText(b)}`)
-    throw new Error(
-      `heading not found: "${afterHeading}". available headings:\n` +
-        headings.join("\n"),
+  let afterBlock
+  let afterDescriptor
+  if (afterHeading) {
+    const target = afterHeading.trim()
+    const heading = blocks.find(
+      (b) => isHeading(b) && headingText(b).trim() === target,
     )
+    if (!heading) {
+      const headings = blocks
+        .filter(isHeading)
+        .map((b) => `[${b.type}] ${headingText(b)}`)
+      throw new Error(
+        `heading not found: "${afterHeading}". available headings:\n` +
+          headings.join("\n"),
+      )
+    }
+    afterBlock = heading
+    afterDescriptor = { kind: "heading", id: heading.id, type: heading.type, text: target }
+  } else {
+    const targetMarker = markerOf(afterMarkerSlug)
+    const m = blocks.find(
+      (b) => b.type === "paragraph" && paragraphText(b).trim() === targetMarker,
+    )
+    if (!m) {
+      const markers = blocks
+        .filter((b) => b.type === "paragraph")
+        .map((b) => paragraphText(b).trim())
+        .filter((t) => /^\[\[diagram:[a-z0-9_-]+\]\]$/i.test(t))
+      throw new Error(
+        `marker not found: "${targetMarker}". available markers in page:\n` +
+          (markers.length ? markers.join("\n") : "(none)"),
+      )
+    }
+    afterBlock = m
+    afterDescriptor = { kind: "marker", id: m.id, slug: afterMarkerSlug, marker: targetMarker }
   }
 
   const body = {
@@ -158,7 +200,7 @@ async function main() {
         },
       },
     ],
-    after: heading.id,
+    after: afterBlock.id,
   }
   const res = await notion(`/blocks/${pageId}/children`, {
     method: "PATCH",
@@ -173,7 +215,7 @@ async function main() {
         slug,
         page_id: pageId,
         marker,
-        after_heading: { id: heading.id, type: heading.type, text: target },
+        after: afterDescriptor,
         inserted_block_id: inserted?.id,
       },
       null,
