@@ -141,7 +141,16 @@ function StepIcon({ glyph }: { glyph: KeypointRowGlyph }) {
 }
 
 function KeypointRowBody({ config }: { config: KeypointRowDiagram }) {
-  const cols = config.items.length >= 4 ? "md:grid-cols-4" : "md:grid-cols-2"
+  const n = config.items.length
+  // 1 図 1 主張・等しいサイズの箱が並ぶレイアウト。色ではなく「番号 + 位置」で区別。
+  const cols =
+    n >= 5
+      ? "md:grid-cols-5"
+      : n === 4
+        ? "md:grid-cols-4"
+        : n === 3
+          ? "md:grid-cols-3"
+          : "md:grid-cols-2"
   return (
     <div>
       <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
@@ -174,22 +183,26 @@ function KeypointRowBody({ config }: { config: KeypointRowDiagram }) {
 }
 
 function ChaosStructuredBody({ config }: { config: ChaosStructuredDiagram }) {
+  // 左右の箱・ラベルを同サイズで揃える。色ではなく「位置 (左/右) と番号」で区別。
   return (
     <div className="grid gap-4 md:grid-cols-2 md:gap-6">
       <div>
         <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
           {config.chaosHeading}
         </p>
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {config.chaosLabels.map((label) => (
+        <ol className="mt-2 space-y-1.5">
+          {config.chaosLabels.map((label, i) => (
             <li
               key={label}
-              className="rounded-full border border-white/55 bg-white/40 px-2.5 py-1 text-xs text-hp md:text-[0.8rem]"
+              className="flex items-center gap-2 rounded-[12px] border border-white/55 bg-white/40 px-3 py-1.5 text-xs text-hp md:text-[0.85rem]"
             >
-              {label}
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span>{label}</span>
             </li>
           ))}
-        </ul>
+        </ol>
       </div>
       <div>
         <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">

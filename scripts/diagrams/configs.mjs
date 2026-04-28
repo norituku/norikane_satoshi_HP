@@ -1,16 +1,24 @@
 /**
  * Notion 本文の [[diagram:<slug>]] marker から呼び出す図解の生成設定。
  *
- * 画像生成は文字を一切描かせず背景・構造・雰囲気のみ生成し、ラベル等は HP 側の
- * HTML/CSS で重ねる。各 slug ごとに以下を持つ:
- *   - referenceAssets: ローカル候補 path (generate.mjs が exists 検証)
- *     - used: 構図参考として使う、prompt 内で「継承」と明示する
- *     - checkedButNotUsed: 仕様書に載っていたが不在 / 直接寄与しない素材
+ * 設計方針 (2026-04-28 改訂):
+ *   - HP の世界観 = ライトグラスモーフィズム + オーロラ。背景は #F8F6FF を基調とした
+ *     白〜ごく薄いラベンダー、補助色は --aurora-purple / --aurora-pink /
+ *     --aurora-blue / --aurora-orange の 4 色のみ。「暗めシネマティック」前提は廃止。
+ *   - 1 図 = 1 主張。5 秒で読み取れる構図に絞り、矢印・枠・装飾は最小限。
+ *   - GPT Image 2 に任せるのは背景・質感・構図・素材感の下地だけ。
+ *     日本語ラベル / 短文 / 矢印 / 枠 / 順番 / 注釈は全て HTML/CSS 側で確定する。
+ *   - 画像内に文字 (kana / kanji / ascii / 数字) は絶対に描かせない。
+ *
+ * 各 slug ごとに以下を持つ:
+ *   - referenceAssets.used: 構図・トーン・形状の根拠としたローカル素材
+ *     (どの素材をどの図のどの部分に反映したかは prompt と generationRationale に明記)
+ *   - referenceAssets.checkedButNotUsed: 仕様書に名前があるが直接寄与しない素材
  *   - sourceSpecNotionUrl / sourceSpecSummary
  *   - targetArticleNotionUrl
- *   - overlayLabels: HP 側で HTML/CSS で後載せするラベル文字列
+ *   - overlayLabels: HP 側で HTML/CSS で後載せするラベル
  *   - successCriteria: 仕様書「成功基準」をそのまま転記
- *   - generationRationale: なぜこの prompt が仕様書を満たすかの一行記録
+ *   - generationRationale: prompt が仕様書とローカル素材をどう満たすかの記録
  */
 
 const COMMON_NEGATIVE = [
@@ -18,15 +26,18 @@ const COMMON_NEGATIVE = [
   "text, letters, words, numbers, captions, labels, titles, sentences, characters in any language",
   "(especially Japanese kana / kanji / Latin / numerals),",
   "UI elements, icons with letters, logos, watermarks, signatures,",
-  "button shapes, screenshots, photos of people, faces, hands.",
+  "button shapes, screenshots, photos of people, faces, hands,",
+  "dark backgrounds, navy or charcoal fills, heavy black, neon-on-black aesthetics, cinematic noir,",
+  "saturated bold colors, hard outlines, thick borders, busy compositions.",
 ].join(" ")
 
 const COMMON_STYLE = [
-  "Cinematic editorial illustration. Dark, calm, premium feel.",
-  "Deep navy / charcoal background with very subtle aurora gradients",
-  "(deep purple #2a2156, dim teal #1f4a47, faint warm orange #4a2a1a) used as soft directional light only.",
-  "Background remains overwhelmingly dark so overlay text added later (in post-processing) stays readable.",
-  "Output: 16:9 horizontal banner suitable for being embedded inside an article body column.",
+  "Light, airy editorial illustration aligned with the host site's light glass-morphism + aurora design language.",
+  "Background is overwhelmingly bright: a calm white-to-soft-lavender canvas (~#F8F6FF) with very subtle aurora gradients used only as quiet directional light",
+  "(soft lavender ~rgba(139,127,255,0.18), gentle peach ~rgba(255,200,160,0.10), faint sky blue ~rgba(160,200,255,0.10), muted teal ~rgba(121,199,199,0.10)).",
+  "Compositions feel spacious and uncluttered: generous negative space (at least 35% of the frame), few elements, low color count, soft thin lines, no thick borders.",
+  "Contrast is tuned for in-article reading: shapes are visible but never demand attention — they are scaffolding for HTML labels overlaid in post.",
+  "Output: 16:9 horizontal banner that sits inside an article body column, comfortably readable next to body text.",
 ].join(" ")
 
 export const DIAGRAM_GEN_CONFIGS = {
@@ -67,31 +78,78 @@ export const DIAGRAM_GEN_CONFIGS = {
         },
       ],
     },
-    generationRationale:
-      "仕様書の構図(左:7要因混線 / 右:5段の粒度ストラータ / 中央:漏斗で因数分解)・成功基準(混ざると迷う/分けると制御できるが一目で伝わる/5粒度を読み取れる)・後載せラベル7件・既存素材 (HP slides 11/5 と public/demo STOP連番) を全て prompt 内に明示。後載せラベルは HP 側の HTML/CSS で重ねる前提なので、画像内には文字を描かない。",
+    generationRationale: [
+      "slides/11 → 左→中央→右の三幕構成 (混線 / 漏斗 / 整理) をそのまま踏襲。漏斗の中央集約モチーフを中央のソフトフローに反映。",
+      "slides/5 → 7要因が「重なって戻せなくなる」感覚を、左半分の絡み合う 7 本の細い帯として反映 (異なる色相の薄帯)。",
+      "public/demo/(+2/+1/normal/-1/-2)STOP → 露出ブラケットを左半分の帯の太さ・透明度のばらつきに反映 (一様でない揺らぎ)。",
+      "右半分の 5 段は、上から per-camera / per-frame / per-angle / per-scene / per-project の支配域を 5 本の整列したホライゾンタルバンドで表現。",
+      "色域は HP の Layer1 (lavender / peach / sky / teal) のみ。dark navy 系は廃止。",
+    ].join(" "),
     size: "1536x1024",
     quality: "high",
     output_format: "webp",
     prompt: [
       COMMON_STYLE,
-      "DESIGN INTENT — illustrate decomposition of correction factors as described in the source spec (Notion: figure spec for 'correction-factor-map').",
-      "Five granularity strata to read on the right side from top to bottom: per-camera, per-frame, per-angle, per-scene, per-project (these labels will be overlaid later in HTML/CSS, so do NOT draw any text inside the image).",
-      "Inherit the visual tone of the existing reference slides 'public/slides/11分解と整理によるアプローチ.png' and 'public/slides/5複合操作の影響と復元性.png' — same calm cinematic feel, same abstraction level — but reframe the composition as a single horizontal banner.",
-      "Compose a single horizontal banner split into two halves with a soft luminous transition in the middle (no hard line).",
-      "LEFT HALF — represents an entangled, chaotic state of correction factors before decomposition:",
-      "a dense knot of seven distinct intertwined translucent threads in muted blue, magenta, peach and teal,",
-      "drifting and overlapping like tangled silk, each thread suggesting one independent variable",
-      "(camera differences, exposure drift / VE iris-following, color temperature, skin tone consistency, atmospheric haze from smoke, scene-wide tone, overall project look).",
-      "Soft volumetric light passes through the knot, creating a sense of unresolved layering. No symbols, no glyphs.",
-      "Subtle exposure-bracket vibration in the threads (echoing the public/demo +2STOP/+1STOP/normal/-1STOP/-2STOP bracket).",
-      "RIGHT HALF — represents the same factors after being decomposed into FIVE clearly distinguishable horizontal granularity layers,",
-      "stacked top-to-bottom with generous breathing space:",
-      "thin clean horizontal bands separated by faint glowing dividers, each band a slightly different muted hue,",
-      "the topmost band brightest (per-camera), descending bands progressively cooler and more grounded (per-frame, per-angle, per-scene, per-project at the bottom).",
-      "The bands feel orderly, calm and structural — clearly five distinct strata, but abstract (no text, no numbers).",
-      "MIDDLE — a delicate luminous funnel / lens effect channels the tangled threads from the left into the five clean bands on the right,",
-      "implying that chaos is being factored into layered structure (this is the 'decomposition' moment of the spec).",
-      "Strong empty negative space below and above the bands so HTML labels (per-camera ... per-project, plus the 'mixed = labyrinth / separated = controllable' headers) can be overlaid later.",
+      "DESIGN INTENT — Decomposition of correction factors. Single horizontal banner, three-act read (chaos → funnel → strata).",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash. No dark fills.",
+      "LEFT THIRD — entangled state: SEVEN slender translucent ribbons drift loosely in a relaxed cluster, gently overlapping each other. Each ribbon is one factor (camera difference, exposure drift, color temperature, skin tone, atmosphere/smoke, scene tone, overall look). Ribbons use the site palette only (soft lavender, gentle peach, faint sky, muted teal). Their thickness and opacity vary slightly to echo the +2 / +1 / normal / -1 / -2 STOP exposure bracket from public/demo/*STOP.jpg — a quiet non-uniform vibration, not chaos. The ribbons read as 'mixed but not dark'.",
+      "MIDDLE THIRD — soft luminous funnel / lens, rendered as a quiet inward gradient that gathers the ribbons toward the right. This is the 'decomposition' moment from public/slides/11分解と整理によるアプローチ.png — same calm three-act feeling, reframed horizontally. No hard boundary, no arrow heads.",
+      "RIGHT THIRD — orderly state: FIVE clean horizontal bands stacked top-to-bottom with generous breathing space between them. Each band is a thin softly-glowing horizon line, slightly different muted hue (top = warm peach for per-camera, descending toward cooler lavender / sky / teal for per-frame, per-angle, per-scene, per-project at the bottom). Bands are identical in height and spacing — uniformity matters because HTML labels of equal size sit on each band.",
+      "Tone: light, calm, structural. Generous empty negative space above, below, and between the three thirds so HTML labels (per-camera ... per-project, plus '混ざると迷宮' / '分けると制御できる' headers) overlay cleanly. No arrows, no symbols, no glyphs.",
+      "Visual reference (tone only, do not copy text): public/slides/11分解と整理によるアプローチ.png and public/slides/5複合操作の影響と復元性.png — inherit the calm framework feel and three-act decomposition rhythm, not the dark aesthetic.",
+      COMMON_NEGATIVE,
+    ].join(" "),
+  },
+
+  "correction-scope-map": {
+    sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+    targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
+    sourceSpecSummary:
+      "図解仕様書「適用範囲ミニ図」。5段の粒度 (カメラ/フレーム/アングル/シーン/作品) それぞれが、どこまでの範囲を支配するかを横並びで示す。文字なし、HTML/CSS で後載せ。HP slides 11 (分解と整理) と HP slides 5 (複合操作の影響と復元性) のトーンを継承。",
+    overlayLabels: [
+      "カメラ単位",
+      "フレーム単位",
+      "アングル単位",
+      "シーン単位",
+      "作品単位",
+      "粒度 = 適用範囲",
+    ],
+    successCriteria: [
+      "5つの粒度それぞれが「どこまでの範囲を支配するか」が一目で見える",
+      "粒度を取り違えると戻せなくなる、という本文の核が直感的に伝わる",
+      "日本語ラベルはHP側で正確に重ねられる",
+      "correction-factor-map と並べても重複ではなく補完として読める",
+    ],
+    referenceAssets: {
+      used: [
+        "public/slides/11分解と整理によるアプローチ.png",
+        "public/slides/5複合操作の影響と復元性.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "public/slides/4プライマリーコントロール概要.png",
+          reason: "コントロール粒度よりも適用範囲(支配範囲)を視覚化したいので不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "slides/11 → 「分解=粒度ごとに見る」発想を、横並び 5 つの同心円クラスタに反映。中心が同じでも外周(支配域)が違う、という対比をそのまま絵にする。",
+      "slides/5 → 「適用範囲が広いほど取り返しがつかない」感覚を、右に行くほど外周リングが大きく、にじみが穏やかになることで反映。",
+      "correction-factor-map と並ぶことを意識し、構図は同心円 (factor-map の 5 本バンドと別形状) を採用 → 補完図として機能する。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — 'scope-of-effect' mini-map. Five concentric-ring clusters arranged left-to-right. Each cluster represents one of the five granularity strata (per-camera, per-frame, per-angle, per-scene, per-project).",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills.",
+      "Each cluster: a small bright nucleus at its center (same size across all five clusters — the correction itself is the same), surrounded by 2-3 nested rings. The OUTERMOST ring grows progressively from left to right: smallest on the leftmost cluster (narrow per-camera scope), largest on the rightmost (project-wide scope).",
+      "Rings: thin softly-glowing outlines using the HP aurora palette (soft lavender as the dominant ring color, with one accent ring per cluster in faint peach / sky / teal). No filled disks. No hard outlines.",
+      "Spacing: equal horizontal spacing between cluster centers; clusters do NOT overlap. Generous breathing space above and below for HTML labels.",
+      "A very faint horizontal flow line passes through all five nuclei to read left-to-right as one sequence (slides/11 'decompose then read' sense).",
+      "Visual reference (tone only): public/slides/11分解と整理によるアプローチ.png and public/slides/5複合操作の影響と復元性.png — inherit the calm structural feel.",
+      "No arrows, no symbols, no glyphs, no text.",
       COMMON_NEGATIVE,
     ].join(" "),
   },
@@ -100,7 +158,7 @@ export const DIAGRAM_GEN_CONFIGS = {
     sourceSpecNotionUrl: "https://www.notion.so/fab6e697e92b48cc870a898c01165de8",
     targetArticleNotionUrl: "https://www.notion.so/2d61194573e140789602864a9040affe",
     sourceSpecSummary:
-      "図解仕様書「Look Decomposition 4軸マップ」。中心=作品のルック(抽象映像フレーム), 4方向に放射する独立軸(色の広がり・転がり / 濃度 / カーブ / RGBカラーバランス)。文字なし、HTML/CSS で後載せ。HP slides 7(カラーグレーディングのフレームワーク) と 10(まとめ) のトーンを継承。Drive ピッチスライド (ルックコミュニケーションツール) は中身がツールビジョン資料で Look Decomposition 概念図を含んでいなかったため不採用。",
+      "図解仕様書「Look Decomposition 4軸マップ」。中心=作品のルック(抽象映像フレーム), 4方向に放射する独立軸(色の広がり・転がり / 濃度 / カーブ / RGBカラーバランス)。文字なし、HTML/CSS で後載せ。HP slides 7(カラーグレーディングのフレームワーク) と 10(まとめ) のトーンを継承。",
     overlayLabels: [
       "作品のルック",
       "色の広がり・転がり",
@@ -125,39 +183,94 @@ export const DIAGRAM_GEN_CONFIGS = {
       checkedButNotUsed: [
         {
           path: "~/Library/CloudStorage/GoogleDrive-norikane.satoshi@gmail.com/マイドライブ/ルックコミュニケーションツール（仮名） — ピッチスライド.gslides",
-          reason: "Drive 上で中身を読んだ結果、ツールビジョン資料 (27枚) で Look Decomposition 概念図そのものは含まれていなかった。中心+4軸構図の下敷きにはならないので採用しない。",
+          reason: "ツールビジョン資料 (27枚) で、Look Decomposition 概念図そのものは含まれない。中心+4軸構図の下敷きにはならないので不採用。",
         },
         {
           path: "~/Library/CloudStorage/GoogleDrive-norikane.satoshi@gmail.com/マイドライブ/mars_queen_grading_workflow_20260112094639.gslides",
-          reason: "実プロジェクトのワークフロー図で 4軸構造とは別の関心事 (作業順序) なので不採用",
+          reason: "実プロジェクトのワークフロー図。4軸構造とは別の関心事 (作業順序) なので不採用",
         },
       ],
     },
-    generationRationale:
-      "仕様書の構図(中心1+4放射軸)・4軸定義(色の広がり・転がり/濃度/カーブ/RGB)・成功基準(4軸が一目で違って見える/監督の言葉と操作がつながる)・後載せラベル6件・既存素材 (HP slides 7/10/8/3) を prompt 内に明示。Drive ピッチスライドは中身確認の結果 Look Decomposition 図ではなかったので checked_but_not_used に明記。",
+    generationRationale: [
+      "slides/7 → 「中心+周辺軸」の framework 構図を継承。中心の球と 4 方向への放射構造をそのまま採用。",
+      "slides/10 → 「4軸まとめ」の整列感 (4軸が等しい重みで並ぶ) を、4 軸の太さ・長さを揃えることで反映。",
+      "slides/8 → 各軸が「具体的なコントロールに対応する」感覚を、各軸末端のミニ表象 (色相弧/輝度バー/S曲線/3本ビーム) に反映。",
+      "slides/3 → 「ルックは複数の独立軸の合成」という基礎概念を、軸同士が交差せず独立に描かれる構図に反映。",
+    ].join(" "),
     size: "1536x1024",
     quality: "high",
     output_format: "webp",
     prompt: [
       COMMON_STYLE,
-      "DESIGN INTENT — illustrate Look Decomposition 4-axis map as defined in the source spec (Notion: figure spec for 'grading-look-decomposition').",
-      "FOUR axes radiate from a central luminous core. Each axis represents a distinct, ORTHOGONAL property of a colorist's look:",
-      "axis 1 = color spread / hue rotation (saturation + hue ring fragment), axis 2 = density (per-color luminance bands), axis 3 = tonal curve (S-curve ridge over grayscale), axis 4 = RGB color balance (three faint parallel beams shifting a gray plane).",
-      "These labels (作品のルック / 色の広がり・転がり / 濃度 / カーブ / RGBカラーバランス / 監督の言葉がノードに落ちる) will be overlaid later in HTML/CSS, so do NOT draw any text inside the image.",
-      "Inherit the visual tone of the existing reference slides 'public/slides/7カラーグレーディングのフレームワーク.png' and 'public/slides/10カラーグレーディングのフレームワーク - まとめ.png' — calm framework feel with one center and surrounding axes — and reframe as a single horizontal banner.",
-      "Compose a single horizontal banner depicting an abstract Look Decomposition map: one central luminous core surrounded by FOUR clearly separated radial axes.",
-      "CENTER — a soft glowing orb at the visual center of the frame, suggesting a cinematic film frame distilled to its essence:",
-      "warm-cool subtle aurora gradient inside the orb (deep teal shadow, gentle peach highlight),",
-      "as if the entire mood of a movie were condensed into one luminous nucleus. The orb is abstract — no eyes, no faces, no scenery.",
-      "FOUR RADIAL AXES — extending outward from the central orb toward the four cardinal-ish directions",
-      "(upper-left, upper-right, lower-left, lower-right), each axis reads as a visually distinct treatment of color:",
-      "AXIS 1 (color spread / hue rotation) — a gentle circular hue gradient, like a soft chromatic ring fragment, hinting at hue rotation and saturation.",
-      "AXIS 2 (density) — vertical layered bands of varying luminance per color, suggesting how each color's brightness can be pushed independently.",
-      "AXIS 3 (curve) — a smooth tonal S-curve drawn as a faint luminous line crossing a soft grayscale gradient, hinting at toe and shoulder.",
-      "AXIS 4 (RGB color balance) — three faint parallel beams (warm red, neutral green, cool blue) gently shifting an underlying gray plane.",
-      "The four axes are connected to the center via soft luminous filaments, but never cross each other — they read as ORTHOGONAL.",
-      "Composition feels cinematic, calm, and structural; suggestive of a colorist's mental map, not a technical diagram.",
-      "Strong empty negative space between axes so HTML labels can be overlaid later.",
+      "DESIGN INTENT — Look Decomposition 4-axis map. One luminous central core surrounded by FOUR clearly separated radial axes, each axis representing one orthogonal property of a colorist's look.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills.",
+      "CENTER — a soft glowing orb at the geometric center of the frame, distilling the 'look of a film' into one luminous nucleus. The orb is bright and pale (warm peach to soft lavender aurora gradient), abstract — no eyes, no faces, no scenery.",
+      "FOUR RADIAL AXES — extending outward toward upper-left, upper-right, lower-left, lower-right. The four axes have IDENTICAL length, identical line weight, and identical end-cap size, so they read as equal-weight at a glance (slides/10 'まとめ' rule of equal weight).",
+      "AXIS 1 (upper-left, color spread / hue rotation) — terminates in a small soft chromatic arc fragment hinting at hue rotation and saturation.",
+      "AXIS 2 (upper-right, density) — terminates in a small stack of three short vertical bands of varying luminance, hinting at per-color brightness control.",
+      "AXIS 3 (lower-left, tonal curve) — terminates in a small smooth S-shaped luminous line over a faint grayscale.",
+      "AXIS 4 (lower-right, RGB color balance) — terminates in three short faint parallel beams (warm peach, neutral teal, cool sky) gently shifting an underlying soft plane.",
+      "The four axes connect to the central orb via thin softly-glowing filaments. Axes never cross each other (slides/3 'independent axes' rule). Plenty of empty space between axes so HTML labels overlay cleanly.",
+      "Tone: calm, structural, framework-like. Use ONLY the HP palette (soft lavender, faint peach, faint sky, muted teal). No vivid saturated colors. No arrows, no symbols, no text.",
+      "Visual reference (tone only): public/slides/7カラーグレーディングのフレームワーク.png (center+axes structure), public/slides/10カラーグレーディングのフレームワーク - まとめ.png (equal-weight 4-axis layout), public/slides/8フレームワーク関連コントロール.png (axis-end control glyphs), public/slides/3カラーグレーディングの基本概念.png (independent axes).",
+      COMMON_NEGATIVE,
+    ].join(" "),
+  },
+
+  "grading-words-to-knobs": {
+    sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+    targetArticleNotionUrl: "https://www.notion.so/2d61194573e140789602864a9040affe",
+    sourceSpecSummary:
+      "図解仕様書「監督の言葉 → 軸 → 操作」。立ち会いの抽象的な指示を、4軸のどれに落とし、どの操作で返すかを4列で示す3段ホップ。文字なし、HTML/CSS で後載せ。HP slides 8 (フレームワーク関連コントロール) と HP slides 7 (フレームワーク) のトーンを継承。",
+    overlayLabels: [
+      "「もう少し暖かく」",
+      "「もう少し抜けを」",
+      "「青を深く」",
+      "「映画っぽく」",
+      "色の広がり・転がり",
+      "カーブ",
+      "濃度",
+      "4軸の合成",
+      "言葉 → 軸 → 操作",
+    ],
+    successCriteria: [
+      "監督の抽象的な一言が、軸とノブに落ちる仕組みが直感的に伝わる",
+      "4列(言葉→軸→操作)が等しい重みで並んで見える",
+      "grading-look-decomposition の「4軸そのもの」とは別の角度で、軸の使い方が読める",
+      "後載せの日本語ラベルが綺麗に乗る",
+    ],
+    referenceAssets: {
+      used: [
+        "public/slides/8フレームワーク関連コントロール.png",
+        "public/slides/7カラーグレーディングのフレームワーク.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "public/slides/3カラーグレーディングの基本概念.png",
+          reason: "前提知識スライド。3段ホップ構図とは別レイヤーなので不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "slides/8 → 「コントロール = ノブ・スライダー・ホイール」の表象を、各レーン下段の小さな抽象ノブに反映。",
+      "slides/7 → 「フレームワーク = 軸の整列」感を、4 レーンを等幅・等高で並べることで反映。",
+      "grading-look-decomposition との重複回避: あちらは 1 中心+4 軸の放射、こちらは 4 列の縦並び 3 段ホップ。構図形状で補完関係。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — A 3-hop translation: spoken word → axis → control. Four parallel translation lanes side by side, one per phrase.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills.",
+      "Layout: FOUR identical-width vertical lanes, equally spaced left to right. Each lane has THREE stages stacked top-to-bottom with identical vertical spacing.",
+      "TOP STAGE (per lane) — a small soft luminous wave or speech ripple, like a gentle sound wave. Lane 1 = warm peach tint, lane 2 = soft lavender, lane 3 = faint sky blue, lane 4 = a balanced warm-cool aurora wash. All four waves have IDENTICAL size and identical line weight.",
+      "MIDDLE STAGE (per lane) — a small fragment of the colorist's framework: lane 1 = a small chromatic hue arc, lane 2 = a small S-curve segment, lane 3 = a short vertical density bar, lane 4 = a small 4-axis cross. Each fragment matches the lane's destination axis.",
+      "BOTTOM STAGE (per lane) — a small abstract control element (soft round knob, short slider, or small wheel) glowing in the lane's tint. Identical size across lanes.",
+      "Each lane's three stages are connected by a thin vertical softly-glowing filament so the eye reads top-to-bottom. Lanes are visually independent — clear empty space between lanes.",
+      "Equal weight across lanes is critical (slides/7 framework feel): identical lane width, identical stage heights, identical glyph sizes. Plenty of empty space at top, between lanes, and at bottom for HTML labels.",
+      "Use ONLY the HP palette (soft lavender, faint peach, faint sky, muted teal). No arrows, no text, no symbols beyond the abstract knob/slider/wheel shapes.",
+      "Visual reference (tone only): public/slides/8フレームワーク関連コントロール.png (knob/slider feel), public/slides/7カラーグレーディングのフレームワーク.png (equal-weight axis layout).",
       COMMON_NEGATIVE,
     ].join(" "),
   },
@@ -166,7 +279,7 @@ export const DIAGRAM_GEN_CONFIGS = {
     sourceSpecNotionUrl: "https://www.notion.so/3a1ad1f58cab4b709c684725089bbf1e",
     targetArticleNotionUrl: "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
     sourceSpecSummary:
-      "図解仕様書「フィルムルックを作る物理の流れ」。左→右に8段の物理パイプライン: デジタル信号 / 露光 / 3層の染料 / 分光密度曲線 / S字カーブ / プリンターライト / グレイン / 最終ルック。文字なし、HTML/CSS で後載せ。仕様書記載の Tetra_Reverse 内 signal_flow 系 md は現在ローカルに存在しない (ANALYSIS.md のみ) ので checked_but_not_used に明記。FilmLookEmulator の SVD/PCA プロット群 (wu8_*, phaseE/wu1_plots/*) を曲線・染料層の根拠に。",
+      "図解仕様書「フィルムルックを作る物理の流れ」。左→右に8段の物理パイプライン: デジタル信号 / 露光 / 3層の染料 / 分光密度曲線 / S字カーブ / プリンターライト / グレイン / 最終ルック。文字なし、HTML/CSS で後載せ。FilmLookEmulator の SVD/PCA プロット群 (wu8_*, phaseE/wu1_plots/*) と Tetra_Reverse/ANALYSIS.md を曲線・染料層・テトラ構造の根拠に。",
     overlayLabels: [
       "デジタル信号",
       "露光",
@@ -199,11 +312,11 @@ export const DIAGRAM_GEN_CONFIGS = {
       checkedButNotUsed: [
         {
           path: "../Tetra_Reverse/01_signal_flow.md",
-          reason: "仕様書記載 path だが現在ローカルに不在 (Tetra_Reverse には ANALYSIS.md のみ)。8段構成の章割は仕様書本体から直接取った。",
+          reason: "仕様書記載 path だが現在ローカルに不在 (Tetra_Reverse には ANALYSIS.md のみ)。8段構成の章割は仕様書本体から取った。",
         },
         {
           path: "../Tetra_Reverse/02a_modified_daniele_curve.md",
-          reason: "同上、不在。S字カーブの構図は FilmLookEmulator の wu8_weight_functions.png から取った。",
+          reason: "同上、不在。S字カーブの構図は wu8_weight_functions.png から取った。",
         },
         {
           path: "../Tetra_Reverse/02b_energy_correction_gamut_mapping.md",
@@ -219,198 +332,99 @@ export const DIAGRAM_GEN_CONFIGS = {
         },
       ],
     },
-    generationRationale:
-      "仕様書の8段構成(信号→露光→染料層→分光密度→S字→プリンタライト→グレイン→最終ルック)・成功基準(物理の流れだと伝わる/全体構造を掴める/染料・曲線・光・粒が視覚的に分かる)・後載せラベル9件 を prompt 内に明示。仕様書記載の Tetra_Reverse 内 signal_flow 系 md は現在ローカル不在なので checked_but_not_used に正直に記録し、章割は仕様書本体・曲線形状は FilmLookEmulator wu8 plot 群から取った。",
+    generationRationale: [
+      "wu8_basis_vectors.png → 3層の染料 (Stage 3) を 3 本の薄い曲線基底として描く根拠。曲線の形は採用、軸ラベルは描かせない。",
+      "wu8_weight_functions.png → S字カーブ (Stage 5) の肩・トーの形状の根拠。緩やかなロールオフを採用。",
+      "wu8_variance_explained.png → 各成分の重みが等しくないという感覚を、Stage 3 の 3 層の太さの違いに反映。",
+      "wu8_mean_residual.png → グレイン (Stage 7) の非一様分布 (中間調で密、端で疎) の根拠。",
+      "phaseE/wu1_plots/svd_spectrum_(iems1/rochp).png → 分光密度曲線 (Stage 4) の連続スペクトル感の根拠。波長方向に滑らかな波。",
+      "phaseE/wu1_plots/separability.png → 各段が独立に見えるべき (混ざりすぎない) という構図上の根拠。8 段の境界をぼかしすぎない。",
+      "phaseE/wu1_plots/pareto_front.png → 採用しないが checked。本図解は分離性議論ではないため。",
+      "Tetra_Reverse/ANALYSIS.md → 7 vertex (R/G/B/C/M/Y/W) のテトラ補間構造を理解した上で、Stage 6 のプリンタライトを RGB 3 ビーム + 中央の白で表現する根拠。",
+    ].join(" "),
     size: "1536x1024",
     quality: "high",
     output_format: "webp",
     prompt: [
       COMMON_STYLE,
-      "DESIGN INTENT — illustrate the 8-stage physical pipeline that produces a film look, as defined in the source spec (Notion: figure spec for 'filmlook-physics-flow').",
-      "The eight stages run left-to-right: digital signal → exposure → three dye layers → spectral density curves → S-curve → printer light → grain → final cinematic frame.",
-      "These stage labels (デジタル信号 / 露光 / 3層の染料 / 分光密度曲線 / S字カーブ / プリンターライト / グレイン / 最終ルック / フィルムルックは物理で読める) will be overlaid later in HTML/CSS, so do NOT draw any text inside the image.",
-      "Visual reference for dye-layer basis and S-curve shape comes from FilmLookEmulator project analysis plots (wu8_basis_vectors / wu8_weight_functions / phaseE/wu1_plots/svd_spectrum_*). Do NOT copy axis labels from those plots — only inherit the curve shapes and 3-layer separation feel.",
-      "Compose a single horizontal banner depicting a left-to-right physical chain that turns a digital signal into a final film look.",
-      "Read like a cinematic film-lab cross-section: light enters from the left, passes through layered emulsion, density curves, an S-shaped tone response, RGB printer light, and grain, before resolving into a luminous final frame on the right.",
-      "STAGE 1 (left edge) — a thin vertical column of clean digital scene-linear light: faint cool blue rays, very neutral, slightly grid-like as if sampled.",
-      "STAGE 2 — exposure: that light fans outward and softens into warm volumetric beams hitting an emulsion plane.",
-      "STAGE 3 — three translucent dye layers stacked in depth (cyan, magenta, yellow), each layer showing its own subtle absorption color, slightly offset to suggest interlayer scattering (DIR coupler / inter-image effects).",
-      "STAGE 4 — spectral density curves: faint luminous wavelength curves crossing the dye stack, drawn as gentle wave-like ridges (no axis labels), shape inherited from FilmLookEmulator wu8_basis_vectors.",
-      "STAGE 5 — S-curve: a smooth global S-shaped luminance ridge reshapes the signal, with a soft toe in the shadows and a gentle shoulder in the highlights, rolling off rather than clipping. Shape inherited from FilmLookEmulator wu8_weight_functions.",
-      "STAGE 6 — printer light: three faint colored beams (warm red, neutral green, cool blue) recombine the signal as if shining through a printer head.",
-      "STAGE 7 — grain: a delicate, NON-uniform film-grain texture drifts across midtones — sparser in highlights, slightly denser in shadows, never lying flat over skin-equivalent midtones.",
-      "STAGE 8 (right edge) — final cinematic frame: a soft warm-cool aurora orb that reads as the resolved film look.",
-      "Connect the eight stages with a quiet luminous flow line running left to right, so the whole banner reads as a single physical pipeline.",
-      "Strong empty negative space below the flow so HTML stage labels can be overlaid cleanly afterward.",
+      "DESIGN INTENT — 8-stage physical pipeline that turns a digital signal into a film look. Left-to-right read.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills, no cinematic noir.",
+      "Eight stages span the frame at equal horizontal intervals. Each stage occupies roughly the same horizontal slot so HTML stage labels of equal size sit cleanly underneath.",
+      "STAGE 1 (left edge) — digital signal: a thin vertical column of clean cool-sky vertical samples, very neutral, slightly grid-like.",
+      "STAGE 2 — exposure: the column softens into a fan of warm-peach volumetric beams hitting an emulsion plane.",
+      "STAGE 3 — three dye layers: three translucent horizontal layers (faint cyan/teal, faint magenta/lavender, faint yellow/peach) stacked in depth with subtle inter-layer offset (DIR-coupler suggestion). Layer thickness varies slightly to echo wu8_basis_vectors / wu8_variance_explained (each component has different weight).",
+      "STAGE 4 — spectral density curves: a few faint smooth wavelength-like ridges crossing the dye stack, shape inherited from FilmLookEmulator phaseE/wu1_plots/svd_spectrum_iems1.png and svd_spectrum_rochp.png. No axis text.",
+      "STAGE 5 — S-curve: one smooth global S-shaped luminous ridge with a soft toe and gentle shoulder, shape inherited from FilmLookEmulator wu8_weight_functions.png.",
+      "STAGE 6 — printer light: three short faint parallel beams (warm peach, neutral teal, cool sky) recombining the signal, with a subtle bright nucleus where they converge — echoing the 7-vertex (R/G/B/C/M/Y/W) tetrahedral structure documented in Tetra_Reverse/ANALYSIS.md.",
+      "STAGE 7 — grain: a delicate, NON-uniform grain texture confined to this stage's horizontal slot. Sparser at the bright edges, slightly denser in the middle range, never flat — distribution inherited from wu8_mean_residual.png.",
+      "STAGE 8 (right edge) — final look: a soft warm-cool aurora orb at right, brighter than other stages, suggesting the resolved film frame.",
+      "A thin softly-glowing horizontal flow line passes through all eight stages so the banner reads as one pipeline. Each stage boundary is gently delineated (not blurred together) — separability hint from phaseE/wu1_plots/separability.png.",
+      "Plenty of empty negative space below each stage for HTML stage labels and the bottom takeaway label. Use ONLY the HP palette. No arrows, no text, no axis labels.",
       COMMON_NEGATIVE,
     ].join(" "),
   },
-}
 
-// ---- 追加図解 (Phase 2) ---------------------------------------------------
-// 既存3枚で「分かりづらい」というフィードバックを受け、本文の核を別角度から
-// 補強する第二図を各記事に1枚ずつ追加する。3枚とも文字を描かず、HP 側 HTML/CSS
-// で番号・ラベル・補足・読む順番を後載せする keypoint-row 系の絵 (背景のみ)。
-
-DIAGRAM_GEN_CONFIGS["correction-scope-map"] = {
-  sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
-  targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
-  sourceSpecSummary:
-    "図解仕様書「適用範囲ミニ図」。5段の粒度 (カメラ/フレーム/アングル/シーン/作品) それぞれが、どこまでの範囲を支配するかを横並びで示す。文字なし、HTML/CSS で後載せ。HP slides 11 (分解と整理) と HP slides 5 (複合操作の影響と復元性) のトーンを継承。",
-  overlayLabels: [
-    "カメラ単位",
-    "フレーム単位",
-    "アングル単位",
-    "シーン単位",
-    "作品単位",
-    "粒度 = 適用範囲",
-  ],
-  successCriteria: [
-    "5つの粒度それぞれが「どこまでの範囲を支配するか」が一目で見える",
-    "粒度を取り違えると戻せなくなる、という本文の核が直感的に伝わる",
-    "日本語ラベルはHP側で正確に重ねられる",
-    "correction-factor-map と並べても重複ではなく補完として読める",
-  ],
-  referenceAssets: {
-    used: [
-      "public/slides/11分解と整理によるアプローチ.png",
-      "public/slides/5複合操作の影響と復元性.png",
+  "filmlook-density-mixture": {
+    sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+    targetArticleNotionUrl: "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
+    sourceSpecSummary:
+      "図解仕様書「フィルムらしさ = 濃度 + 色の混ざり」。4軸のうち、フィルム固有の差はほぼ二軸 (濃度/色の混ざり) に集約される、という本文の核を視覚化する。左右二分割。文字なし、HTML/CSS で後載せ。FilmLookEmulator の wu8_basis_vectors / wu8_weight_functions の曲線形状と3層染料の感覚を継承。",
+    overlayLabels: [
+      "濃度",
+      "色の混ざり",
+      "暗部の粘り",
+      "S字の肩",
+      "対数応答",
+      "3層染料",
+      "分光密度曲線",
+      "DIRカプラー",
+      "プリンター光",
+      "フィルムの正体は、二軸に絞れる。",
     ],
-    checkedButNotUsed: [
-      {
-        path: "public/slides/4プライマリーコントロール概要.png",
-        reason: "コントロール粒度よりも適用範囲(支配範囲)を視覚化したいので不採用",
-      },
+    successCriteria: [
+      "フィルムルックの正体が「濃度 + 色の混ざり」の二軸に絞れる、という本文の核が直感で伝わる",
+      "左半分 = 濃度、右半分 = 色の混ざり、が一目で違うものとして読める",
+      "filmlook-physics-flow (8段) の補完として、何を取り出した二軸なのかが分かる",
+      "後載せの日本語ラベルが綺麗に乗る",
     ],
+    referenceAssets: {
+      used: [
+        "../FilmLookEmulator_project/analysis/stage2/wu8_weight_functions.png",
+        "../FilmLookEmulator_project/analysis/stage2/wu8_basis_vectors.png",
+        "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/svd_spectrum_iems1.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "../FilmLookEmulator_project/analysis/stage2/wu8_variance_explained.png",
+          reason: "寄与度のバープロットで、二軸の視覚化に直接寄与しないので不採用",
+        },
+        {
+          path: "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/pareto_front.png",
+          reason: "別議論(分離可能性)のプロット。本図解の「濃度+色の混ざり」とは関心が違うので不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "wu8_weight_functions.png → 左半分 (濃度) の S 字の肩・対数応答ロールオフの形状根拠。",
+      "wu8_basis_vectors.png → 右半分 (色の混ざり) の 3 層基底 (cyan / magenta / yellow) の重なりと相互コンタミ感の根拠。",
+      "phaseE/wu1_plots/svd_spectrum_iems1.png → 右半分のプリンタ光 3 ビーム (R/G/B) を、波長方向の連続スペクトルの一断面として描く根拠。",
+      "filmlook-physics-flow との重複回避: あちらは 8 段時系列、こちらは 2 軸の本質抽出。構図 (左右二分割) で補完。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — Film-ness reduces to TWO axes: density (how each brightness sinks) and color mixture (how layers cross-contaminate). Left-right split banner.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills.",
+      "LEFT HALF — DENSITY axis. A vertical luminance wedge: highlights at top softly rolling off (a gentle shoulder), midtones neutral, deep tones at the bottom that linger and never crash to pure black. A faint S-shaped tonal ridge crosses the wedge, shape inherited from FilmLookEmulator wu8_weight_functions.png — gentle toe, gentle shoulder, log-like response. Use soft lavender for the wedge body, faint peach for the highlight roll-off.",
+      "RIGHT HALF — COLOR MIXTURE axis. Three translucent dye layers (faint cyan/teal, faint magenta/lavender, faint yellow/peach) overlap in a soft Venn-like cluster, with subtle inter-layer offsets suggesting DIR-coupler cross-contamination. Three short faint parallel beams (warm peach, neutral teal, cool sky) gently shift the resulting blend — printer light reference from phaseE/wu1_plots/svd_spectrum_iems1.png. Layer overlap shape inherited from wu8_basis_vectors.png.",
+      "MIDDLE — a delicate luminous seam where the two halves meet. No hard line. The seam reads as 'these two axes belong to the same film'.",
+      "Equal visual weight: the two halves occupy equal horizontal area, with identical breathing space above and below for HTML labels.",
+      "Use ONLY the HP palette (soft lavender, faint peach, faint sky, muted teal). No arrows, no text, no axis labels.",
+      COMMON_NEGATIVE,
+    ].join(" "),
   },
-  generationRationale:
-    "仕様書の構図(5段の粒度を横並びで支配範囲ミニ図として描く)・成功基準(粒度ごとの支配範囲が一目で見える/correction-factor-map と並べても補完になる)・後載せラベル6件 を prompt 内に明示。スライド11/5 のトーンを継承し、文字を描かず、HP 側で番号+説明+takeaway を後載せする前提。",
-  size: "1536x1024",
-  quality: "high",
-  output_format: "webp",
-  prompt: [
-    COMMON_STYLE,
-    "DESIGN INTENT — illustrate a 'scope-of-effect mini-map' for the 5 granularity strata of color correction (per-camera / per-frame / per-angle / per-scene / per-project). Inherit the calm cinematic tone of reference slides 'public/slides/11分解と整理によるアプローチ.png' and 'public/slides/5複合操作の影響と復元性.png'.",
-    "These granularity labels (カメラ単位 / フレーム単位 / アングル単位 / シーン単位 / 作品単位 / 粒度 = 適用範囲) will be overlaid later in HTML/CSS, so do NOT draw any text inside the image.",
-    "Compose a single horizontal banner with FIVE softly glowing concentric-ring clusters arranged left-to-right, each cluster representing one granularity. Each cluster is a stack of 2-4 nested rings, where the OUTERMOST ring depicts how wide that granularity's effect reaches.",
-    "From left to right, the rings progressively GROW: leftmost cluster has the smallest outer ring (per-camera, narrow scope), then a slightly wider one (per-frame), then wider (per-angle), wider still (per-scene), and the rightmost cluster has the largest outer ring (per-project, widest scope).",
-    "Each ring is a soft luminous outline (no filled disks), with subtle aurora gradient (deep purple, dim teal, faint warm orange). The rings feel like radio waves, calm and ordered.",
-    "Connect the clusters with a faint horizontal flow line so the eye reads left-to-right.",
-    "Strong empty negative space below and between clusters so HTML labels (per-camera ... per-project, plus the 'granularity = scope of effect' header and a takeaway) can be overlaid later.",
-    COMMON_NEGATIVE,
-  ].join(" "),
-}
-
-DIAGRAM_GEN_CONFIGS["grading-words-to-knobs"] = {
-  sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
-  targetArticleNotionUrl: "https://www.notion.so/2d61194573e140789602864a9040affe",
-  sourceSpecSummary:
-    "図解仕様書「監督の言葉 → 軸 → 操作」。立ち会いの抽象的な指示を、4軸のどれに落とし、どの操作で返すかを4列で示す3段ホップ。文字なし、HTML/CSS で後載せ。HP slides 8 (フレームワーク関連コントロール) と HP slides 7 (フレームワーク) のトーンを継承。",
-  overlayLabels: [
-    "「もう少し暖かく」",
-    "「もう少し抜けを」",
-    "「青を深く」",
-    "「映画っぽく」",
-    "色の広がり・転がり",
-    "カーブ",
-    "濃度",
-    "4軸の合成",
-    "言葉 → 軸 → 操作",
-  ],
-  successCriteria: [
-    "監督の抽象的な一言が、軸とノブに落ちる仕組みが直感的に伝わる",
-    "4列(言葉→軸→操作)が等しい重みで並んで見える",
-    "grading-look-decomposition の「4軸そのもの」とは別の角度で、軸の使い方が読める",
-    "後載せの日本語ラベルが綺麗に乗る",
-  ],
-  referenceAssets: {
-    used: [
-      "public/slides/8フレームワーク関連コントロール.png",
-      "public/slides/7カラーグレーディングのフレームワーク.png",
-    ],
-    checkedButNotUsed: [
-      {
-        path: "public/slides/3カラーグレーディングの基本概念.png",
-        reason: "前提知識スライド。3段ホップ構図とは別レイヤーなので不採用",
-      },
-    ],
-  },
-  generationRationale:
-    "仕様書の構図(4列の3段ホップ: 言葉→軸→ノブ)・成功基準(言葉が軸とノブに落ちる仕組みが直感で分かる/grading-look-decomposition と補完になる)・後載せラベル9件 を prompt 内に明示。スライド8/7 のトーンを継承し、文字なし。HP 側で番号+ラベル+takeaway を後載せ。",
-  size: "1536x1024",
-  quality: "high",
-  output_format: "webp",
-  prompt: [
-    COMMON_STYLE,
-    "DESIGN INTENT — illustrate a 3-hop translation: a director's abstract phrase → a colorist's axis → a concrete control. Four parallel translation paths, one per phrase. Inherit the calm framework feel of reference slides 'public/slides/8フレームワーク関連コントロール.png' and 'public/slides/7カラーグレーディングのフレームワーク.png'.",
-    "These labels (the four phrases / the four axes / the four operations / the header '言葉 → 軸 → 操作') will be overlaid later in HTML/CSS, so do NOT draw any text inside the image.",
-    "Compose a single horizontal banner with FOUR vertical translation lanes side by side. Each lane has THREE stacked stages, top-to-bottom:",
-    "TOP STAGE — a soft luminous wave or speech ripple (suggesting a spoken word from the director). Each lane's wave has a slightly different temperature: lane1 warm peach, lane2 neutral teal, lane3 cool deep blue, lane4 a balanced warm-cool aurora.",
-    "MIDDLE STAGE — a small fragment of the colorist's framework: a hue ring slice, an S-curve segment, a vertical density bar, and a subtle 4-axis cross. Each fragment matches the lane's translation target axis.",
-    "BOTTOM STAGE — a stylized control element (an abstract knob, slider, or wheel) glowing softly in the lane's color, suggesting the concrete operation.",
-    "Connect TOP→MIDDLE→BOTTOM in each lane with a faint vertical luminous filament so the eye reads top-to-bottom (the 3-hop translation).",
-    "Lanes are clearly separated by generous empty space so the four parallel translations read as independent.",
-    "Strong empty negative space at top, between lanes, and at bottom so HTML labels can be overlaid cleanly later.",
-    COMMON_NEGATIVE,
-  ].join(" "),
-}
-
-DIAGRAM_GEN_CONFIGS["filmlook-density-mixture"] = {
-  sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
-  targetArticleNotionUrl: "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
-  sourceSpecSummary:
-    "図解仕様書「フィルムらしさ = 濃度 + 色の混ざり」。4軸のうち、フィルム固有の差はほぼ二軸 (濃度/色の混ざり) に集約される、という本文の核を視覚化する。左右二分割。文字なし、HTML/CSS で後載せ。FilmLookEmulator の wu8_basis_vectors / wu8_weight_functions の曲線形状と3層染料の感覚を継承。",
-  overlayLabels: [
-    "濃度",
-    "色の混ざり",
-    "暗部の粘り",
-    "S字の肩",
-    "対数応答",
-    "3層染料",
-    "分光密度曲線",
-    "DIRカプラー",
-    "プリンター光",
-    "フィルムの正体は、二軸に絞れる。",
-  ],
-  successCriteria: [
-    "フィルムルックの正体が「濃度 + 色の混ざり」の二軸に絞れる、という本文の核が直感で伝わる",
-    "左半分 = 濃度、右半分 = 色の混ざり、が一目で違うものとして読める",
-    "filmlook-physics-flow (8段) の補完として、何を取り出した二軸なのかが分かる",
-    "後載せの日本語ラベルが綺麗に乗る",
-  ],
-  referenceAssets: {
-    used: [
-      "../FilmLookEmulator_project/analysis/stage2/wu8_weight_functions.png",
-      "../FilmLookEmulator_project/analysis/stage2/wu8_basis_vectors.png",
-      "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/svd_spectrum_iems1.png",
-    ],
-    checkedButNotUsed: [
-      {
-        path: "../FilmLookEmulator_project/analysis/stage2/wu8_variance_explained.png",
-        reason: "寄与度のバープロットで、二軸の視覚化に直接寄与しないので不採用",
-      },
-      {
-        path: "../FilmLookEmulator_project/analysis/phaseE/wu1_plots/pareto_front.png",
-        reason: "別議論(分離可能性)のプロット。本図解の「濃度+色の混ざり」とは関心が違うので不採用",
-      },
-    ],
-  },
-  generationRationale:
-    "仕様書の構図(左右二分割: 濃度 / 色の混ざり)・成功基準(二軸に絞れることが伝わる/8段 flow の補完になる)・後載せラベル10件 を prompt 内に明示。FilmLookEmulator の wu8 plot 群から S字の肩と3層染料の感覚を継承。文字なし、HP 側で番号+ラベル+takeaway を後載せ。",
-  size: "1536x1024",
-  quality: "high",
-  output_format: "webp",
-  prompt: [
-    COMMON_STYLE,
-    "DESIGN INTENT — illustrate that 'film-ness' boils down to TWO axes: density (how each brightness sinks) and color mixture (how layers cross-contaminate). Left-right split banner. Inherit S-curve shoulder and 3-layer dye feel from FilmLookEmulator wu8_weight_functions / wu8_basis_vectors plots.",
-    "These labels (濃度 / 色の混ざり / 暗部の粘り / S字の肩 / 対数応答 / 3層染料 / 分光密度曲線 / DIRカプラー / プリンター光 / 'フィルムの正体は、二軸に絞れる。') will be overlaid later in HTML/CSS, so do NOT draw any text inside the image.",
-    "Compose a single horizontal banner split LEFT vs RIGHT with a soft luminous transition in the middle (no hard line).",
-    "LEFT HALF — DENSITY axis. Vertical luminance bands stacked top-to-bottom, like a calibrated grayscale wedge: highlights softly rolling off (a gentle shoulder), midtones neutral, deep shadows that linger (do not crash to black). A faint S-shaped tonal ridge crosses the bands, hinting at a logarithmic response. Inherit the curve shape from FilmLookEmulator wu8_weight_functions plot — but no axis text.",
-    "RIGHT HALF — COLOR MIXTURE axis. Three translucent dye layers (cyan, magenta, yellow) overlap and cross-contaminate, with subtle DIR-coupler-like inter-layer offsets. Add three faint parallel printer-light beams (warm red, neutral green, cool blue) gently shifting the resulting blend.",
-    "MIDDLE — a delicate luminous seam where the two halves meet, suggesting that both axes belong to the same film.",
-    "Strong empty negative space above and below each half so HTML labels (the two axis names plus the supporting tags) can be overlaid cleanly later.",
-    COMMON_NEGATIVE,
-  ].join(" "),
 }
 
 export function getDiagramGenConfig(slug) {
