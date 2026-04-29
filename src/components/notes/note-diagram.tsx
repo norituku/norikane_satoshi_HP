@@ -2,11 +2,15 @@ import Image from "next/image"
 import type {
   CenteredAxesDiagram,
   ChaosStructuredDiagram,
+  ComparePairDiagram,
   DiagramConfig,
   HorizontalFlow8Diagram,
   HorizontalFlowDiagram,
   KeypointRowDiagram,
   KeypointRowGlyph,
+  PhotoStripDiagram,
+  QuadCardsDiagram,
+  TripleCompareDiagram,
 } from "@/lib/notes/diagrams"
 
 /**
@@ -20,23 +24,27 @@ import type {
  */
 export function NoteDiagram({ config }: { config: DiagramConfig }) {
   const src = `/notes/diagrams/${config.slug}.webp`
+  // photo-strip は AI ヒーロー画像を持たない (写真自体がヒーロー)。
+  const hasHeroImage = config.layout !== "photo-strip"
   return (
     <figure className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10">
-      <div
-        className="relative w-full"
-        style={{
-          aspectRatio: `${config.aspect.width} / ${config.aspect.height}`,
-        }}
-      >
-        <Image
-          src={src}
-          alt={config.alt}
-          fill
-          sizes="(min-width: 1280px) 960px, (min-width: 768px) 90vw, 100vw"
-          className="object-cover"
-          priority={false}
-        />
-      </div>
+      {hasHeroImage ? (
+        <div
+          className="relative w-full"
+          style={{
+            aspectRatio: `${config.aspect.width} / ${config.aspect.height}`,
+          }}
+        >
+          <Image
+            src={src}
+            alt={config.alt}
+            fill
+            sizes="(min-width: 1280px) 960px, (min-width: 768px) 90vw, 100vw"
+            className="object-cover"
+            priority={false}
+          />
+        </div>
+      ) : null}
       <div className="px-5 py-5 md:px-7 md:py-6">
         <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
           Diagram
@@ -75,6 +83,14 @@ function DiagramBody({ config }: { config: DiagramConfig }) {
       return <HorizontalFlow8Body config={config} />
     case "keypoint-row":
       return <KeypointRowBody config={config} />
+    case "photo-strip":
+      return <PhotoStripBody config={config} />
+    case "quad-cards":
+      return <QuadCardsBody config={config} />
+    case "compare-pair":
+      return <ComparePairBody config={config} />
+    case "triple-compare":
+      return <TripleCompareBody config={config} />
   }
 }
 
@@ -326,6 +342,204 @@ function HorizontalFlow8Body({ config }: { config: HorizontalFlow8Diagram }) {
             </li>
           )
         })}
+      </ol>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
+    </div>
+  )
+}
+
+function PhotoStripBody({ config }: { config: PhotoStripDiagram }) {
+  // 5 枚の実写ブラケット。横スクロールを起こさず、mobile=2 列、desktop=5 列で並べる。
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+        {config.itemsHeading}
+      </p>
+      <ol className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-3">
+        {config.photos.map((photo, i) => (
+          <li
+            key={photo.src}
+            className="overflow-hidden rounded-[12px] border border-white/55 bg-white/40"
+          >
+            <div className="relative aspect-[4/3] w-full">
+              <Image
+                src={photo.src}
+                alt={`${config.title} ${photo.label}`}
+                fill
+                sizes="(min-width: 768px) 18vw, 45vw"
+                className="object-cover"
+                priority={false}
+              />
+            </div>
+            <div className="px-2 py-1.5">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-hp md:text-[0.78rem]">
+                <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="font-[var(--font-geist-mono)]">
+                  {photo.label}
+                </span>
+              </p>
+              {photo.sublabel ? (
+                <p className="mt-0.5 text-[10px] leading-relaxed text-hp-muted md:text-[0.7rem]">
+                  {photo.sublabel}
+                </p>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
+    </div>
+  )
+}
+
+function QuadCardsBody({ config }: { config: QuadCardsDiagram }) {
+  // 4 ノブを 2x2 で並べる。各カードは「ノブ名 + 算数オペ + 効く帯 + 一行説明」の固定構造。
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+        {config.itemsHeading}
+      </p>
+      <ol className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {config.items.map((item, i) => (
+          <li
+            key={item.label}
+            className="rounded-[12px] border border-white/55 bg-white/40 px-3 py-2.5"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-hp md:text-[0.85rem]">
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span>{item.label}</span>
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-[var(--accent-primary,#8B7FFF)] md:text-[11px]">
+                {item.opLabel}
+              </span>
+            </p>
+            <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-hp-muted md:text-[0.7rem]">
+              {item.scopeLabel}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-hp-muted md:text-[0.74rem]">
+              {item.sublabel}
+            </p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
+    </div>
+  )
+}
+
+function ComparePairBody({ config }: { config: ComparePairDiagram }) {
+  // 左 = clean / reversible、右 = nested / irreversible。位置と verdict バッジで区別。
+  const renderSide = (
+    side: ComparePairDiagram["cleanSide"],
+    sideKey: "clean" | "nested",
+  ) => (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+          {side.heading}
+        </p>
+        <span
+          className={`inline-flex items-center rounded-full border border-white/55 bg-white/55 px-2 py-0.5 font-[var(--font-geist-mono)] text-[10px] tracking-[0.18em] md:text-[11px] ${
+            sideKey === "clean"
+              ? "text-[var(--accent-primary,#8B7FFF)]"
+              : "text-hp-muted"
+          }`}
+        >
+          {side.verdict}
+        </span>
+      </div>
+      <ol className="mt-2 space-y-1.5">
+        {side.nodes.map((node, i) => (
+          <li
+            key={`${sideKey}-${i}-${node.label}`}
+            className="rounded-[12px] border border-white/55 bg-white/40 px-3 py-1.5 text-xs text-hp md:text-[0.85rem]"
+          >
+            <p className="flex items-center gap-2">
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                N{i + 1}
+              </span>
+              <span className="font-semibold">{node.label}</span>
+            </p>
+            <p className="mt-0.5 pl-6 text-[11px] leading-relaxed text-hp-muted md:text-[0.74rem]">
+              {node.sublabel}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+  return (
+    <div>
+      <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+        {renderSide(config.cleanSide, "clean")}
+        {renderSide(config.nestedSide, "nested")}
+      </div>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
+    </div>
+  )
+}
+
+function TripleCompareBody({ config }: { config: TripleCompareDiagram }) {
+  // mobile=1 列縦積み, desktop=3 列。各列は「label + 3 行 (操作感 / 信号範囲 / 色抽出) + verdict」の同型構造。
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+        {config.itemsHeading}
+      </p>
+      <ol className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+        {config.columns.map((col, i) => (
+          <li
+            key={col.label}
+            className="rounded-[12px] border border-white/55 bg-white/40 px-3 py-2.5"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-hp md:text-[0.85rem]">
+              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="font-[var(--font-geist-mono)]">{col.label}</span>
+            </p>
+            <dl className="mt-2 space-y-1.5">
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.22em] text-hp-muted md:text-[10.5px]">
+                  {config.rowLabels.feel}
+                </dt>
+                <dd className="mt-0.5 text-[11px] leading-relaxed text-hp md:text-[0.74rem]">
+                  {col.feel}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.22em] text-hp-muted md:text-[10.5px]">
+                  {config.rowLabels.range}
+                </dt>
+                <dd className="mt-0.5 text-[11px] leading-relaxed text-hp md:text-[0.74rem]">
+                  {col.range}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.22em] text-hp-muted md:text-[10.5px]">
+                  {config.rowLabels.extraction}
+                </dt>
+                <dd className="mt-0.5 text-[11px] leading-relaxed text-hp md:text-[0.74rem]">
+                  {col.extraction}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-2 rounded-[8px] border border-white/55 bg-white/45 px-2 py-1 text-[11px] font-semibold leading-relaxed text-hp md:text-[0.78rem]">
+              {col.verdict}
+            </p>
+          </li>
+        ))}
       </ol>
       <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
         {config.takeaway}

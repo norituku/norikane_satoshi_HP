@@ -12,6 +12,10 @@
  *   - "horizontal-flow":     左→右 4 列ステップ (grading-words-to-knobs)
  *   - "horizontal-flow-8":   8 段ステップ (filmlook-physics-flow)。desktop は md:grid-cols-4 で 4×2、mobile は 1 列。
  *   - "keypoint-row":        2〜5 項目の番号付きキーポイント (5秒で腹落ち用)
+ *   - "photo-strip":         実写 5 枚の横一列ストリップ (correction-exposure-bracket)。AI ヒーロー画像を持たず、写真自体がヒーロー。
+ *   - "quad-cards":          2x2 のカード行列 (correction-control-math)。算数オペ × ノブ対応表。
+ *   - "compare-pair":        左右 2 列のノード経路比較 (correction-reversibility-compare)。
+ *   - "triple-compare":      3 列の空間比較 (correction-space-choice)。Log / Linear / Gamma。
  */
 
 type DiagramBase = {
@@ -90,12 +94,85 @@ export type KeypointRowDiagram = DiagramBase & {
   takeaway: string
 }
 
+/**
+ * photo-strip: 実写 5 枚の横一列ストリップ。
+ * AI ヒーロー画像は持たず、写真そのものがヒーロー。
+ * mobile は grid-cols-2 (5枚目を中央寄せ)、desktop は md:grid-cols-5。
+ * 各写真の下に HTML/CSS で minimal label (例: -2EV / -1EV / 0 / +1EV / +2EV) を載せる。
+ */
+export type PhotoStripDiagram = DiagramBase & {
+  layout: "photo-strip"
+  itemsHeading: string
+  photos: { src: string; label: string; sublabel?: string }[]
+  takeaway: string
+}
+
+/**
+ * quad-cards: 2x2 のカード行列。
+ * Lift / Gamma / Gain / Offset を 1 セルずつに置き、
+ * ノブ名 + 算数オペ (加算 / べき乗 / 乗算 / 複合) + 効く帯 (暗部 / 中間 / 明部 / 全帯) を並べる。
+ * AI 画像は背景・気分のみ。
+ */
+export type QuadCardsItem = {
+  label: string
+  opLabel: string
+  scopeLabel: string
+  sublabel: string
+}
+export type QuadCardsDiagram = DiagramBase & {
+  layout: "quad-cards"
+  itemsHeading: string
+  items: QuadCardsItem[]
+  takeaway: string
+}
+
+/**
+ * compare-pair: 左右 2 列のノード経路比較。
+ * 左 = clean / reversible (乗算中心 1 段)、右 = nested / irreversible (加算 + べき乗の入れ子)。
+ * 各列内には縦並びの小箱 (ノード) を置く。
+ */
+export type CompareSide = {
+  heading: string
+  verdict: string
+  nodes: { label: string; sublabel: string }[]
+}
+export type ComparePairDiagram = DiagramBase & {
+  layout: "compare-pair"
+  cleanSide: CompareSide
+  nestedSide: CompareSide
+  takeaway: string
+}
+
+/**
+ * triple-compare: 3 列の空間比較。
+ * mobile grid-cols-1, desktop md:grid-cols-3。横スクロールなしを保証する。
+ * 各列に「操作感 / 信号範囲 / 色抽出」の 3 行を等しい構造で並べる。
+ */
+export type TripleCompareColumn = {
+  label: string
+  feel: string
+  range: string
+  extraction: string
+  verdict: string
+}
+export type TripleCompareDiagram = DiagramBase & {
+  layout: "triple-compare"
+  itemsHeading: string
+  rowLabels: { feel: string; range: string; extraction: string }
+  columns: TripleCompareColumn[]
+  takeaway: string
+}
+
 export type DiagramConfig =
   | ChaosStructuredDiagram
   | CenteredAxesDiagram
   | HorizontalFlowDiagram
   | HorizontalFlow8Diagram
   | KeypointRowDiagram
+  | PhotoStripDiagram
+  | QuadCardsDiagram
+  | ComparePairDiagram
+  | TripleCompareDiagram
 
 export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
   "correction-factor-map": {
@@ -253,6 +330,133 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
       },
     ],
     takeaway: "監督の言葉は、4 軸のどこかに落ちる。",
+  },
+  "correction-exposure-bracket": {
+    slug: "correction-exposure-bracket",
+    layout: "photo-strip",
+    title: "露出ブラケット — フレーム単位で追う",
+    caption:
+      "同じカメラ・同じアングル・同じチャートでも、露出が ±2EV 動けば信号は別物になる。だから露出はフレーム単位で追う必要がある。",
+    alt: "ColorChecker チャートを 5 段階の露出 ( -2EV / -1EV / 0 / +1EV / +2EV ) で撮影した実写写真 5 枚を横一列に並べた図解",
+    aspect: { width: 1536, height: 1024 },
+    intro: "同条件でも露出だけが動くと、フレーム単位で追う必要がある。",
+    itemsHeading: "5 段の露出ブラケット",
+    photos: [
+      { src: "/demo/-2STOP.jpg", label: "-2EV", sublabel: "アンダー" },
+      { src: "/demo/-1STOP.jpg", label: "-1EV", sublabel: "" },
+      { src: "/demo/%E3%83%81%E3%83%A3%E3%83%BC%E3%83%88%E3%83%8E%E3%83%BC%E3%83%9E%E3%83%AB.jpg", label: "0", sublabel: "ノーマル" },
+      { src: "/demo/%2B1STOP.jpg", label: "+1EV", sublabel: "" },
+      { src: "/demo/%2B2STOP.jpg", label: "+2EV", sublabel: "オーバー" },
+    ],
+    takeaway: "露出はフレーム単位で動く。粒度を取り違えない。",
+  },
+  "correction-control-math": {
+    slug: "correction-control-math",
+    layout: "quad-cards",
+    title: "プライマリは、ただの算数",
+    caption:
+      "暗部・中間・明部・全帯の 4 つのノブは、それぞれ加算 / べき乗 / 乗算 / 複合という算数オペに対応している。難しいテクニックではなく、4 つの算数。",
+    alt: "Lift / Gamma / Gain / Offset の 4 つのプライマリコントロールが、加算・べき乗・乗算・複合の 4 種類の算数オペに対応する 2x2 カード行列の図解",
+    aspect: { width: 1536, height: 1024 },
+    intro: "あるのは算数だけ。4 つのノブ = 4 つの操作。",
+    itemsHeading: "4 ノブ × 4 算数オペ",
+    items: [
+      {
+        label: "Lift",
+        opLabel: "加算 (+)",
+        scopeLabel: "暗部に効く",
+        sublabel: "黒側を持ち上げる / 沈める",
+      },
+      {
+        label: "Gamma",
+        opLabel: "べき乗 (^γ)",
+        scopeLabel: "中間に効く",
+        sublabel: "中間調の重さを変える",
+      },
+      {
+        label: "Gain",
+        opLabel: "乗算 (×)",
+        scopeLabel: "明部に効く",
+        sublabel: "白側のスケールを動かす",
+      },
+      {
+        label: "Offset",
+        opLabel: "全帯一律 (+)",
+        scopeLabel: "全帯に効く",
+        sublabel: "信号を丸ごと上下に平行移動",
+      },
+    ],
+    takeaway: "4 つの算数で、ほとんどの一次補正は組み立てられる。",
+  },
+  "correction-reversibility-compare": {
+    slug: "correction-reversibility-compare",
+    layout: "compare-pair",
+    title: "戻しやすさは、構造で決まる",
+    caption:
+      "乗算だけで組んだ補正は順序を入れ替えても戻せる。一方、加算とべき乗を入れ子にした補正は、後段から開いても元には戻らない。くすみは、この入れ子構造の中で生まれる。",
+    alt: "左に乗算中心の clean / reversible な 1 段ノード列、右に加算とべき乗が入れ子になった nested / irreversible な多段ノード列を置いた、戻しやすさの左右対比図解",
+    aspect: { width: 1536, height: 1024 },
+    intro: "乗算は戻せる。加算とべき乗の入れ子は戻せない。",
+    cleanSide: {
+      heading: "Clean / Reversible",
+      verdict: "戻せる",
+      nodes: [
+        { label: "Gain (×)", sublabel: "明部のスケール" },
+        { label: "Gain (×)", sublabel: "色味の倍率" },
+        { label: "Gain (×)", sublabel: "全体ゲイン" },
+      ],
+    },
+    nestedSide: {
+      heading: "Nested / Irreversible",
+      verdict: "戻しにくい",
+      nodes: [
+        { label: "Lift (+)", sublabel: "暗部を加算で持ち上げる" },
+        { label: "Gamma (^γ)", sublabel: "持ち上げた暗部にべき乗をかける" },
+        { label: "Lift (+)", sublabel: "さらに加算で被せる" },
+        { label: "Gamma (^γ)", sublabel: "もう一度べき乗を入れ子にする" },
+      ],
+    },
+    takeaway: "乗算中心は戻る。加算とべき乗の入れ子は、くすみとして残る。",
+  },
+  "correction-space-choice": {
+    slug: "correction-space-choice",
+    layout: "triple-compare",
+    title: "ログ / リニア / ガンマ — 操作する空間の選び方",
+    caption:
+      "同じ補正でも、どの空間で操作するかで結果が変わる。ログは収録のままで広いが操作感が物理から外れる。リニアは光に正直だが扱いにくい。ガンマは物理に近く、人の目にも合い、実務では一番扱いやすい。",
+    alt: "Log / Linear / Gamma の 3 空間を、操作感・信号範囲・色抽出のしやすさの 3 行で横並びに比較する 3 列対比図解",
+    aspect: { width: 1536, height: 1024 },
+    intro: "リニアとガンマは光の物理に乗りやすい。実務はガンマ空間が扱いやすい。",
+    itemsHeading: "3 空間の比較",
+    rowLabels: {
+      feel: "操作感",
+      range: "信号範囲",
+      extraction: "色抽出",
+    },
+    columns: [
+      {
+        label: "Log",
+        feel: "オフセット ≒ 露出 (近似)",
+        range: "とても広い (収録ネイティブ)",
+        extraction: "肌・空などの色抽出は難しい",
+        verdict: "広いが操作感は物理から外れる",
+      },
+      {
+        label: "Linear",
+        feel: "ゲイン = 露出 (厳密)",
+        range: "広い (光に正直)",
+        extraction: "色抽出は素直だが、トーンの感覚が掴みにくい",
+        verdict: "光の物理には正直、ただし扱いにくい",
+      },
+      {
+        label: "Gamma",
+        feel: "人の目に近く、操作感が直感的",
+        range: "実務に十分 (2.2 / 2.4 / 2.6)",
+        extraction: "色抽出も自然で扱いやすい",
+        verdict: "実務上は一番扱いやすい",
+      },
+    ],
+    takeaway: "迷ったらガンマ空間。物理に近く、目にも合う。",
   },
   "filmlook-density-mixture": {
     slug: "filmlook-density-mixture",

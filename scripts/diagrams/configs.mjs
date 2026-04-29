@@ -382,6 +382,183 @@ export const DIAGRAM_GEN_CONFIGS = {
     ].join(" "),
   },
 
+  "correction-control-math": {
+    sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
+    targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
+    sourceSpecSummary:
+      "追加図解 (2026-04-29 / correction 記事) quad-cards。主張『プライマリは加算 / べき乗 / 乗算 / 複合の 4 種類の算数』。AI 画像は 2x2 グリッドの背景レイヤーで、各セルに 1 種類のオペが暗示する曲線・トーン感だけを置く (文字・式・記号は HTML/CSS 側)。色域は #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) のみ。",
+    overlayLabels: [
+      "4 ノブ × 4 算数オペ",
+      "Lift",
+      "Gamma",
+      "Gain",
+      "Offset",
+      "暗部に効く",
+      "中間に効く",
+      "明部に効く",
+      "全帯に効く",
+      "4 つの算数で、ほとんどの一次補正は組み立てられる。",
+    ],
+    successCriteria: [
+      "2x2 グリッドの 4 セルが等サイズ・等余白で並んで見える",
+      "各セルに『加算 / べき乗 / 乗算 / 全帯一律』の気分を伝える曲線・トーンが極めて控えめに乗っている",
+      "色域が #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) だけで構成され、orange / teal / warm peach / muted teal が出てこない",
+      "HTML overlay (4 セル × ラベル + オペ + 効く帯 + 一行説明) が乗る空白が確保されている",
+      "correction-factor-map / correction-scope-map と並べたときに、形状で補完関係になる (左右対比 vs ヒーロー同心円 vs 2x2 行列)",
+    ],
+    referenceAssets: {
+      used: [
+        "public/slides/4プライマリーコントロール概要.png",
+        "public/slides/5複合操作の影響と復元性.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "public/slides/11分解と整理によるアプローチ.png",
+          reason: "粒度の分解は別図 (correction-factor-map / correction-scope-map) で扱うのでここでは不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "追加図解 (correction 記事 / quad-cards) 専用。AI 画像は 2x2 グリッドの背景レイヤーで、各セルに 1 種類のオペの曲線・トーン感だけを暗示する。",
+      "slides/4 プライマリーコントロール概要 → 4 ノブが暗部・中間・明部・全帯に効くという対応関係を、4 セルの位置 (左上=暗部、右上=中間、左下=明部、右下=全帯) に反映。",
+      "slides/5 複合操作の影響と復元性 → 加算 / べき乗 / 乗算 / 全帯一律の曲線形状を、各セルに極めて控えめに置く根拠。",
+      "色域は HP 実コードのトークンに同期: #F8F6FF base、#8B7FFF accent、aurora purple/pink/sky の 3 色のみ。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — A 2x2 grid background hero for a quad-cards diagram about 'four primary controls = four pieces of arithmetic'. The frame is split into 4 equal cells of identical size and identical padding, organized in a clean 2-column × 2-row grid with a thin luminous gutter (subtle aurora-pink hairline) between cells. The image is background only — labels, operation names, knob names, and small boxes are NOT drawn here; they are overlaid in HTML by note-diagram.tsx (quad-cards layout).",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash (purple / pink / sky only). No dark fills, no cinematic noir.",
+      "CELL TOP-LEFT (Lift = additive on shadows) — a soft luminous curve that rises gently from the lower-left and flattens toward the upper-right, suggesting addition on the dark end. Built ONLY from aurora-purple at varying opacity, with the lavender accent #8B7FFF as a quiet luminous note. The dark-end region is slightly more saturated to show 'lift on shadows', but never crashes to dark.",
+      "CELL TOP-RIGHT (Gamma = exponent on midtones) — a soft S-shaped luminous ridge centered in the cell, with the bend in the middle to suggest power-curve behavior on midtones. Built ONLY from aurora-pink at varying opacity, with #8B7FFF as a quiet midtone highlight. Symmetric around the cell center.",
+      "CELL BOTTOM-LEFT (Gain = multiplicative on highlights) — a soft luminous wedge that fans outward from the lower-left toward the upper-right, suggesting multiplication scaling the bright end. Built ONLY from aurora-sky at varying opacity, with #8B7FFF as a quiet highlight at the bright corner.",
+      "CELL BOTTOM-RIGHT (Offset = uniform additive across the whole signal) — a soft uniform luminous plane with a single thin horizontal ridge passing straight through the middle of the cell, suggesting a parallel translation of the entire signal. Built from a balanced blend of aurora-purple / aurora-pink / aurora-sky at low opacity. Very subtle — no exaggerated curve, just a steady lift across the whole cell.",
+      "All four cells share IDENTICAL bounding-box size, IDENTICAL inner padding, and IDENTICAL line weight — equal-weight is critical because HTML labels of identical size will sit one per cell. Each curve / wedge / ridge is extremely subtle so that HTML labels remain the dominant reading element.",
+      "Plenty of empty negative space (>= 35% of frame) inside each cell so HTML overlay (cell number, knob name, op label, scope label, sublabel) lands cleanly in the upper portion of each cell.",
+      "Visual reference (tone only, do not reproduce any text or saturated color): public/slides/4プライマリーコントロール概要.png (4-knob structure), public/slides/5複合操作の影響と復元性.png (curve shape feel).",
+      "Use ONLY the HP palette: base #F8F6FF, accent #8B7FFF, aurora purple/pink/sky. NO orange. NO teal. NO warm peach. NO muted teal. NO green. No arrows. No text. No equations. No symbols.",
+      COMMON_NEGATIVE,
+    ].join(" "),
+  },
+
+  "correction-reversibility-compare": {
+    sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
+    targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
+    sourceSpecSummary:
+      "追加図解 (2026-04-29 / correction 記事) compare-pair。主張『乗算中心は戻せる、加算とべき乗の入れ子は戻せない』。AI 画像は左右二分割の背景レイヤーで、左 = 1 段の真っ直ぐな経路 (clean / reversible)、右 = 多段に絡まった経路 (nested / irreversible) を暗示する。色域は #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) のみ。",
+    overlayLabels: [
+      "Clean / Reversible",
+      "Nested / Irreversible",
+      "戻せる",
+      "戻しにくい",
+      "Gain (×)",
+      "Lift (+)",
+      "Gamma (^γ)",
+      "乗算中心は戻る。加算とべき乗の入れ子は、くすみとして残る。",
+    ],
+    successCriteria: [
+      "左 = 真っ直ぐで透明な 1 経路、右 = 絡まり合う多段経路、の左右対比が一目で読める",
+      "左の経路は薄く半透明で『どこを通っても元に戻せそうな』軽さがある",
+      "右の経路は半透明の交差・重なりで『戻すのが面倒そうな』粘性がある (ただし暗くしない)",
+      "中央の luminous seam が左右の境界を補助している (主役にはならない)",
+      "色域が #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) だけで構成され、orange / teal / warm peach / muted teal が出てこない",
+      "HTML overlay (左右ヘッダー + verdict バッジ + ノードリスト + takeaway) が乗る空白が確保されている",
+    ],
+    referenceAssets: {
+      used: [
+        "public/slides/5複合操作の影響と復元性.png",
+        "public/slides/11分解と整理によるアプローチ.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "public/slides/4プライマリーコントロール概要.png",
+          reason: "ノブ概要は別図 (correction-control-math) で扱うのでここでは不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "追加図解 (correction 記事 / compare-pair) 専用。AI 画像は左右二分割の背景レイヤーで、左 = 1 段経路、右 = 多段絡まりを暗示する。",
+      "slides/5 複合操作の影響と復元性 → 戻しやすさは『重ねる順』で決まるという主張の根拠。乗算中心 = 戻せる、加算とべき乗の入れ子 = 戻せない。",
+      "slides/11 分解と整理によるアプローチ → 整列 (左) と混線 (右) の左右対比トーンの根拠。ただしこちらでは『戻せる/戻せない』という別の意味付け。",
+      "色域は HP 実コードのトークンに同期: #F8F6FF base、#8B7FFF accent、aurora purple/pink/sky の 3 色のみ。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — chaos-vs-structured-style left/right split, but with a different meaning: left = clean single-stage path that can be reversed, right = nested multi-stage tangle that cannot be cleanly reversed. The image is background only — labels, node names, verdicts, and small boxes are NOT drawn here; they are overlaid in HTML by note-diagram.tsx (compare-pair layout).",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash (purple / pink / sky only). No dark fills, no cinematic noir, no warm peach, no teal, no green.",
+      "Composition rule: the frame is split into two equal halves by a thin luminous seam at the horizontal center. No hard line — just a quiet brighter ridge (subtle aurora-pink hairline) so the eye reads the seam as a soft boundary. Identical top and bottom margins on both halves.",
+      "LEFT HALF (clean / reversible) — a single thin softly-glowing horizontal path runs left-to-right, calm and parallel to the image axis. The path is built from aurora-sky at low opacity, with #8B7FFF as a quiet luminous head at the right end. 2-3 evenly spaced soft luminous nodes sit on the path (small open rings, NOT filled disks), all aligned and identical in size — suggesting 'all multiplications, same family, easy to reverse'. Plenty of negative space above and below the path.",
+      "RIGHT HALF (nested / irreversible) — multiple thin softly-glowing paths curve, cross, and overlap in a relaxed cluster around the middle of the half. The paths interweave above and below each other (some translucent crossings deepen slightly without becoming dark), suggesting 'addition + exponent stacked into each other'. Each path is built ONLY from the HP palette (aurora-purple, aurora-pink, with the lavender accent #8B7FFF as a quiet highlight at one of the crossings). 4-5 small soft luminous nodes sit at irregular crossings — not aligned, varying in size, suggesting 'cannot cleanly walk back through'. Stay BRIGHT — never crash to dark, never use saturated colors. The tangle reads as 'sticky, not catastrophic'.",
+      "MIDDLE SEAM — a single quiet luminous ridge running top-to-bottom, slightly brighter than the rest of the canvas. The ridge is built from the aurora-pink wash only, kept extremely subtle. No arrowheads, no funnel walls, no hard boundaries.",
+      "Empty negative space (>= 35% of frame) above, below, and between the two halves so HTML overlay (left header 'Clean / Reversible' + verdict '戻せる' + 3 nodes, right header 'Nested / Irreversible' + verdict '戻しにくい' + 4 nodes, takeaway at the bottom) lands cleanly.",
+      "Visual reference (tone only, do not reproduce any text or saturated color): public/slides/5複合操作の影響と復元性.png (reversibility tone), public/slides/11分解と整理によるアプローチ.png (left/right contrast feel).",
+      "Use ONLY the HP palette: base #F8F6FF, accent #8B7FFF, aurora purple/pink/sky. NO orange. NO teal. NO warm peach. NO muted teal. NO green. No arrowheads. No hard outlines. No text. No symbols.",
+      COMMON_NEGATIVE,
+    ].join(" "),
+  },
+
+  "correction-space-choice": {
+    sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
+    targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
+    sourceSpecSummary:
+      "追加図解 (2026-04-29 / correction 記事) triple-compare。主張『Log / Linear / Gamma の 3 空間で操作感が変わる、実務はガンマ空間が一番扱いやすい』。AI 画像は 3 列縦バンドの背景レイヤーで、各列のトーン応答カーブを極めて控えめに暗示する。色域は #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) のみ。",
+    overlayLabels: [
+      "3 空間の比較",
+      "Log",
+      "Linear",
+      "Gamma",
+      "操作感",
+      "信号範囲",
+      "色抽出",
+      "迷ったらガンマ空間。物理に近く、目にも合う。",
+    ],
+    successCriteria: [
+      "3 列の縦バンドが等幅・等高で並んで見える",
+      "各列のカーブ気分 (log = 対数 / linear = 直線 / gamma = べき乗) が極めて控えめに伝わる",
+      "色域が #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) だけで構成され、orange / teal / warm peach / muted teal が出てこない",
+      "HTML overlay (3 列 × ラベル + 3 行 + verdict + takeaway) が乗る空白が確保されている",
+      "mobile (縦積み) でも desktop (3 列) でも横スクロールが起きない構図 (背景の中央 70% に主要素が収まる)",
+    ],
+    referenceAssets: {
+      used: [
+        "public/slides/5複合操作の影響と復元性.png",
+      ],
+      checkedButNotUsed: [
+        {
+          path: "public/slides/4プライマリーコントロール概要.png",
+          reason: "ノブの分類は別図 (correction-control-math) で扱うのでここでは不採用",
+        },
+      ],
+    },
+    generationRationale: [
+      "追加図解 (correction 記事 / triple-compare) 専用。AI 画像は 3 列縦バンドの背景レイヤーで、各列のカーブ気分だけを担う。",
+      "slides/5 複合操作の影響と復元性 → 対数・直線・べき乗のカーブ形状の根拠。3 列に対応させる。",
+      "色域は HP 実コードのトークンに同期: #F8F6FF base、#8B7FFF accent、aurora purple/pink/sky の 3 色のみ。",
+    ].join(" "),
+    size: "1536x1024",
+    quality: "high",
+    output_format: "webp",
+    prompt: [
+      COMMON_STYLE,
+      "DESIGN INTENT — A 3-column compare-band background for a triple-compare diagram about working spaces (Log / Linear / Gamma). Three identical-width vertical lanes side by side, equally spaced left to right with thin luminous gutters between lanes. Each lane carries one extremely subtle response-curve hint that suggests the kind of math that lane represents. The image is background only — labels, column headings, row labels, verdicts, and small boxes are NOT drawn here; they are overlaid in HTML by note-diagram.tsx (triple-compare layout).",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash (purple / pink / sky only). No dark fills, no cinematic noir, no warm peach, no teal, no green.",
+      "Layout: THREE vertical lanes of identical width, equally spaced. Each lane has IDENTICAL top and bottom margins. Lane gutters are subtle aurora-pink hairlines, not hard lines.",
+      "LANE 1 (Log) — a soft logarithmic-like luminous curve climbs steeply at the bottom and flattens slowly toward the top, suggesting log compression on a wide signal range. Built ONLY from aurora-purple at varying opacity, with #8B7FFF as a quiet luminous note at the bottom (where the curve compresses the dark end).",
+      "LANE 2 (Linear) — a soft straight luminous diagonal line runs from the lower-left corner to the upper-right corner of the lane, suggesting a 1:1 linear response. Built ONLY from aurora-sky at varying opacity, with #8B7FFF as a quiet luminous note where the diagonal crosses the lane center.",
+      "LANE 3 (Gamma) — a soft gentle power-curve luminous ridge bows from the lower-left toward the upper-right with a small dip in the lower-third, suggesting a midtone-friendly power response. Built ONLY from aurora-pink at varying opacity, with #8B7FFF as a quiet luminous note at the midtone bend.",
+      "All three curves have IDENTICAL line weight, identical opacity envelope, and identical bounding box — equal-weight is critical because HTML labels of identical size will sit one per lane. Each curve is extremely subtle so HTML labels remain the dominant reading element.",
+      "All main visual elements stay inside the central ~70% of the frame so that on mobile (single-column stack) and desktop (3-column row), the image scales without horizontal overflow. Plenty of empty negative space at top, between lanes, and at bottom for HTML labels.",
+      "Visual reference (tone only, do not reproduce any text or saturated color): public/slides/5複合操作の影響と復元性.png (curve shapes for log/linear/gamma feel).",
+      "Use ONLY the HP palette: base #F8F6FF, accent #8B7FFF, aurora purple/pink/sky. NO orange. NO teal. NO warm peach. NO muted teal. NO green. No arrows. No text. No axis labels.",
+      COMMON_NEGATIVE,
+    ].join(" "),
+  },
+
   "filmlook-density-mixture": {
     sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
     targetArticleNotionUrl: "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
