@@ -249,7 +249,7 @@ function CenteredAxesBody({ config }: { config: CenteredAxesDiagram }) {
         <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-hp-muted">
           {config.axesHeading}
         </p>
-        <ul className="mt-2 grid grid-cols-2 gap-1.5">
+        <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {config.axes.map((axis, i) => (
             <li
               key={axis.label}
@@ -293,7 +293,7 @@ function HorizontalFlowBody({ config }: { config: HorizontalFlowDiagram }) {
       <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
         {config.flowHeading}
       </p>
-      <ol className="mt-2 grid grid-cols-2 gap-1.5 md:grid-cols-4">
+      <ol className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:grid-cols-4">
         {config.steps.map((step, i) => (
           <li
             key={step.label}
