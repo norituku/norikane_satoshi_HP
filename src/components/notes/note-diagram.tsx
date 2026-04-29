@@ -3,6 +3,7 @@ import type {
   CenteredAxesDiagram,
   ChaosStructuredDiagram,
   DiagramConfig,
+  HorizontalFlow8Diagram,
   HorizontalFlowDiagram,
   KeypointRowDiagram,
   KeypointRowGlyph,
@@ -70,6 +71,8 @@ function DiagramBody({ config }: { config: DiagramConfig }) {
       return <CenteredAxesBody config={config} />
     case "horizontal-flow":
       return <HorizontalFlowBody config={config} />
+    case "horizontal-flow-8":
+      return <HorizontalFlow8Body config={config} />
     case "keypoint-row":
       return <KeypointRowBody config={config} />
   }
@@ -283,6 +286,50 @@ function CenteredAxesBody({ config }: { config: CenteredAxesDiagram }) {
           ))}
         </ul>
       </div>
+    </div>
+  )
+}
+
+function HorizontalFlow8Body({ config }: { config: HorizontalFlow8Diagram }) {
+  // 8 段は desktop で md:grid-cols-4 の 4×2 派生、mobile は 1 列縦積み。
+  // 仕様書 v3 の塊 (入力 1-2 / 内部 3-7 / 出力 8) は左端の accent dot 列の濃淡で示す
+  // (group が切り替わる箱だけ濃いドット、それ以外は薄いドット)。色ではなく位置と番号で区別する原則を維持。
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-hp-muted">
+        {config.flowHeading}
+      </p>
+      <ol className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:grid-cols-4">
+        {config.steps.map((step, i) => {
+          const prev = config.steps[i - 1]
+          const groupChanged = !prev || prev.group !== step.group
+          return (
+            <li
+              key={step.label}
+              className="rounded-[12px] border border-white/55 bg-white/40 px-2.5 py-2"
+            >
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-hp md:text-[0.8rem]">
+                <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-primary,#8B7FFF)] ${
+                    groupChanged ? "opacity-90" : "opacity-30"
+                  }`}
+                />
+                {step.label}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-hp-muted md:text-[0.72rem]">
+                {step.sublabel}
+              </p>
+            </li>
+          )
+        })}
+      </ol>
+      <p className="mt-3 text-xs font-semibold text-hp md:text-[0.85rem]">
+        {config.takeaway}
+      </p>
     </div>
   )
 }

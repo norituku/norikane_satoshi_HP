@@ -6,10 +6,11 @@
  * と meta (public/notes/diagrams/<slug>.meta.json) を生成したうえで
  * このオブジェクトに 1 エントリ足すだけで済むようにしている。
  *
- * layout は 4 種類:
- *   - "chaos-vs-structured": 左=混線/右=構造化レイヤー (correction)
- *   - "centered-axes":       中心ルック + 4方向軸 (grading 4軸マップ)
- *   - "horizontal-flow":     左→右の物理連鎖 (filmlook)
+ * layout は 5 種類:
+ *   - "chaos-vs-structured": 左右対比 (correction-factor-map / filmlook-density-mixture)
+ *   - "centered-axes":       中心ルック + 4方向軸 (grading-look-decomposition)
+ *   - "horizontal-flow":     左→右 4 列ステップ (grading-words-to-knobs)
+ *   - "horizontal-flow-8":   8 段ステップ (filmlook-physics-flow)。desktop は md:grid-cols-4 で 4×2、mobile は 1 列。
  *   - "keypoint-row":        2〜5 項目の番号付きキーポイント (5秒で腹落ち用)
  */
 
@@ -55,6 +56,20 @@ export type HorizontalFlowDiagram = DiagramBase & {
 }
 
 /**
+ * horizontal-flow-8: 8 段の物理パイプライン (filmlook-physics-flow 専用)。
+ * desktop は md:grid-cols-4 で 4×2 派生、mobile は 1 列縦積み。
+ * group は仕様書 v3 の塊 (入力 1-2 / 内部 3-7 / 出力 8) を表し、
+ * note-diagram.tsx 側で行替えなしの薄い区切り線として描く。
+ */
+export type HorizontalFlow8Group = "input" | "internal" | "output"
+export type HorizontalFlow8Diagram = DiagramBase & {
+  layout: "horizontal-flow-8"
+  flowHeading: string
+  steps: { label: string; sublabel: string; group: HorizontalFlow8Group }[]
+  takeaway: string
+}
+
+/**
  * keypoint-row: 2〜5 項目の番号付きキーポイント図解。
  * 各項目は1つの「読み解きの軸」を表し、glyph で軽い視覚アイコンを与える。
  * 図に入る前の一行宣言は DiagramBase.intro を使う。takeaway = 出口の一行。
@@ -79,6 +94,7 @@ export type DiagramConfig =
   | ChaosStructuredDiagram
   | CenteredAxesDiagram
   | HorizontalFlowDiagram
+  | HorizontalFlow8Diagram
   | KeypointRowDiagram
 
 export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
@@ -149,25 +165,25 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
   },
   "filmlook-physics-flow": {
     slug: "filmlook-physics-flow",
-    layout: "horizontal-flow",
-    title: "フィルムルックを作る物理の流れ",
+    layout: "horizontal-flow-8",
+    title: "フィルムルックを作る物理の 8 段フロー",
     caption:
-      "フィルムルックは雰囲気ではなく、露光、染料層、曲線、光、粒の物理連鎖として読み直せる。デジタル信号が左から流れ、最終ルックへ収束する。",
-    alt: "デジタル信号が露光、3層の染料、分光密度曲線、S字カーブ、プリンターライト、グレインを通って最終的なフィルムルックへ収束する流れの図解",
+      "フィルムルックは雰囲気ではなく、入力 → 内部 → 出力の物理連鎖として読み直せる。デジタル信号と露光が左、フィルム内部の 5 段が中央、最終ルックが右に収束する。",
+    alt: "デジタル信号と露光の入力 2 段、3 層の染料・分光密度曲線・S 字カーブ・プリンタ光・グレインのフィルム内部 5 段、最終ルックの出力 1 段が左から右へ等間隔で並ぶ 8 段フロー図解",
     aspect: { width: 1536, height: 1024 },
-    intro: "左→右で読む。デジタル信号が、染料・曲線・光・粒を通って最終ルックに変わる8段。",
-    flowHeading: "物理連鎖 — 8段のパイプライン",
+    intro: "左→右で読む。入力 2 段 → フィルム内部 5 段 → 出力 1 段の物理パイプライン。",
+    flowHeading: "物理の 8 段フロー",
     steps: [
-      { label: "デジタル信号", sublabel: "scene-linear の入力" },
-      { label: "露光", sublabel: "光がフィルム面に当たる" },
-      { label: "3層の染料", sublabel: "シアン・マゼンタ・イエロー" },
-      { label: "分光密度曲線", sublabel: "波長ごとの吸収応答" },
-      { label: "S字カーブ", sublabel: "トー・ストレート・ショルダー" },
-      { label: "プリンターライト", sublabel: "RGB光で印刷" },
-      { label: "グレイン", sublabel: "非一様な粒子分布" },
-      { label: "最終ルック", sublabel: "映画的な1フレーム" },
+      { label: "デジタル信号", sublabel: "入力", group: "input" },
+      { label: "露光", sublabel: "入力", group: "input" },
+      { label: "3 層の染料", sublabel: "フィルム内部", group: "internal" },
+      { label: "分光密度曲線", sublabel: "フィルム内部", group: "internal" },
+      { label: "S 字カーブ", sublabel: "フィルム内部", group: "internal" },
+      { label: "プリンタ光", sublabel: "フィルム内部", group: "internal" },
+      { label: "グレイン", sublabel: "フィルム内部", group: "internal" },
+      { label: "最終ルック", sublabel: "出力", group: "output" },
     ],
-    takeaway: "フィルムルックは物理で読める。",
+    takeaway: "フィルムルックは、物理の流れで読める。",
   },
   "correction-scope-map": {
     slug: "correction-scope-map",
@@ -240,29 +256,22 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
   },
   "filmlook-density-mixture": {
     slug: "filmlook-density-mixture",
-    layout: "keypoint-row",
+    layout: "chaos-vs-structured",
     title: "フィルムらしさ = 濃度 + 色の混ざり",
     caption:
-      "ルックは4軸あるが、フィルムを通したかどうかは、ほぼ二軸で見分けがつく。残り2軸は結果として動くだけ。",
-    alt: "フィルムルックの正体を「濃度」と「色の混ざり」の2軸に絞って示すキーポイント図解",
+      "フィルム固有の差は、ルック 4 軸のうち縦軸 (濃度) と横軸 (色の混ざり) の二軸に集約される。残り 2 軸は結果として動くだけ。",
+    alt: "左半分に縦方向の濃度 wedge と S 字カーブ、右半分に 3 層染料のヴェン状重なりと RGB 3 ビームを置き、濃度と色の混ざりの 2 軸を左右で対比する図解",
     aspect: { width: 1536, height: 1024 },
-    intro: "4軸の重みは均等ではない。フィルム固有の差は、二軸に集まる。",
-    itemsHeading: "二軸 — フィルムの正体",
-    items: [
-      {
-        glyph: "density",
-        label: "濃度",
-        sublabel:
-          "どの明るさがどれだけ沈むか。暗部の粘り・S字の肩・対数で効くハイライトのロールオフ。",
-      },
-      {
-        glyph: "mixture",
-        label: "色の混ざり",
-        sublabel:
-          "どの色がどの色に寄るか。3層染料・分光密度曲線・DIRカプラー・プリンター光が決める。",
-      },
+    intro: "フィルムの正体は、二軸に絞れる。",
+    chaosHeading: "濃度（縦軸）",
+    chaosLabels: ["暗部の粘り", "S 字の肩", "対数応答"],
+    structuredHeading: "色の混ざり（横軸）",
+    structuredLayers: [
+      { label: "3 層染料" },
+      { label: "分光密度曲線" },
+      { label: "DIR カプラー" },
+      { label: "プリンター光" },
     ],
-    takeaway: "フィルムの正体は、二軸に絞れる。",
   },
 }
 
