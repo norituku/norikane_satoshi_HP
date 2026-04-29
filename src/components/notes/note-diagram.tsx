@@ -211,13 +211,20 @@ function ChaosStructuredBody({ config }: { config: ChaosStructuredDiagram }) {
         <ol className="mt-2 space-y-1.5">
           {config.structuredLayers.map((layer, i) => (
             <li
-              key={layer}
-              className="flex items-center gap-2 rounded-[12px] border border-white/55 bg-white/40 px-3 py-1.5 text-xs text-hp md:text-[0.85rem]"
+              key={layer.label}
+              className="rounded-[12px] border border-white/55 bg-white/40 px-3 py-1.5 text-xs text-hp md:text-[0.85rem]"
             >
-              <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
-                L{i + 1}
-              </span>
-              <span>{layer}</span>
+              <p className="flex items-center gap-2">
+                <span className="font-[var(--font-geist-mono)] text-[10px] text-hp-muted md:text-[11px]">
+                  L{i + 1}
+                </span>
+                <span className="font-semibold">{layer.label}</span>
+              </p>
+              {layer.sublabel ? (
+                <p className="mt-0.5 pl-6 text-[11px] leading-relaxed text-hp-muted md:text-[0.74rem]">
+                  {layer.sublabel}
+                </p>
+              ) : null}
             </li>
           ))}
         </ol>

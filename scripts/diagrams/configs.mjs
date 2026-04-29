@@ -1,14 +1,17 @@
 /**
  * Notion 本文の [[diagram:<slug>]] marker から呼び出す図解の生成設定。
  *
- * 設計方針 (2026-04-28 改訂):
- *   - HP の世界観 = ライトグラスモーフィズム + オーロラ。背景は #F8F6FF を基調とした
- *     白〜ごく薄いラベンダー、補助色は --aurora-purple / --aurora-pink /
- *     --aurora-blue / --aurora-orange の 4 色のみ。「暗めシネマティック」前提は廃止。
- *   - 1 図 = 1 主張。5 秒で読み取れる構図に絞り、矢印・枠・装飾は最小限。
- *   - GPT Image 2 に任せるのは背景・質感・構図・素材感の下地だけ。
- *     日本語ラベル / 短文 / 矢印 / 枠 / 順番 / 注釈は全て HTML/CSS 側で確定する。
- *   - 画像内に文字 (kana / kanji / ascii / 数字) は絶対に描かせない。
+ * 設計方針 (2026-04-29 改訂、図解仕様書 v3 = 8b38762c に同期):
+ *   - HP 実コード (src/app/globals.css) の Glass Design System が正本。
+ *     背景 = --bg-base #F8F6FF (白〜ごく薄いラベンダー)、アクセント = --accent-primary #8B7FFF。
+ *     aurora は 3 色のみ ── --aurora-purple rgba(139,127,255,0.28) /
+ *     --aurora-pink rgba(255,143,171,0.20) / --aurora-sky rgba(125,211,252,0.20)。
+ *     orange / teal / 緑系は HP 実装に存在しない。新規色相を発明しない。
+ *   - 1 図 = 1 主張。背景画像は構図と気分だけを担い、ラベル・番号・小箱・グリフは
+ *     note-diagram.tsx 側 (glass トークン) で確定させる役割分担。
+ *   - GPT Image 2 に任せるのは背景の構図・質感・余白だけ。
+ *     画像内に文字 (kana / kanji / ascii / 数字) ・記号・矢印・UI 要素・ロゴは絶対に描かせない。
+ *   - リポジトリ内の AGENTS.md にあるニューモーフィズム記述は実装と乖離しているため無視。
  *
  * 各 slug ごとに以下を持つ:
  *   - referenceAssets.used: 構図・トーン・形状の根拠としたローカル素材
@@ -27,39 +30,53 @@ const COMMON_NEGATIVE = [
   "(especially Japanese kana / kanji / Latin / numerals),",
   "UI elements, icons with letters, logos, watermarks, signatures,",
   "button shapes, screenshots, photos of people, faces, hands,",
+  "arrows, arrowheads, connectors, callouts,",
   "dark backgrounds, navy or charcoal fills, heavy black, neon-on-black aesthetics, cinematic noir,",
-  "saturated bold colors, hard outlines, thick borders, busy compositions.",
+  "saturated bold colors, vivid orange, teal, green, hard outlines, thick borders, busy compositions.",
 ].join(" ")
 
 const COMMON_STYLE = [
-  "Light, airy editorial illustration aligned with the host site's light glass-morphism + aurora design language.",
-  "Background is overwhelmingly bright: a calm white-to-soft-lavender canvas (~#F8F6FF) with very subtle aurora gradients used only as quiet directional light",
-  "(soft lavender ~rgba(139,127,255,0.18), gentle peach ~rgba(255,200,160,0.10), faint sky blue ~rgba(160,200,255,0.10), muted teal ~rgba(121,199,199,0.10)).",
+  "Light, airy editorial illustration aligned with the host site's Glass Design System.",
+  "Background is overwhelmingly bright: a calm white-to-soft-lavender canvas (~#F8F6FF) with very subtle aurora gradients used only as quiet directional light.",
+  "Palette is strictly limited to the HP tokens: base #F8F6FF, accent #8B7FFF (soft lavender purple),",
+  "and the three aurora washes ── aurora-purple ~rgba(139,127,255,0.28), aurora-pink ~rgba(255,143,171,0.20), aurora-sky ~rgba(125,211,252,0.20).",
+  "All other colors (orange / teal / green / vivid saturated tones) are forbidden — they are not part of the HP implementation.",
   "Compositions feel spacious and uncluttered: generous negative space (at least 35% of the frame), few elements, low color count, soft thin lines, no thick borders.",
-  "Contrast is tuned for in-article reading: shapes are visible but never demand attention — they are scaffolding for HTML labels overlaid in post.",
+  "Contrast is tuned for in-article reading: shapes are visible but never demand attention — they are scaffolding only; HTML labels, numbers, and small boxes are overlaid in post by note-diagram.tsx.",
   "Output: 16:9 horizontal banner that sits inside an article body column, comfortably readable next to body text.",
 ].join(" ")
 
 export const DIAGRAM_GEN_CONFIGS = {
   "correction-factor-map": {
-    sourceSpecNotionUrl: "https://www.notion.so/a88b4c519ced4773b3b357b45cd0a2d4",
+    sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
     targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
     sourceSpecSummary:
-      "図解仕様書「カラーコレクションの因数分解マップ」。左=混線(7要因), 右=5段の粒度レイヤー(カメラ/フレーム/アングル/シーン/作品), 中央=漏斗。文字なし、HTML/CSS で後載せ。HP slides 11(分解と整理) と 5(複合操作の影響と復元性) のトーンを継承し、抽象化した横長ビジュアルにする方針。",
+      "図解仕様書 v3 (2026-04-29 / 8b38762c) chaos-vs-structured。主張『混ざると迷宮 / 分けると制御できる』。左半=ゆるく交差する 8 本の細い帯テクスチャ、中央=細い luminous seam、右半=水平バンドの陰影 5 段。色域は #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) のみ。文字・記号・矢印は note-diagram.tsx 側で描画。",
     overlayLabels: [
       "混ざると迷宮",
+      "カメラの種類",
+      "露出",
+      "色温度",
+      "VEさんのアイリスフォロー",
+      "肌色の一貫性",
+      "スモークで生まれる大気の色",
+      "作品全体のトーン",
+      "曲ごとの方向性",
       "分けると制御できる",
       "カメラ単位",
       "フレーム単位",
       "アングル単位",
       "シーン単位",
       "作品単位",
+      "混ぜたら迷う。粒度に分けると制御できる。",
     ],
     successCriteria: [
-      "記事本文を読まなくても「混ざると迷う」「分けると制御できる」が一目で伝わる",
-      "5つの粒度が明確に読み取れる",
-      "日本語ラベルはHP側で正確に重ねられる",
-      "図単体が装飾で終わらず、本文の理解を助けている",
+      "左半分=混線/右半分=整列、の左右対比が一目で読める",
+      "左半の 8 本リボンが重なって混ざっている感覚が伝わる",
+      "右半の 5 段水平バンドが等高・等幅で揃って見える",
+      "中央の luminous seam が左右の境界を補助している (主役にはならない)",
+      "HTML overlay の左右ヘッダー + 8 chaosLabels + 5 structuredLayers が乗る空白がある",
+      "色域が #F8F6FF + #8B7FFF + aurora 3 色だけで構成され、orange / teal が出てこない",
     ],
     referenceAssets: {
       used: [
@@ -79,46 +96,51 @@ export const DIAGRAM_GEN_CONFIGS = {
       ],
     },
     generationRationale: [
-      "slides/11 → 左→中央→右の三幕構成 (混線 / 漏斗 / 整理) をそのまま踏襲。漏斗の中央集約モチーフを中央のソフトフローに反映。",
-      "slides/5 → 7要因が「重なって戻せなくなる」感覚を、左半分の絡み合う 7 本の細い帯として反映 (異なる色相の薄帯)。",
-      "public/demo/(+2/+1/normal/-1/-2)STOP → 露出ブラケットを左半分の帯の太さ・透明度のばらつきに反映 (一様でない揺らぎ)。",
-      "右半分の 5 段は、上から per-camera / per-frame / per-angle / per-scene / per-project の支配域を 5 本の整列したホライゾンタルバンドで表現。",
-      "色域は HP の Layer1 (lavender / peach / sky / teal) のみ。dark navy 系は廃止。",
+      "v3 (2026-04-29 / 8b38762c) chaos-vs-structured 左右対比に再アライン。",
+      "左半: 8 要因の細い帯がゆるく交差する柔らかいテクスチャ。slides/11 の三幕構成『分解前』を抽象化。帯の太さ/透明度のばらつきは demo の ±STOP 露出ブラケットを反映。",
+      "中央: 細い luminous seam (ハードラインなし)。左右の境界を示すだけで、漏斗のように主張しない。",
+      "右半: 5 段の水平バンドの陰影。上から per-camera / per-frame / per-angle / per-scene / per-project の支配域を均等高さで配置 (HTML 5 ラベル + サブラベルが乗る前提)。",
+      "色域は HP 実コードのトークンに同期: #F8F6FF base、#8B7FFF accent、aurora purple/pink/sky の 3 色のみ。",
+      "両半は同じ縦幅・同じ余白。",
     ].join(" "),
     size: "1536x1024",
     quality: "high",
     output_format: "webp",
     prompt: [
       COMMON_STYLE,
-      "DESIGN INTENT — Decomposition of correction factors. Single horizontal banner, three-act read (chaos → funnel → strata).",
-      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash. No dark fills.",
-      "LEFT THIRD — entangled state: SEVEN slender translucent ribbons drift loosely in a relaxed cluster, gently overlapping each other. Each ribbon is one factor (camera difference, exposure drift, color temperature, skin tone, atmosphere/smoke, scene tone, overall look). Ribbons use the site palette only (soft lavender, gentle peach, faint sky, muted teal). Their thickness and opacity vary slightly to echo the +2 / +1 / normal / -1 / -2 STOP exposure bracket from public/demo/*STOP.jpg — a quiet non-uniform vibration, not chaos. The ribbons read as 'mixed but not dark'.",
-      "MIDDLE THIRD — soft luminous funnel / lens, rendered as a quiet inward gradient that gathers the ribbons toward the right. This is the 'decomposition' moment from public/slides/11分解と整理によるアプローチ.png — same calm three-act feeling, reframed horizontally. No hard boundary, no arrow heads.",
-      "RIGHT THIRD — orderly state: FIVE clean horizontal bands stacked top-to-bottom with generous breathing space between them. Each band is a thin softly-glowing horizon line, slightly different muted hue (top = warm peach for per-camera, descending toward cooler lavender / sky / teal for per-frame, per-angle, per-scene, per-project at the bottom). Bands are identical in height and spacing — uniformity matters because HTML labels of equal size sit on each band.",
-      "Tone: light, calm, structural. Generous empty negative space above, below, and between the three thirds so HTML labels (per-camera ... per-project, plus '混ざると迷宮' / '分けると制御できる' headers) overlay cleanly. No arrows, no symbols, no glyphs.",
-      "Visual reference (tone only, do not copy text): public/slides/11分解と整理によるアプローチ.png and public/slides/5複合操作の影響と復元性.png — inherit the calm framework feel and three-act decomposition rhythm, not the dark aesthetic.",
+      "DESIGN INTENT — chaos-vs-structured: two states placed side by side. Left half = entangled mix. Right half = sorted into 5 calm horizontal bands. Both halves share the same vertical area and identical breathing space.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash (purple / pink / sky only).",
+      "Composition rule: the frame is split into two equal halves by a thin luminous seam at the horizontal center. No hard line — just a quiet brighter ridge (subtle aurora-pink hairline) so the eye reads the seam as a soft boundary. Identical top and bottom margins on both halves.",
+      "LEFT HALF (state A — 'mixed') — EIGHT slender translucent ribbons drift loosely and gently CROSS each other in a relaxed cluster around the middle of the half. Each ribbon represents one mixed correction factor (camera type, exposure, color temperature, VE iris-follow, skin-tone consistency, smoke-born atmospheric color, overall film tone, per-song direction). Ribbons use ONLY the HP palette: faint aurora-purple body, with occasional aurora-pink and aurora-sky tints, and the lavender accent #8B7FFF as the most saturated note. Ribbon thickness and opacity vary subtly to echo the +2 / +1 / normal / -1 / -2 STOP exposure bracket — a quiet non-uniform vibration, not chaos. The ribbons read as 'mixed but bright' — never crashed-dark, never warm-peach, never teal.",
+      "MIDDLE SEAM — a single quiet luminous ridge running top-to-bottom, slightly brighter than the rest of the canvas. No arrowheads, no funnel walls, no hard boundaries. The ridge is built from the aurora-pink wash only, kept extremely subtle.",
+      "RIGHT HALF (state B — 'sorted') — FIVE clean horizontal bands stacked top-to-bottom with generous breathing space between them. Each band is a thin softly-glowing horizon line of subtle aurora gradient (top band uses aurora-purple, second mixes purple-into-pink, middle is pure aurora-pink, fourth blends pink-into-sky, bottom is aurora-sky). All five bands are IDENTICAL in height, length, and spacing — equal-weight is critical because HTML labels of identical size will sit one per band. Each band casts a faint diffused shadow of the same aurora hue as itself.",
+      "Empty negative space (>= 35% of frame) above, below, and between the two halves so HTML overlay (left header '混ざると迷宮', right header '分けると制御できる', 8 chaosLabels stacked along the left, and 5 structured-layer labels with sublabels per band on the right) lands cleanly.",
+      "Visual reference (tone only, do not reproduce any text): public/slides/11分解と整理によるアプローチ.png (calm three-act feel) and public/slides/5複合操作の影響と復元性.png (sober contrast tone — adopt the rhythm, not the dark aesthetic).",
+      "No arrows, no symbols, no glyphs, no text, no UI elements, no orange, no teal.",
       COMMON_NEGATIVE,
     ].join(" "),
   },
 
   "correction-scope-map": {
-    sourceSpecNotionUrl: "https://www.notion.so/cfc851f649c0458db9d2126c0b832584",
+    sourceSpecNotionUrl: "https://www.notion.so/8b38762c77fc4a048787c83ee7e8cb56",
     targetArticleNotionUrl: "https://www.notion.so/1510399661d64891aee912320df39b91",
     sourceSpecSummary:
-      "図解仕様書「適用範囲ミニ図」。5段の粒度 (カメラ/フレーム/アングル/シーン/作品) それぞれが、どこまでの範囲を支配するかを横並びで示す。文字なし、HTML/CSS で後載せ。HP slides 11 (分解と整理) と HP slides 5 (複合操作の影響と復元性) のトーンを継承。",
+      "図解仕様書 v3 (2026-04-29 / 8b38762c) keypoint-row。主張『粒度 = 適用範囲』。ヒーロービジュアルとして 5 段の同心円クラスタが奥から手前へ柔らかく重なる。色域は #F8F6FF + #8B7FFF + aurora 3 色 (purple / pink / sky) のみ。文字・番号・グリフは note-diagram.tsx 側で描画。",
     overlayLabels: [
+      "粒度 = 適用範囲",
       "カメラ単位",
       "フレーム単位",
       "アングル単位",
       "シーン単位",
       "作品単位",
-      "粒度 = 適用範囲",
+      "粒度を取り違えると、迷宮に戻る。",
     ],
     successCriteria: [
-      "5つの粒度それぞれが「どこまでの範囲を支配するか」が一目で見える",
-      "粒度を取り違えると戻せなくなる、という本文の核が直感的に伝わる",
-      "日本語ラベルはHP側で正確に重ねられる",
-      "correction-factor-map と並べても重複ではなく補完として読める",
+      "5 段の同心円クラスタが奥から手前へ柔らかく重なるヒーロービジュアルとして読める",
+      "「粒度 = 適用範囲」が一目で伝わる",
+      "色域が #F8F6FF + #8B7FFF + aurora 3 色だけで構成され、orange / teal / 高彩度色が出てこない",
+      "HTML overlay の itemsHeading + 5 items + takeaway が乗る空白がある",
+      "correction-factor-map (chaos-vs-structured) と並べたときに、形状で補完関係になる (左右対比 vs ヒーロー同心円)",
     ],
     referenceAssets: {
       used: [
@@ -133,23 +155,29 @@ export const DIAGRAM_GEN_CONFIGS = {
       ],
     },
     generationRationale: [
-      "slides/11 → 「分解=粒度ごとに見る」発想を、横並び 5 つの同心円クラスタに反映。中心が同じでも外周(支配域)が違う、という対比をそのまま絵にする。",
-      "slides/5 → 「適用範囲が広いほど取り返しがつかない」感覚を、右に行くほど外周リングが大きく、にじみが穏やかになることで反映。",
-      "correction-factor-map と並ぶことを意識し、構図は同心円 (factor-map の 5 本バンドと別形状) を採用 → 補完図として機能する。",
+      "v3 (2026-04-29 / 8b38762c) keypoint-row のヒーロービジュアルに再アライン。",
+      "5 段の同心円クラスタが奥から手前へ柔らかく重なる構図に変更 (旧版の左→右 5 個並びは廃止)。各リングが順次広がり、奥側=narrow scope (per-camera) → 手前=broad scope (per-project) の支配域拡大を暗示する。",
+      "factor-map (chaos-vs-structured) の左右対比とは別形状 (奥行きのある同心円重なり) で補完関係。",
+      "色域は HP 実コードのトークンに同期: #F8F6FF base、#8B7FFF accent、aurora purple/pink/sky の 3 色のみ。",
+      "ラベル・番号・グリフは note-diagram.tsx の keypoint-row 側で全て描画する役割分担なので、画像はヒーロー背景として気分だけを担う。",
     ].join(" "),
     size: "1536x1024",
     quality: "high",
     output_format: "webp",
     prompt: [
       COMMON_STYLE,
-      "DESIGN INTENT — 'scope-of-effect' mini-map. Five concentric-ring clusters arranged left-to-right. Each cluster represents one of the five granularity strata (per-camera, per-frame, per-angle, per-scene, per-project).",
-      "Background: bright white-to-soft-lavender canvas (~#F8F6FF). No dark fills.",
-      "Each cluster: a small bright nucleus at its center (same size across all five clusters — the correction itself is the same), surrounded by 2-3 nested rings. The OUTERMOST ring grows progressively from left to right: smallest on the leftmost cluster (narrow per-camera scope), largest on the rightmost (project-wide scope).",
-      "Rings: thin softly-glowing outlines using the HP aurora palette (soft lavender as the dominant ring color, with one accent ring per cluster in faint peach / sky / teal). No filled disks. No hard outlines.",
-      "Spacing: equal horizontal spacing between cluster centers; clusters do NOT overlap. Generous breathing space above and below for HTML labels.",
-      "A very faint horizontal flow line passes through all five nuclei to read left-to-right as one sequence (slides/11 'decompose then read' sense).",
+      "DESIGN INTENT — A hero-style background visual for a keypoint-row diagram about 'scope = grain'. FIVE concentric-ring clusters that softly overlap from back to front, suggesting how the same correction reaches a wider area at coarser grain. The image is background only — labels, numbers, and small boxes are NOT drawn here; they are overlaid in HTML by note-diagram.tsx.",
+      "Background: bright white-to-soft-lavender canvas (~#F8F6FF) with very faint aurora wash (purple / pink / sky only).",
+      "FIVE concentric-ring clusters share a roughly common center (slightly off-center to the left so the right side has breathing space), arranged so the smallest cluster sits in the deepest layer and the largest cluster sits in the front layer. The clusters overlap softly, with translucency creating gentle depth — never hard-edged. Each cluster is built from 2-3 thin softly-glowing rings of the same aurora hue.",
+      "Cluster 1 (back, smallest, narrow per-camera scope) — aurora-purple thin rings.",
+      "Cluster 2 — purple-blending-into-pink rings.",
+      "Cluster 3 (middle) — aurora-pink rings, with the lavender accent #8B7FFF as a quiet inner highlight.",
+      "Cluster 4 — pink-blending-into-sky rings.",
+      "Cluster 5 (front, largest, broad project-wide scope) — aurora-sky rings, very pale.",
+      "All clusters are open thin outlines — NO filled disks, NO hard borders, NO thick strokes. The overlap regions deepen to a slightly more saturated lavender-pink-sky blend without ever becoming dark.",
+      "Negative space: keep the right ~30% of the canvas mostly empty so the HTML overlay (heading '粒度 = 適用範囲', 5 grid items with monospace numbers, and the takeaway line) lands cleanly. The top edge and bottom edge also stay soft and uncluttered.",
       "Visual reference (tone only): public/slides/11分解と整理によるアプローチ.png and public/slides/5複合操作の影響と復元性.png — inherit the calm structural feel.",
-      "No arrows, no symbols, no glyphs, no text.",
+      "No arrows, no symbols, no glyphs, no text, no orange, no teal.",
       COMMON_NEGATIVE,
     ].join(" "),
   },

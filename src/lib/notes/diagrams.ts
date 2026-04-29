@@ -31,7 +31,10 @@ export type ChaosStructuredDiagram = DiagramBase & {
   chaosHeading: string
   chaosLabels: string[]
   structuredHeading: string
-  structuredLayers: string[]
+  // structuredLayers は { label, sublabel? } で受ける。
+  // 仕様書 v3 では correction-factor-map のように label + 1行説明が対になる
+  // ケースと、filmlook-density-mixture のように label のみのケースが両方ある。
+  structuredLayers: { label: string; sublabel?: string }[]
 }
 
 export type CenteredAxesDiagram = DiagramBase & {
@@ -84,27 +87,28 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
     layout: "chaos-vs-structured",
     title: "カラーコレクションの因数分解マップ",
     caption:
-      "5000カットの迷宮を、5段の粒度に畳み直す。ライブのカラコレでは、要因を粒度で分けて管理することがそのまま作業効率になる。",
-    alt: "左側に色温度や肌、シーントーンなどが混線したカオス、右側にカメラ単位からシーン単位までの5段レイヤーへ整理された状態を示す横長図解",
+      "ライブのカラコレでは、補正要因が同じ画に重なる。混ざったままでは戻せないが、粒度に分ければ独立に制御できる。",
+    alt: "左半分に補正要因が緩く混ざるカオス、右半分にカメラ単位から作品単位までの5段に整列した状態を示す左右対比の横長図解",
     aspect: { width: 1536, height: 1024 },
-    intro: "左→右で読む。混線していた要因が、5段の粒度に整列するところを掴む。",
-    chaosHeading: "整理前 — 混線した補正要因",
+    intro: "混ぜたら迷う。粒度に分けると制御できる。",
+    chaosHeading: "混ざると迷宮",
     chaosLabels: [
-      "カメラ差",
-      "露出揺れ",
+      "カメラの種類",
+      "露出",
       "色温度",
-      "肌",
-      "大気",
-      "シーントーン",
-      "作品ルック",
+      "VEさんのアイリスフォロー",
+      "肌色の一貫性",
+      "スモークで生まれる大気の色",
+      "作品全体のトーン",
+      "曲ごとの方向性",
     ],
-    structuredHeading: "整理後 — 5段の粒度レイヤー",
+    structuredHeading: "分けると制御できる",
     structuredLayers: [
-      "カメラ単位",
-      "フレーム単位",
-      "アングル単位",
-      "シーン単位",
-      "作品単位",
+      { label: "カメラ単位", sublabel: "カメラ差を揃える" },
+      { label: "フレーム単位", sublabel: "露出を追う" },
+      { label: "アングル単位", sublabel: "色味を揃える" },
+      { label: "シーン単位", sublabel: "トーンを設計する" },
+      { label: "作品単位", sublabel: "ルックを当てる" },
     ],
   },
   "grading-look-decomposition": {
@@ -170,41 +174,41 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
   "correction-scope-map": {
     slug: "correction-scope-map",
     layout: "keypoint-row",
-    title: "粒度ごとの「適用範囲」ミニ図",
+    title: "粒度 = 適用範囲",
     caption:
-      "「どの粒度で動かすか」は、「どの範囲を一度に動かすか」と同じこと。粒度を取り違えると、戻したい範囲を戻せなくなる。",
-    alt: "カメラ単位、フレーム単位、アングル単位、シーン単位、作品単位の5段階それぞれが、どこまでの範囲を支配するかを並べたキーポイント図解",
+      "同じ補正でも、どこまで効くかは粒度ごとに違う。5段を並べると、混ぜてはいけない理由が分かる。",
+    alt: "カメラ単位、フレーム単位、アングル単位、シーン単位、作品単位の5段それぞれが支配する適用範囲を、5段の同心円クラスタで示すヒーロービジュアルに並ぶキーポイント図解",
     aspect: { width: 1536, height: 1024 },
-    intro: "粒度 = 適用範囲。並べて見ると、混ぜてはいけない理由が分かる。",
-    itemsHeading: "5段の粒度 — 何を支配するか",
+    intro: "粒度 = 適用範囲。",
+    itemsHeading: "粒度 = 適用範囲",
     items: [
       {
         glyph: "scope",
         label: "カメラ単位",
-        sublabel: "同じカメラの全カットに効く。センサー差・レンズ個体差を均す。",
+        sublabel: "同じカメラ全カットに効く",
       },
       {
         glyph: "scope",
         label: "フレーム単位",
-        sublabel: "1カット内のフレームごとに動く。露出揺れ・雲の流れに追従する。",
+        sublabel: "同条件 ±EV の 1 枚ぶん",
       },
       {
         glyph: "scope",
         label: "アングル単位",
-        sublabel: "同アングルの別テイクに揃う。色温度・スモーク量の差を吸収する。",
+        sublabel: "同アングル別テイクに効く",
       },
       {
         glyph: "scope",
         label: "シーン単位",
-        sublabel: "同シーンの全カットに乗る。空気感・トーンの一貫性を担う。",
+        sublabel: "シーン全体のトーンに効く",
       },
       {
         glyph: "scope",
         label: "作品単位",
-        sublabel: "全カットの基底に効く。ルック全体のベースを置く。",
+        sublabel: "作品全体のルックに効く",
       },
     ],
-    takeaway: "粒度を取り違えると、戻したい範囲だけを戻せなくなる。",
+    takeaway: "粒度を取り違えると、迷宮に戻る。",
   },
   "grading-words-to-knobs": {
     slug: "grading-words-to-knobs",
