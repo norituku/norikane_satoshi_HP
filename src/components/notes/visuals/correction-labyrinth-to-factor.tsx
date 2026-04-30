@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react"
  * 1 本の 20 秒ループで「混線していた 9 因子」が「フレーム → アングル → カメラ
  * → シーン → 作品 の 5 列粒度」へ整列する過程を描く。
  *
- *   - Phase 0 (0..4s)   : 上空 emit point から 9 chip が小さく湧き旋回 (scale 0.4)
+ *   - Phase 0 (0..4s)   : 上空 emit point 周辺で 9 chip がふわふわ swirl (scale 0.85)
  *   - Phase 1 (4..10s)  : 各 chip が所属列へ落下しながら本サイズに展開 (scale → 1.0)
  *   - Phase 2 (10..15s) : 全 chip が所属列に積層完了し静止 (因数分解の完成図)
  *   - Phase 3 (15..20s) : 全 chip が emit point へ吸い上げられ opacity 1→0
@@ -40,7 +40,9 @@ const FALL_DUR = 1.6
 const EMIT_X = 804
 const EMIT_Y = 56
 
-const SWIRL_SCALE = 0.4
+// 0.85: chip 実表示 240×56 → 204×47.6 で fontSize 20 ラベルが読める下限。
+// 0.84 が判定境界、混沌感とのバランスでわずかに上を取る。
+const SWIRL_SCALE = 0.85
 
 const P0_END = 4
 const P1_END = 10
@@ -100,21 +102,24 @@ type CardSpec = {
 // 列ヘッダ直下 (上端) の段、stack を増やすほど下に積む。
 // emitDelay ∈ [0, 2.5]、fallStart ∈ [4.0, 6.8] で時間差を作り、Phase 1 (6s) 内に
 // 全 chip が着地できるよう FALL_DUR=1.6s の余白を確保する。
+// swirlR は chip サイズ 240×56 (scale 0.85 適用後 204×48) に合わせ、
+// 旧値 12〜18 を ×1.85〜2.22 倍 (26〜40) に拡張。chip 同士の重なりは
+// 「混沌・混線」の表現として許容する。
 const CARDS: CardSpec[] = [
   // フレーム列
-  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 14, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
-  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 18, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
+  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
+  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 38, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
   // アングル列
-  { id: "skin", label: "肌", col: 1, stack: 0, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 16, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
-  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 12, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
+  { id: "skin", label: "肌", col: 1, stack: 0, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 34, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
+  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 26, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
   // カメラ列
-  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 15, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
-  { id: "lens", label: "レンズ", col: 2, stack: 1, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 18, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
-  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 13, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
+  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 32, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
+  { id: "lens", label: "レンズ", col: 2, stack: 1, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 40, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
+  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
   // シーン列
-  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 16, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
+  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 34, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
   // 作品列
-  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 14, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
+  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 30, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
 ]
 
 function clamp01(v: number) {
@@ -185,7 +190,7 @@ function chipState(card: CardSpec, t: number): ChipState {
     }
   }
 
-  // Phase 0: emit_delay 後 swirl + fade-in (scale=0.4 のまま emit point 周りに小さく旋回)
+  // Phase 0: emit_delay 後 swirl + fade-in (scale=SWIRL_SCALE のまま emit point 周りをふわふわ旋回。ラベル可読性を保つ)
   if (t >= card.emitDelay) {
     const fadeIn = clamp01((t - card.emitDelay) / 0.6)
     const sw = swirlCenter(card, t)
