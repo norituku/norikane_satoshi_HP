@@ -3,15 +3,15 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * v5 統合動画モジュール: 迷宮 → 因数分解 (脳人物 + 5 列粒度 + 落下物理)
+ * v5 統合動画モジュール: 迷宮 → 因数分解 (上空 swirl + 5 列粒度 + 落下物理)
  *
- * 1 本の 20 秒ループで「頭の中で混線していた 9 因子」が「フレーム → アングル
- * → カメラ → シーン → 作品 の 5 列粒度」へ整列する過程を描く。
+ * 1 本の 20 秒ループで「混線していた 9 因子」が「フレーム → アングル → カメラ
+ * → シーン → 作品 の 5 列粒度」へ整列する過程を描く。
  *
- *   - Phase 0 (0..4s)   : 脳人物の emit point から 9 chip が小さく湧き旋回 (scale 0.4)
+ *   - Phase 0 (0..4s)   : 上空 emit point から 9 chip が小さく湧き旋回 (scale 0.4)
  *   - Phase 1 (4..10s)  : 各 chip が所属列へ落下しながら本サイズに展開 (scale → 1.0)
  *   - Phase 2 (10..15s) : 全 chip が所属列に積層完了し静止 (因数分解の完成図)
- *   - Phase 3 (15..20s) : 全 chip が頭部 emit point へ吸い上げられ opacity 1→0
+ *   - Phase 3 (15..20s) : 全 chip が emit point へ吸い上げられ opacity 1→0
  *   - t=20 で Phase 0 に wrap し再ループ
  *
  * 物理は seed 固定の閉形解 (swirl は周期関数、fall は ease-out X / ease-in Y)
@@ -36,13 +36,9 @@ const COL_BOTTOM_Y = COL_TOP_Y + COL_H
 
 const FALL_DUR = 1.6
 
-const BRAIN_X = 800
-const BRAIN_Y = 82
-const HEAD_RX = 30
-const HEAD_RY = 32
-// emit point: 頭頂やや前方 (1 点固定)
-const EMIT_X = BRAIN_X + 4
-const EMIT_Y = BRAIN_Y - HEAD_RY + 6
+// emit point: 上空中央やや前方 (1 点固定、9 chip swirl の中心 / Phase 3 吸い上げ先)
+const EMIT_X = 804
+const EMIT_Y = 56
 
 const SWIRL_SCALE = 0.4
 
@@ -54,8 +50,6 @@ const P3_END = 20
 const ACCENT = "rgb(139,127,255)"
 const TEXT_PRIMARY = "rgba(28,15,110,0.92)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
-const PERSON_STROKE = "rgba(60,50,140,0.85)"
-const PERSON_FILL = "rgba(139,127,255,0.10)"
 
 const COLUMNS = [
   { label: "フレーム単位", borderOp: 0.85, fillOp: 0.10 },
@@ -202,19 +196,6 @@ function chipState(card: CardSpec, t: number): ChipState {
   return { cx: EMIT_X, cy: EMIT_Y, scale: SWIRL_SCALE, opacity: 0 }
 }
 
-function pulseAlpha(t: number) {
-  // P0/P1 のみ脈動。9..10s でフェードアウトし、P2 は無音、P3 (15..20s) で再脈動
-  if (t < 9) return 0.55
-  if (t < 10) return 0.55 * (10 - t)
-  if (t < P2_END) return 0
-  if (t < P3_END) return 0.55
-  return 0
-}
-
-function pulseOffset(t: number) {
-  return (Math.sin((2 * Math.PI * t) / 1.6) + 1) / 2
-}
-
 function Icon({
   kind,
   x,
@@ -340,91 +321,6 @@ function Icon({
         </g>
       )
   }
-}
-
-function BrainPerson({ t }: { t: number }) {
-  const ringAlpha = pulseAlpha(t)
-  const ringOffset = pulseOffset(t)
-  return (
-    <g aria-hidden="true">
-      {/* 脈動リング (P0/P1/P3 のみ) — Notion Mono Editorial 1 色統一 */}
-      {ringAlpha > 0 ? (
-        <ellipse
-          cx={BRAIN_X}
-          cy={BRAIN_Y}
-          rx={HEAD_RX + 4 + 3 * ringOffset}
-          ry={HEAD_RY + 4 + 3 * ringOffset}
-          fill="none"
-          stroke={ACCENT}
-          strokeOpacity={ringAlpha * (0.6 - 0.3 * ringOffset)}
-          strokeWidth={1.2}
-        />
-      ) : null}
-
-      {/* 首 (短い 2 本) */}
-      <path
-        d={`M ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY - 4} L ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY + 14}`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.4}
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY - 4} L ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY + 14}`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.4}
-        fill="none"
-        strokeLinecap="round"
-      />
-
-      {/* 肩線 (両肩、Q カーブで手描き感) */}
-      <path
-        d={`M ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY + 14}
-            Q ${BRAIN_X - 56} ${BRAIN_Y + HEAD_RY + 18}
-              ${BRAIN_X - 78} ${BRAIN_Y + HEAD_RY + 36}`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.4}
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY + 14}
-            Q ${BRAIN_X + 56} ${BRAIN_Y + HEAD_RY + 18}
-              ${BRAIN_X + 78} ${BRAIN_Y + HEAD_RY + 36}`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.4}
-        fill="none"
-        strokeLinecap="round"
-      />
-
-      {/* 頭部 (シンプルな丸 + 極淡 accent fill) */}
-      <ellipse
-        cx={BRAIN_X}
-        cy={BRAIN_Y}
-        rx={HEAD_RX}
-        ry={HEAD_RY}
-        fill={PERSON_FILL}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.4}
-      />
-
-      {/* 目: 細い弧 1 本 ×2 (ごく控えめに) */}
-      <path
-        d={`M ${BRAIN_X - 11} ${BRAIN_Y - 2} q 3 -3 6 0`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.2}
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${BRAIN_X + 5} ${BRAIN_Y - 2} q 3 -3 6 0`}
-        stroke={PERSON_STROKE}
-        strokeWidth={1.2}
-        fill="none"
-        strokeLinecap="round"
-      />
-    </g>
-  )
 }
 
 export default function CorrectionLabyrinthToFactor({
@@ -597,9 +493,6 @@ export default function CorrectionLabyrinthToFactor({
           </g>
         )
       })}
-
-      {/* 脳人物 (Notion Mono Editorial: 丸頭 + 首肩 + 目) */}
-      <BrainPerson t={t} />
 
       {/* 9 chip — phase 別の状態で描画 (中心座標 + scale) */}
       {CARDS.map((card) => {
