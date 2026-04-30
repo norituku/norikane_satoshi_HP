@@ -56,7 +56,11 @@ export function NoteVisual({ slug }: { slug: string }) {
   const config = getVisualConfig(slug)
   if (!config) return null
   return (
-    <figure className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10">
+    <figure
+      data-diagram-slug={config.slug}
+      data-diagram-kind={config.kind}
+      className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10"
+    >
       <VisualBody config={config} />
       <figcaption className="px-5 py-5 md:px-7 md:py-6">
         <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
