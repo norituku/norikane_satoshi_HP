@@ -39,7 +39,7 @@ const FALL_DUR = 1.6
 // emit point Y: 上空中央やや前方 (Phase 0 swirl 中心 Y / Phase 3 吸い上げ先 Y、9 chip 共通)
 // X は chip 個別 (CardSpec.emitX、220〜1400) で横方向に分散させる。列順とは無関係に
 // シャッフルし、混沌・混線を視覚化する (Phase 32-AH)。
-const EMIT_Y = 56
+const EMIT_Y = 80
 
 // 0.85: chip 実表示 240×56 → 204×47.6 で fontSize 20 ラベルが読める下限。
 // 0.84 が判定境界、混沌感とのバランスでわずかに上を取る。
@@ -393,7 +393,7 @@ export default function CorrectionLabyrinthToFactor({
       </text>
       <text
         x={72}
-        y={64}
+        y={190}
         textAnchor="end"
         fill={TEXT_MUTED}
         fontSize={16}
@@ -403,14 +403,14 @@ export default function CorrectionLabyrinthToFactor({
       </text>
       <text
         x={1528}
-        y={64}
+        y={190}
         fill={TEXT_MUTED}
         fontSize={16}
         fontWeight={500}
       >
         粗
       </text>
-      <rect x={80} y={48} width={1440} height={14} rx={7} ry={7} fill="url(#scope-axis-grad)" />
+      <rect x={80} y={175} width={1440} height={14} rx={7} ry={7} fill="url(#scope-axis-grad)" />
 
       {/* 列間の連結矢印 (4 本、列の中段) */}
       {COLUMNS.slice(0, 4).map((_, i) => {
@@ -469,7 +469,7 @@ export default function CorrectionLabyrinthToFactor({
             {/* 番号バッジ */}
             <circle
               cx={cx}
-              cy={COL_TOP_Y - 28}
+              cy={COL_TOP_Y - 48}
               r={18}
               fill="rgba(255,255,255,0.85)"
               stroke={ACCENT}
@@ -478,7 +478,7 @@ export default function CorrectionLabyrinthToFactor({
             />
             <text
               x={cx}
-              y={COL_TOP_Y - 28 + 6}
+              y={COL_TOP_Y - 48 + 6}
               textAnchor="middle"
               fill={TEXT_PRIMARY}
               fontSize={18}
