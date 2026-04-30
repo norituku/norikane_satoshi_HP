@@ -121,7 +121,6 @@ export default function CorrectionScopeHierarchy() {
       viewBox={`0 0 ${W} ${H}`}
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
-      style={{ fontFamily: "var(--font-sans)" }}
     >
       <defs>
         <linearGradient id="scope-axis-grad" x1="0%" y1="0%" x2="100%" y2="0%">

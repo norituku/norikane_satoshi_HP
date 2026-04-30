@@ -269,7 +269,6 @@ export default function CorrectionLabyrinthToFactor({
       viewBox={`0 0 ${W} ${H}`}
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
-      style={{ fontFamily: "var(--font-sans)" }}
     >
       {/* chaos / order zone divider (dashed, faint) */}
       <line
