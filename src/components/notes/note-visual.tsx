@@ -45,12 +45,7 @@ const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
   ),
 }
 
-const STATIC_MODULES: Record<string, ComponentType<unknown>> = {
-  "correction-scope-hierarchy": dynamic(
-    () => import("@/components/notes/visuals/correction-scope-hierarchy"),
-    { loading: () => <VisualSkeleton /> }
-  ),
-}
+const STATIC_MODULES: Record<string, ComponentType<unknown>> = {}
 
 export function NoteVisual({ slug }: { slug: string }) {
   const config = getVisualConfig(slug)

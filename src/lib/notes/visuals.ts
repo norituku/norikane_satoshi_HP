@@ -31,27 +31,17 @@ export type VisualConfig = {
 }
 
 export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
-  // ---- correction (PoC: 動画 1 + 静止画 1 + placeholder 4) ------------------
+  // ---- correction (PoC: 統合動画 1 + placeholder 4) ------------------------
   "correction-labyrinth-to-factor": {
     slug: "correction-labyrinth-to-factor",
     kind: "video",
     title: "迷宮 → 因数分解",
     caption:
-      "5000 カットの混線が、5 段の粒度に畳み直される過程を 12 秒で見せる。色や派手な動きではなく、要因が並び直す手付きそのものを描く。",
-    alt: "混線したカラコレ要因のラベル群が、カメラ・フレーム・アングル・シーン・作品の 5 段の粒度レイヤーへ整列していくループアニメーション",
+      "9 つの混線要因が、頭の中から落下し、フレーム → アングル → カメラ → シーン → 作品 の 5 列に積み上がる。20 秒で 1 ループ。",
+    alt: "脳人物ピクトグラムから 9 chip が落下し、5 列の粒度レイヤーに整列していくループアニメーション",
     aspect: { width: 16, height: 10 },
-    intro: "左の混線が、右の 5 段に並び直る。これがカラコレの設計。",
-    loopSec: 12,
-  },
-  "correction-scope-hierarchy": {
-    slug: "correction-scope-hierarchy",
-    kind: "static",
-    title: "粒度 = 適用範囲の入れ子",
-    caption:
-      "カメラ → フレーム → アングル → シーン → 作品。粒度は階層構造として読める。内側を動かしても外側は壊れない、という保証がここに描かれる。",
-    alt: "カメラ単位を最小粒度として、フレーム・アングル・シーン・作品の順に外側へ広がる 5 階層の入れ子図",
-    aspect: { width: 16, height: 10 },
-    intro: "内 → 外で読む。各層は外側を壊さずに自分の範囲だけを動かせる。",
+    intro: "頭の中の混線が、5 段の粒度に並び直る。",
+    loopSec: 20,
   },
   // ---- placeholder (本フェーズでは図そのものは未実装。本文に slug が来てもエラーにしない) ----
   "correction-control-math": {
