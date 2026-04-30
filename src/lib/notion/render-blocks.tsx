@@ -5,7 +5,9 @@ import type {
   RichTextItemResponse,
 } from "@notionhq/client"
 import { NoteDiagram } from "@/components/notes/note-diagram"
+import { NoteVisual } from "@/components/notes/note-visual"
 import { getDiagramConfig, parseDiagramMarker } from "@/lib/notes/diagrams"
+import { getVisualConfig } from "@/lib/notes/visuals"
 
 const LINK_CLASS =
   "underline underline-offset-4 decoration-[rgba(139,127,255,0.5)] hover:text-[var(--accent-primary)] hover:decoration-[var(--accent-primary)] transition-colors"
@@ -174,11 +176,18 @@ export function RenderBlocks({
         return
       }
       // [[diagram:<slug>]] のみで構成された paragraph は図解コンポーネントに差し替える。
-      // 認識できない slug や誤記は通常の paragraph として描画して raw marker を残す
-      // (ただし本文側で誤記に気付ける程度に visible にする方を優先する)。
+      // 解決順は v5 → v3 → raw paragraph フォールバック。
+      //   1. v5 visuals registry に登録があれば NoteVisual (動画 / 静止画 / placeholder)
+      //   2. それ以外は v3 DIAGRAM_REGISTRY を参照して旧 NoteDiagram で描画
+      //   3. どちらにも無い slug は paragraph をそのまま出して raw marker を残す
+      //      (本文側で誤記に気付けるようにする)
       const plain = richToPlain(block.paragraph.rich_text)
       const diagramSlug = parseDiagramMarker(plain)
       if (diagramSlug) {
+        if (getVisualConfig(diagramSlug)) {
+          out.push(<NoteVisual key={key} slug={diagramSlug} />)
+          return
+        }
         const config = getDiagramConfig(diagramSlug)
         if (config) {
           out.push(<NoteDiagram key={key} config={config} />)
