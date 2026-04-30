@@ -202,10 +202,14 @@ export function RenderBlocks({
       return
     }
     // image block は HP 側では描画しない。
-    // - HP は public/notes/diagrams/<slug>.webp を NoteDiagram で表示しているため、
-    //   Notion 下書きノートに参考プレビューとして挿入された image block を出すと重複する。
-    // - 将来 image block 全般をサポートする場合でも、caption が "HP図解プレビュー:" で始まる
-    //   image block は HP 側では明示的に skip し続ける (HP用 marker [[diagram:<slug>]] 経由のみ表示)。
+    // - HP は [[diagram:<slug>]] marker を NoteDiagram に差し替えて表示しているため、
+    //   Notion 下書きに参考プレビューとして挿入された image block を出すと二重描画になる。
+    // - cc-notion 同期パイプラインが挿入する preview image block は caption 接頭辞
+    //   `__preview__:<slug>` または file/external URL `/notes/diagrams/<slug>.preview.png`
+    //   を持つ。ここで明示的にスキップ判定し、将来 image block 全般を render するように
+    //   なっても preview block だけは確実に除外できるようにする。
+    // - 旧仕様の "HP図解プレビュー: <slug>" caption も preview とみなして skip する
+    //   (insert-preview.mjs 由来、過去ページに残っている可能性)。
     if (block.type === "image") {
       return
     }

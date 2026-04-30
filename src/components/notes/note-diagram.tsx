@@ -27,7 +27,10 @@ export function NoteDiagram({ config }: { config: DiagramConfig }) {
   // photo-strip は AI ヒーロー画像を持たない (写真自体がヒーロー)。
   const hasHeroImage = config.layout !== "photo-strip"
   return (
-    <figure className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10">
+    <figure
+      data-diagram-slug={config.slug}
+      className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10"
+    >
       {hasHeroImage ? (
         <div
           className="relative w-full"
