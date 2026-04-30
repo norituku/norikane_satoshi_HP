@@ -30,13 +30,18 @@ export type VideoVisualProps = {
 // 各 slug を静的に列挙して dynamic import に渡す。これにより Next が
 // バンドル時に code-split を行う。新しい slug を足すときは v5 registry の
 // エントリ追加と合わせてここにも 1 行追加する。
+//
+// SSR について: 動画モジュールは render が「t=0 / isPlaying=false の純関数」で、
+// IntersectionObserver / matchMedia / requestAnimationFrame は全て useEffect 内。
+// よって ssr: false は不要 (むしろ BAILOUT_TO_CLIENT_SIDE_RENDERING の dev overlay
+// 雑音を呼ぶ)。SSR 時は初期フレーム (透明) を吐き、hydration 後にアニメ開始。
 const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
   "correction-labyrinth-to-factor": dynamic(
     () =>
       import(
         "@/components/notes/visuals/correction-labyrinth-to-factor"
       ),
-    { ssr: false, loading: () => <VisualSkeleton /> }
+    { loading: () => <VisualSkeleton /> }
   ),
 }
 
