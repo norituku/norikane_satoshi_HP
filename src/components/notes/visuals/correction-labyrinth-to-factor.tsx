@@ -36,8 +36,9 @@ const COL_BOTTOM_Y = COL_TOP_Y + COL_H
 
 const FALL_DUR = 1.6
 
-// emit point: 上空中央やや前方 (1 点固定、9 chip swirl の中心 / Phase 3 吸い上げ先)
-const EMIT_X = 804
+// emit point Y: 上空中央やや前方 (Phase 0 swirl 中心 Y / Phase 3 吸い上げ先 Y、9 chip 共通)
+// X は chip 個別 (CardSpec.emitX、220〜1400) で横方向に分散させる。列順とは無関係に
+// シャッフルし、混沌・混線を視覚化する (Phase 32-AH)。
 const EMIT_Y = 56
 
 // 0.85: chip 実表示 240×56 → 204×47.6 で fontSize 20 ラベルが読める下限。
@@ -88,6 +89,7 @@ type CardSpec = {
   label: string
   col: number
   stack: number
+  emitX: number
   emitDelay: number
   fallStart: number
   swirlPhase: number
@@ -107,19 +109,19 @@ type CardSpec = {
 // 「混沌・混線」の表現として許容する。
 const CARDS: CardSpec[] = [
   // フレーム列
-  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
-  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 38, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
+  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitX: 1100, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
+  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitX: 380, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 38, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
   // アングル列
-  { id: "skin", label: "肌", col: 1, stack: 0, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 34, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
-  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 26, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
+  { id: "skin", label: "肌", col: 1, stack: 0, emitX: 220, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 34, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
+  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitX: 1400, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 26, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
   // カメラ列
-  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 32, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
-  { id: "lens", label: "レンズ", col: 2, stack: 1, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 40, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
-  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
+  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitX: 540, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 32, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
+  { id: "lens", label: "レンズ", col: 2, stack: 1, emitX: 1240, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 40, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
+  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitX: 820, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 28, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
   // シーン列
-  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 34, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
+  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitX: 680, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 34, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
   // 作品列
-  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 30, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
+  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitX: 960, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 30, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
 ]
 
 function clamp01(v: number) {
@@ -150,7 +152,7 @@ function chipTargetCY(stack: number) {
 function swirlCenter(card: CardSpec, t: number) {
   const tau = Math.max(0, t - card.emitDelay)
   const angle = (card.swirlDir * 2 * Math.PI * tau) / card.swirlPeriod + card.swirlPhase
-  const cx = EMIT_X + card.swirlR * Math.cos(angle)
+  const cx = card.emitX + card.swirlR * Math.cos(angle)
   const cy = EMIT_Y + card.swirlR * 0.6 * Math.sin(angle)
   return { cx, cy }
 }
@@ -166,7 +168,7 @@ function chipState(card: CardSpec, t: number): ChipState {
     const p = clamp01((t - P2_END) / (P3_END - P2_END))
     const eased = easeInCubic(p)
     return {
-      cx: lerp(targetCX, EMIT_X, eased),
+      cx: lerp(targetCX, card.emitX, eased),
       cy: lerp(targetCY, EMIT_Y, eased),
       scale: lerp(1, SWIRL_SCALE, eased),
       opacity: 1 - eased,
@@ -198,7 +200,7 @@ function chipState(card: CardSpec, t: number): ChipState {
   }
 
   // Pre-emission: emit point に駐機・不可視
-  return { cx: EMIT_X, cy: EMIT_Y, scale: SWIRL_SCALE, opacity: 0 }
+  return { cx: card.emitX, cy: EMIT_Y, scale: SWIRL_SCALE, opacity: 0 }
 }
 
 function Icon({
