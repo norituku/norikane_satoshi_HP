@@ -8,8 +8,8 @@ import { useEffect, useRef, useState } from "react"
  * 1 本の 20 秒ループで「頭の中で混線していた 9 因子」が「フレーム → アングル
  * → カメラ → シーン → 作品 の 5 列粒度」へ整列する過程を描く。
  *
- *   - Phase 0 (0..4s)   : 脳人物の脳内 emit point から 9 chip が時間差で湧き旋回
- *   - Phase 1 (4..10s)  : 重力 ON、各 chip が所属列へ落下し、列内で積層
+ *   - Phase 0 (0..4s)   : 脳人物の emit point から 9 chip が小さく湧き旋回 (scale 0.4)
+ *   - Phase 1 (4..10s)  : 各 chip が所属列へ落下しながら本サイズに展開 (scale → 1.0)
  *   - Phase 2 (10..15s) : 全 chip が所属列に積層完了し静止 (因数分解の完成図)
  *   - Phase 3 (15..20s) : 全 chip が頭部 emit point へ吸い上げられ opacity 1→0
  *   - t=20 で Phase 0 に wrap し再ループ
@@ -21,21 +21,30 @@ import { useEffect, useRef, useState } from "react"
 
 const LOOP = 20
 const W = 1600
-const H = 1000
+const H = 500
+
 const CHIP_W = 240
-const CHIP_H = 72
+const CHIP_H = 56
 const COL_W = 240
 const COL_X = [80, 380, 680, 980, 1280]
-const COL_TOP_Y = 340
-const COL_H = 520
-const COL_BOTTOM_Y = COL_TOP_Y + COL_H
+const COL_TOP_Y = 200
+const HEADER_OFFSET = 60 // 列ヘッダラベル下端から chip 1 段目までの間隔
 const STACK_GAP = 8
+const MAX_STACK = 3 // カメラ列の chip 数
+const COL_H = HEADER_OFFSET + MAX_STACK * (CHIP_H + STACK_GAP) + 8 // 60 + 192 + 8 = 260
+const COL_BOTTOM_Y = COL_TOP_Y + COL_H
+
 const FALL_DUR = 1.6
 
 const BRAIN_X = 800
-const BRAIN_Y = 110
-const HEAD_RX = 80
-const HEAD_RY = 86
+const BRAIN_Y = 82
+const HEAD_RX = 30
+const HEAD_RY = 32
+// emit point: 頭頂やや前方 (1 点固定)
+const EMIT_X = BRAIN_X + 4
+const EMIT_Y = BRAIN_Y - HEAD_RY + 6
+
+const SWIRL_SCALE = 0.4
 
 const P0_END = 4
 const P1_END = 10
@@ -45,8 +54,8 @@ const P3_END = 20
 const ACCENT = "rgb(139,127,255)"
 const TEXT_PRIMARY = "rgba(28,15,110,0.92)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
-const STROKE_BRAIN = "rgba(95,80,210,0.55)"
-const STROKE_BRAIN_SOFT = "rgba(95,80,210,0.45)"
+const PERSON_STROKE = "rgba(60,50,140,0.85)"
+const PERSON_FILL = "rgba(139,127,255,0.10)"
 
 const COLUMNS = [
   { label: "フレーム単位", borderOp: 0.85, fillOp: 0.10 },
@@ -93,24 +102,25 @@ type CardSpec = {
   icon: IconKind
 }
 
-// 9 chip × (col, stack) は事前固定で重なり NG を構造的に保証する。
+// 9 chip × (col, stack) は事前固定で重なり NG を構造的に保証する。stack 0 が
+// 列ヘッダ直下 (上端) の段、stack を増やすほど下に積む。
 // emitDelay ∈ [0, 2.5]、fallStart ∈ [4.0, 6.8] で時間差を作り、Phase 1 (6s) 内に
 // 全 chip が着地できるよう FALL_DUR=1.6s の余白を確保する。
 const CARDS: CardSpec[] = [
   // フレーム列
-  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 36, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
-  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 44, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
+  { id: "exposure", label: "露出揺れ", col: 0, stack: 0, emitDelay: 0.4, fallStart: 4.2, swirlPhase: 0.0, swirlR: 14, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_AMBER, icon: "sun" },
+  { id: "atmosphere", label: "大気", col: 0, stack: 1, emitDelay: 1.6, fallStart: 5.4, swirlPhase: 1.4, swirlR: 18, swirlPeriod: 2.3, swirlDir: -1, tint: TINT_SKY, icon: "cloud" },
   // アングル列
-  { id: "skin", label: "肌", col: 1, stack: 0, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 40, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
-  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 32, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
+  { id: "skin", label: "肌", col: 1, stack: 0, emitDelay: 0.9, fallStart: 4.7, swirlPhase: 2.6, swirlR: 16, swirlPeriod: 1.8, swirlDir: 1, tint: TINT_ROSE, icon: "person" },
+  { id: "illusion", label: "色の錯覚", col: 1, stack: 1, emitDelay: 2.0, fallStart: 5.9, swirlPhase: 3.7, swirlR: 12, swirlPeriod: 2.1, swirlDir: -1, tint: TINT_LIME, icon: "illusion" },
   // カメラ列
-  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 38, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
-  { id: "lens", label: "レンズ", col: 2, stack: 1, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 46, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
-  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 34, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
+  { id: "camera", label: "カメラ差", col: 2, stack: 0, emitDelay: 0.2, fallStart: 4.0, swirlPhase: 4.5, swirlR: 15, swirlPeriod: 1.9, swirlDir: 1, tint: TINT_VIOLET, icon: "camera" },
+  { id: "lens", label: "レンズ", col: 2, stack: 1, emitDelay: 1.2, fallStart: 5.0, swirlPhase: 5.6, swirlR: 18, swirlPeriod: 2.2, swirlDir: -1, tint: TINT_INDIGO, icon: "lens" },
+  { id: "color-temp", label: "色温度", col: 2, stack: 2, emitDelay: 2.4, fallStart: 6.2, swirlPhase: 0.9, swirlR: 13, swirlPeriod: 2.0, swirlDir: 1, tint: TINT_CORAL, icon: "thermo" },
   // シーン列
-  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 42, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
+  { id: "scene-tone", label: "シーントーン", col: 3, stack: 0, emitDelay: 1.0, fallStart: 5.2, swirlPhase: 1.9, swirlR: 16, swirlPeriod: 2.1, swirlDir: 1, tint: TINT_TEAL, icon: "scape" },
   // 作品列
-  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 36, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
+  { id: "work-look", label: "作品ルック", col: 4, stack: 0, emitDelay: 1.8, fallStart: 6.8, swirlPhase: 3.0, swirlR: 14, swirlPeriod: 2.0, swirlDir: -1, tint: TINT_PLUM, icon: "film" },
 ]
 
 function clamp01(v: number) {
@@ -129,68 +139,67 @@ function lerp(a: number, b: number, p: number) {
   return a + (b - a) * p
 }
 
-function chipTargetX(col: number) {
-  return COL_X[col] + (COL_W - CHIP_W) / 2
+function chipTargetCX(col: number) {
+  return COL_X[col] + COL_W / 2
 }
 
-function chipTargetY(stack: number) {
-  // stack 0 = 列底に最も近い、stack 増で上へ積む。底から 4px 余白を取る。
-  return COL_BOTTOM_Y - 4 - CHIP_H - stack * (CHIP_H + STACK_GAP)
+function chipTargetCY(stack: number) {
+  // stack 0 = ヘッダ直下、stack を増やすほど下へ積む。chip 中心 y を返す。
+  return COL_TOP_Y + HEADER_OFFSET + stack * (CHIP_H + STACK_GAP) + CHIP_H / 2
 }
 
-function swirlPos(card: CardSpec, t: number) {
+function swirlCenter(card: CardSpec, t: number) {
   const tau = Math.max(0, t - card.emitDelay)
   const angle = (card.swirlDir * 2 * Math.PI * tau) / card.swirlPeriod + card.swirlPhase
-  const x = BRAIN_X + card.swirlR * Math.cos(angle) - CHIP_W / 2
-  const y = BRAIN_Y + card.swirlR * 0.85 * Math.sin(angle) - CHIP_H / 2
-  return { x, y }
+  const cx = EMIT_X + card.swirlR * Math.cos(angle)
+  const cy = EMIT_Y + card.swirlR * 0.6 * Math.sin(angle)
+  return { cx, cy }
 }
 
-type ChipState = { x: number; y: number; opacity: number }
+type ChipState = { cx: number; cy: number; opacity: number; scale: number }
 
 function chipState(card: CardSpec, t: number): ChipState {
+  const targetCX = chipTargetCX(card.col)
+  const targetCY = chipTargetCY(card.stack)
+
   // Phase 3: 吸い上げ + フェードアウト (15..20s)
   if (t >= P2_END) {
     const p = clamp01((t - P2_END) / (P3_END - P2_END))
     const eased = easeInCubic(p)
-    const tx = chipTargetX(card.col)
-    const ty = chipTargetY(card.stack)
-    const bx = BRAIN_X - CHIP_W / 2
-    const by = BRAIN_Y - CHIP_H / 2
     return {
-      x: lerp(tx, bx, eased),
-      y: lerp(ty, by, eased),
+      cx: lerp(targetCX, EMIT_X, eased),
+      cy: lerp(targetCY, EMIT_Y, eased),
+      scale: lerp(1, SWIRL_SCALE, eased),
       opacity: 1 - eased,
     }
   }
 
   // Phase 2: 静止 (10..15s)
   if (t >= P1_END) {
-    return { x: chipTargetX(card.col), y: chipTargetY(card.stack), opacity: 1 }
+    return { cx: targetCX, cy: targetCY, scale: 1, opacity: 1 }
   }
 
   // Phase 1: 落下 (chip 個別の fallStart から FALL_DUR 秒)
   if (t >= card.fallStart) {
     const p = clamp01((t - card.fallStart) / FALL_DUR)
-    const sw = swirlPos(card, card.fallStart)
-    const tx = chipTargetX(card.col)
-    const ty = chipTargetY(card.stack)
+    const start = swirlCenter(card, card.fallStart)
     return {
-      x: lerp(sw.x, tx, easeOutCubic(p)),
-      y: lerp(sw.y, ty, easeInQuad(p)),
+      cx: lerp(start.cx, targetCX, easeOutCubic(p)),
+      cy: lerp(start.cy, targetCY, easeInQuad(p)),
+      scale: lerp(SWIRL_SCALE, 1, easeOutCubic(p)),
       opacity: 1,
     }
   }
 
-  // Phase 0: emit_delay 後 swirl + fade-in
+  // Phase 0: emit_delay 後 swirl + fade-in (scale=0.4 のまま emit point 周りに小さく旋回)
   if (t >= card.emitDelay) {
-    const fadeIn = clamp01((t - card.emitDelay) / 0.8)
-    const sw = swirlPos(card, t)
-    return { x: sw.x, y: sw.y, opacity: fadeIn }
+    const fadeIn = clamp01((t - card.emitDelay) / 0.6)
+    const sw = swirlCenter(card, t)
+    return { cx: sw.cx, cy: sw.cy, scale: SWIRL_SCALE, opacity: fadeIn }
   }
 
-  // Pre-emission: 脳中心に駐機・不可視
-  return { x: BRAIN_X - CHIP_W / 2, y: BRAIN_Y - CHIP_H / 2, opacity: 0 }
+  // Pre-emission: emit point に駐機・不可視
+  return { cx: EMIT_X, cy: EMIT_Y, scale: SWIRL_SCALE, opacity: 0 }
 }
 
 function pulseAlpha(t: number) {
@@ -203,7 +212,6 @@ function pulseAlpha(t: number) {
 }
 
 function pulseOffset(t: number) {
-  // 1.6 秒周期で 0..1 を往復
   return (Math.sin((2 * Math.PI * t) / 1.6) + 1) / 2
 }
 
@@ -218,7 +226,7 @@ function Icon({
   y: number
   stroke: string
 }) {
-  const sw = 1.8
+  const sw = 1.6
   const common = {
     stroke,
     strokeWidth: sw,
@@ -228,73 +236,76 @@ function Icon({
   }
   switch (kind) {
     case "camera":
+      // 筐体 + ファインダ凸 + レンズ円 (3 線)
       return (
         <g {...common}>
-          <rect x={x + 2} y={y + 7} width={24} height={16} rx={3} ry={3} />
-          <path d={`M ${x + 9} ${y + 7} L ${x + 11} ${y + 4} L ${x + 17} ${y + 4} L ${x + 19} ${y + 7}`} />
-          <circle cx={x + 14} cy={y + 15} r={4} />
+          <rect x={x + 2} y={y + 8} width={24} height={14} rx={2} ry={2} />
+          <path d={`M ${x + 10} ${y + 8} L ${x + 12} ${y + 5} L ${x + 18} ${y + 5} L ${x + 20} ${y + 8}`} />
+          <circle cx={x + 14} cy={y + 15} r={3.5} />
         </g>
       )
     case "sun":
+      // 太陽 ＝ 円 + 揺らぎ短線 4 本 (露出揺れ)
       return (
         <g {...common}>
-          <circle cx={x + 14} cy={y + 14} r={5} />
-          <path d={`M ${x + 14} ${y + 2} L ${x + 14} ${y + 5}`} />
-          <path d={`M ${x + 14} ${y + 23} L ${x + 14} ${y + 26}`} />
-          <path d={`M ${x + 2} ${y + 14} L ${x + 5} ${y + 14}`} />
-          <path d={`M ${x + 23} ${y + 14} L ${x + 26} ${y + 14}`} />
-          <path d={`M ${x + 5.5} ${y + 5.5} L ${x + 7.5} ${y + 7.5}`} />
-          <path d={`M ${x + 20.5} ${y + 20.5} L ${x + 22.5} ${y + 22.5}`} />
-          <path d={`M ${x + 5.5} ${y + 22.5} L ${x + 7.5} ${y + 20.5}`} />
-          <path d={`M ${x + 20.5} ${y + 7.5} L ${x + 22.5} ${y + 5.5}`} />
+          <circle cx={x + 14} cy={y + 14} r={4} />
+          <path d={`M ${x + 14} ${y + 3} L ${x + 14} ${y + 6}`} />
+          <path d={`M ${x + 14} ${y + 22} L ${x + 14} ${y + 25}`} />
+          <path d={`M ${x + 3} ${y + 14} L ${x + 6} ${y + 14}`} />
+          <path d={`M ${x + 22} ${y + 14} L ${x + 25} ${y + 14}`} />
         </g>
       )
     case "thermo":
+      // 温度計: 細い管 + 球
       return (
         <g {...common}>
-          <path d={`M ${x + 14} ${y + 3} L ${x + 14} ${y + 18}`} />
-          <path d={`M ${x + 11} ${y + 3} a 3 3 0 0 1 6 0 L ${x + 17} ${y + 18}`} />
-          <circle cx={x + 14} cy={y + 22} r={4} fill={stroke} />
+          <path d={`M ${x + 11} ${y + 5} a 3 3 0 0 1 6 0 L ${x + 17} ${y + 18} a 3 3 0 0 1 -6 0 Z`} />
+          <circle cx={x + 14} cy={y + 22} r={3} fill={stroke} />
         </g>
       )
     case "person":
+      // 半身バスト: 頭丸 + 肩弧
       return (
         <g {...common}>
-          <circle cx={x + 14} cy={y + 9} r={4} />
+          <circle cx={x + 14} cy={y + 9} r={3.5} />
           <path d={`M ${x + 5} ${y + 25} a 9 9 0 0 1 18 0`} />
         </g>
       )
     case "cloud":
+      // 雲: なめらかな単一輪郭
       return (
         <g {...common}>
           <path
-            d={`M ${x + 7} ${y + 20} a 5 5 0 0 1 0 -10 a 6 6 0 0 1 11 -2 a 4 4 0 0 1 4 6 a 4 4 0 0 1 -4 6 z`}
+            d={`M ${x + 7} ${y + 19}
+                a 4 4 0 0 1 0 -8
+                a 5 5 0 0 1 9 -2
+                a 4 4 0 0 1 4 5
+                a 4 4 0 0 1 -4 5 Z`}
           />
         </g>
       )
     case "scape":
+      // 風景: 地平線 + 山稜 + 太陽
       return (
         <g {...common}>
-          <path d={`M ${x + 2} ${y + 23} L ${x + 9} ${y + 13} L ${x + 14} ${y + 18} L ${x + 19} ${y + 10} L ${x + 26} ${y + 23} Z`} />
-          <circle cx={x + 21} cy={y + 7} r={2} />
+          <path d={`M ${x + 3} ${y + 21} L ${x + 25} ${y + 21}`} />
+          <path d={`M ${x + 3} ${y + 21} L ${x + 9} ${y + 12} L ${x + 14} ${y + 17} L ${x + 20} ${y + 9} L ${x + 25} ${y + 21}`} />
+          <circle cx={x + 22} cy={y + 6} r={1.8} />
         </g>
       )
     case "film":
+      // 額縁: 外枠 + 内枠
       return (
         <g {...common}>
-          <rect x={x + 3} y={y + 6} width={22} height={16} rx={1.5} ry={1.5} />
-          <rect x={x + 5.5} y={y + 8.5} width={2} height={2} />
-          <rect x={x + 5.5} y={y + 17.5} width={2} height={2} />
-          <rect x={x + 20.5} y={y + 8.5} width={2} height={2} />
-          <rect x={x + 20.5} y={y + 17.5} width={2} height={2} />
-          <path d={`M ${x + 10} ${y + 14} L ${x + 18} ${y + 14}`} />
+          <rect x={x + 3} y={y + 5} width={22} height={18} rx={1.5} ry={1.5} />
+          <rect x={x + 7} y={y + 9} width={14} height={10} />
         </g>
       )
     case "lens":
-      // 凸レンズ断面: 上下 2 円弧で挟まれた紡錘形 + 中央水平の光軸点線
+      // 凸レンズ断面: 紡錘 + 中央光軸破線
       return (
         <g {...common}>
-          <path d={`M ${x + 4} ${y + 14} a 12 8 0 0 1 20 0 a 12 8 0 0 1 -20 0 Z`} />
+          <path d={`M ${x + 4} ${y + 14} a 12 7 0 0 1 20 0 a 12 7 0 0 1 -20 0 Z`} />
           <path
             d={`M ${x + 1.5} ${y + 14} L ${x + 26.5} ${y + 14}`}
             strokeOpacity={0.45}
@@ -303,13 +314,29 @@ function Icon({
         </g>
       )
     case "illusion":
-      // 同色の小矩形 2 つを濃淡背景の上に並べる「同じ色なのに違って見える」図
+      // 同色矩形 2 つを濃淡背景の上に並べる「同じ色なのに違って見える」図
       return (
         <g>
-          <rect x={x + 1.5} y={y + 6} width={11.5} height={16} fill="rgba(0,0,0,0.20)" />
-          <rect x={x + 15} y={y + 6} width={11.5} height={16} fill="rgba(0,0,0,0.05)" />
-          <rect x={x + 4.5} y={y + 10} width={5.5} height={8} fill={stroke} />
-          <rect x={x + 18} y={y + 10} width={5.5} height={8} fill={stroke} />
+          <rect
+            x={x + 2}
+            y={y + 7}
+            width={11}
+            height={14}
+            fill="rgba(0,0,0,0.20)"
+            stroke={stroke}
+            strokeWidth={1}
+          />
+          <rect
+            x={x + 15}
+            y={y + 7}
+            width={11}
+            height={14}
+            fill="rgba(0,0,0,0.05)"
+            stroke={stroke}
+            strokeWidth={1}
+          />
+          <rect x={x + 5} y={y + 11} width={5} height={6} fill={stroke} />
+          <rect x={x + 18} y={y + 11} width={5} height={6} fill={stroke} />
         </g>
       )
   }
@@ -320,92 +347,79 @@ function BrainPerson({ t }: { t: number }) {
   const ringOffset = pulseOffset(t)
   return (
     <g aria-hidden="true">
-      {/* 脈動リング (P0/P1/P3 のみ) */}
+      {/* 脈動リング (P0/P1/P3 のみ) — Notion Mono Editorial 1 色統一 */}
       {ringAlpha > 0 ? (
         <ellipse
           cx={BRAIN_X}
           cy={BRAIN_Y}
-          rx={HEAD_RX + 6 + 4 * ringOffset}
-          ry={HEAD_RY + 6 + 4 * ringOffset}
+          rx={HEAD_RX + 4 + 3 * ringOffset}
+          ry={HEAD_RY + 4 + 3 * ringOffset}
           fill="none"
           stroke={ACCENT}
           strokeOpacity={ringAlpha * (0.6 - 0.3 * ringOffset)}
-          strokeWidth={1.4}
+          strokeWidth={1.2}
         />
       ) : null}
 
-      {/* 肩 / 首ヒント */}
+      {/* 首 (短い 2 本) */}
       <path
-        d={`M 770 192 L 758 212 L 712 218 M 830 192 L 842 212 L 888 218`}
-        stroke={STROKE_BRAIN}
-        strokeWidth={1.6}
+        d={`M ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY - 4} L ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY + 14}`}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.4}
         fill="none"
         strokeLinecap="round"
-        strokeLinejoin="round"
+      />
+      <path
+        d={`M ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY - 4} L ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY + 14}`}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.4}
+        fill="none"
+        strokeLinecap="round"
       />
 
-      {/* 頭部 */}
+      {/* 肩線 (両肩、Q カーブで手描き感) */}
+      <path
+        d={`M ${BRAIN_X - 9} ${BRAIN_Y + HEAD_RY + 14}
+            Q ${BRAIN_X - 56} ${BRAIN_Y + HEAD_RY + 18}
+              ${BRAIN_X - 78} ${BRAIN_Y + HEAD_RY + 36}`}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.4}
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d={`M ${BRAIN_X + 9} ${BRAIN_Y + HEAD_RY + 14}
+            Q ${BRAIN_X + 56} ${BRAIN_Y + HEAD_RY + 18}
+              ${BRAIN_X + 78} ${BRAIN_Y + HEAD_RY + 36}`}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.4}
+        fill="none"
+        strokeLinecap="round"
+      />
+
+      {/* 頭部 (シンプルな丸 + 極淡 accent fill) */}
       <ellipse
         cx={BRAIN_X}
         cy={BRAIN_Y}
         rx={HEAD_RX}
         ry={HEAD_RY}
-        fill="rgba(255,255,255,0.55)"
-        stroke={STROKE_BRAIN}
-        strokeWidth={1.6}
+        fill={PERSON_FILL}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.4}
       />
 
-      {/* 脳のシルエット (頭部内側に accent fill) */}
+      {/* 目: 細い弧 1 本 ×2 (ごく控えめに) */}
       <path
-        d={`M ${BRAIN_X - 50} ${BRAIN_Y - 38}
-            Q ${BRAIN_X - 64} ${BRAIN_Y - 18} ${BRAIN_X - 56} ${BRAIN_Y + 12}
-            Q ${BRAIN_X - 50} ${BRAIN_Y + 36} ${BRAIN_X - 22} ${BRAIN_Y + 40}
-            Q ${BRAIN_X} ${BRAIN_Y + 48} ${BRAIN_X + 22} ${BRAIN_Y + 40}
-            Q ${BRAIN_X + 50} ${BRAIN_Y + 36} ${BRAIN_X + 56} ${BRAIN_Y + 12}
-            Q ${BRAIN_X + 64} ${BRAIN_Y - 18} ${BRAIN_X + 50} ${BRAIN_Y - 38}
-            Q ${BRAIN_X + 38} ${BRAIN_Y - 52} ${BRAIN_X + 12} ${BRAIN_Y - 48}
-            Q ${BRAIN_X - 12} ${BRAIN_Y - 52} ${BRAIN_X - 38} ${BRAIN_Y - 50}
-            Q ${BRAIN_X - 60} ${BRAIN_Y - 48} ${BRAIN_X - 50} ${BRAIN_Y - 38} Z`}
-        fill="rgba(139,127,255,0.28)"
-        stroke={STROKE_BRAIN}
+        d={`M ${BRAIN_X - 11} ${BRAIN_Y - 2} q 3 -3 6 0`}
+        stroke={PERSON_STROKE}
         strokeWidth={1.2}
-      />
-
-      {/* 半球の cleft (中央点線) */}
-      <path
-        d={`M ${BRAIN_X} ${BRAIN_Y - 50} L ${BRAIN_X} ${BRAIN_Y + 44}`}
-        stroke={STROKE_BRAIN_SOFT}
-        strokeWidth={0.8}
-        strokeDasharray="2 3"
-        fill="none"
-      />
-
-      {/* 半球内のしわ (微細) */}
-      <path
-        d={`M ${BRAIN_X - 36} ${BRAIN_Y - 18} Q ${BRAIN_X - 22} ${BRAIN_Y - 10} ${BRAIN_X - 12} ${BRAIN_Y - 22}`}
-        stroke={STROKE_BRAIN_SOFT}
-        strokeWidth={0.9}
         fill="none"
         strokeLinecap="round"
       />
       <path
-        d={`M ${BRAIN_X + 12} ${BRAIN_Y - 22} Q ${BRAIN_X + 22} ${BRAIN_Y - 10} ${BRAIN_X + 36} ${BRAIN_Y - 18}`}
-        stroke={STROKE_BRAIN_SOFT}
-        strokeWidth={0.9}
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${BRAIN_X - 30} ${BRAIN_Y + 16} Q ${BRAIN_X - 16} ${BRAIN_Y + 8} ${BRAIN_X - 6} ${BRAIN_Y + 22}`}
-        stroke={STROKE_BRAIN_SOFT}
-        strokeWidth={0.9}
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${BRAIN_X + 6} ${BRAIN_Y + 22} Q ${BRAIN_X + 16} ${BRAIN_Y + 8} ${BRAIN_X + 30} ${BRAIN_Y + 16}`}
-        stroke={STROKE_BRAIN_SOFT}
-        strokeWidth={0.9}
+        d={`M ${BRAIN_X + 5} ${BRAIN_Y - 2} q 3 -3 6 0`}
+        stroke={PERSON_STROKE}
+        strokeWidth={1.2}
         fill="none"
         strokeLinecap="round"
       />
@@ -466,9 +480,9 @@ export default function CorrectionLabyrinthToFactor({
       {/* 上部 eyebrow + 細→粗 粒度バー */}
       <text
         x={80}
-        y={244}
+        y={28}
         fill={TEXT_MUTED}
-        fontSize={20}
+        fontSize={18}
         fontWeight={500}
         letterSpacing={4}
       >
@@ -476,30 +490,30 @@ export default function CorrectionLabyrinthToFactor({
       </text>
       <text
         x={72}
-        y={282}
+        y={64}
         textAnchor="end"
         fill={TEXT_MUTED}
-        fontSize={18}
+        fontSize={16}
         fontWeight={500}
       >
         細
       </text>
       <text
         x={1528}
-        y={282}
+        y={64}
         fill={TEXT_MUTED}
-        fontSize={18}
+        fontSize={16}
         fontWeight={500}
       >
         粗
       </text>
-      <rect x={80} y={264} width={1440} height={18} rx={9} ry={9} fill="url(#scope-axis-grad)" />
+      <rect x={80} y={48} width={1440} height={14} rx={7} ry={7} fill="url(#scope-axis-grad)" />
 
       {/* 列間の連結矢印 (4 本、列の中段) */}
       {COLUMNS.slice(0, 4).map((_, i) => {
         const ax = COL_X[i] + COL_W + 12
         const bx = COL_X[i + 1] - 12
-        const ay = COL_TOP_Y + 90
+        const ay = COL_TOP_Y + 76
         return (
           <g key={`arrow-${i}`} opacity={0.55}>
             <path
@@ -538,7 +552,7 @@ export default function CorrectionLabyrinthToFactor({
               fillOpacity={col.fillOp}
               stroke={ACCENT}
               strokeOpacity={col.borderOp}
-              strokeWidth={1.8}
+              strokeWidth={1.6}
             />
             <rect
               x={x}
@@ -552,19 +566,19 @@ export default function CorrectionLabyrinthToFactor({
             {/* 番号バッジ */}
             <circle
               cx={cx}
-              cy={COL_TOP_Y - 32}
-              r={20}
+              cy={COL_TOP_Y - 28}
+              r={18}
               fill="rgba(255,255,255,0.85)"
               stroke={ACCENT}
               strokeOpacity={col.borderOp}
-              strokeWidth={1.8}
+              strokeWidth={1.6}
             />
             <text
               x={cx}
-              y={COL_TOP_Y - 32 + 7}
+              y={COL_TOP_Y - 28 + 6}
               textAnchor="middle"
               fill={TEXT_PRIMARY}
-              fontSize={20}
+              fontSize={18}
               fontWeight={700}
             >
               {i + 1}
@@ -572,10 +586,10 @@ export default function CorrectionLabyrinthToFactor({
             {/* 層名ラベル (L プレフィックスなし) */}
             <text
               x={cx}
-              y={COL_TOP_Y + 38}
+              y={COL_TOP_Y + 32}
               textAnchor="middle"
               fill={TEXT_PRIMARY}
-              fontSize={22}
+              fontSize={20}
               fontWeight={700}
             >
               {col.label}
@@ -584,41 +598,50 @@ export default function CorrectionLabyrinthToFactor({
         )
       })}
 
-      {/* 脳人物 (頭部・脳・体) */}
+      {/* 脳人物 (Notion Mono Editorial: 丸頭 + 首肩 + 目) */}
       <BrainPerson t={t} />
 
-      {/* 9 chip — phase 別の状態で描画 */}
+      {/* 9 chip — phase 別の状態で描画 (中心座標 + scale) */}
       {CARDS.map((card) => {
         const s = chipState(card, t)
         if (s.opacity <= 0.001) return null
         return (
-          <g key={card.id} opacity={s.opacity}>
+          <g
+            key={card.id}
+            opacity={s.opacity}
+            transform={`translate(${s.cx} ${s.cy}) scale(${s.scale})`}
+          >
             <rect
-              x={s.x}
-              y={s.y}
+              x={-CHIP_W / 2}
+              y={-CHIP_H / 2}
               width={CHIP_W}
               height={CHIP_H}
-              rx={26}
-              ry={26}
+              rx={20}
+              ry={20}
               fill={card.tint.bg}
               stroke={card.tint.border}
               strokeWidth={1.6}
             />
             <rect
-              x={s.x}
-              y={s.y}
+              x={-CHIP_W / 2}
+              y={-CHIP_H / 2}
               width={CHIP_W}
               height={CHIP_H}
-              rx={26}
-              ry={26}
+              rx={20}
+              ry={20}
               fill="rgba(255,255,255,0.55)"
             />
-            <Icon kind={card.icon} x={s.x + 20} y={s.y + 22} stroke={card.tint.iconStroke} />
+            <Icon
+              kind={card.icon}
+              x={-CHIP_W / 2 + 14}
+              y={-CHIP_H / 2 + 14}
+              stroke={card.tint.iconStroke}
+            />
             <text
-              x={s.x + 64}
-              y={s.y + CHIP_H / 2 + 8}
+              x={-CHIP_W / 2 + 56}
+              y={6}
               fill={TEXT_PRIMARY}
-              fontSize={24}
+              fontSize={20}
               fontWeight={600}
             >
               {card.label}
@@ -626,19 +649,6 @@ export default function CorrectionLabyrinthToFactor({
           </g>
         )
       })}
-
-      {/* 下部 axis 注釈 */}
-      <text
-        x={W / 2}
-        y={H - 32}
-        textAnchor="middle"
-        fill={TEXT_MUTED}
-        fontSize={18}
-        letterSpacing={4}
-        fontWeight={500}
-      >
-        左 ＝ 細 か い 粒 度 ／ 右 ＝ 広 い 範 囲
-      </text>
     </svg>
   )
 }

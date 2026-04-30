@@ -50,6 +50,21 @@ const STATIC_MODULES: Record<string, ComponentType<unknown>> = {}
 export function NoteVisual({ slug }: { slug: string }) {
   const config = getVisualConfig(slug)
   if (!config) return null
+  // 動画は SVG 内 4 種類のテキスト (粒度バー / 軸 / 列ヘッダ / chip ラベル) のみで
+  // 説明を完結させる方針。caption / intro / "Visual / Motion" / "5SEC" は描画しない。
+  // alt は SR 用に figure の aria-label として保持する。
+  if (config.kind === "video") {
+    return (
+      <figure
+        data-diagram-slug={config.slug}
+        data-diagram-kind={config.kind}
+        aria-label={config.alt}
+        className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10"
+      >
+        <VisualBody config={config} />
+      </figure>
+    )
+  }
   return (
     <figure
       data-diagram-slug={config.slug}
@@ -59,7 +74,7 @@ export function NoteVisual({ slug }: { slug: string }) {
       <VisualBody config={config} />
       <figcaption className="px-5 py-5 md:px-7 md:py-6">
         <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
-          {config.kind === "video" ? "Visual / Motion" : "Visual"}
+          Visual
         </p>
         <h4 className="mt-1 text-base font-semibold text-hp md:text-lg">
           {config.title}

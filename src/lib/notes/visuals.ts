@@ -39,7 +39,7 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
     caption:
       "9 つの混線要因が、頭の中から落下し、フレーム → アングル → カメラ → シーン → 作品 の 5 列に積み上がる。20 秒で 1 ループ。",
     alt: "脳人物ピクトグラムから 9 chip が落下し、5 列の粒度レイヤーに整列していくループアニメーション",
-    aspect: { width: 16, height: 10 },
+    aspect: { width: 16, height: 5 },
     intro: "頭の中の混線が、5 段の粒度に並び直る。",
     loopSec: 20,
   },
