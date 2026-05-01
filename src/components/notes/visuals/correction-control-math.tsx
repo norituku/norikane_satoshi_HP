@@ -3,51 +3,47 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * v5 動画モジュール: 操作の数学 (オペとノブの対応)
+ * v5 動画モジュール: 操作の数学 (オペとノブの対応) — 横一列 4 セル帯レイアウト
  *
- * 4 並列ループ型。viewBox 1600×1000 を 2×2 グリッドに分け、
+ * viewBox 1600×500 (16:5) を 4 セル横並び (各 400×500) に分け、
  * ゲイン (赤系) / ガンマ (緑系) / オフセット (黄系) / リフト (青系) の
- * 4 ミニ図を独立位相で 10 秒ループさせる。各セルに「ノブ・式・トーンカーブ」
- * を三つ揃いで配置し、パラメータの動きが式と曲線にどう波及するかを
- * 一望できる構成にする。
+ * 4 ミニ図を独立位相で 6.5 秒ループさせる。
  *
- *   ゲイン a(t)    = 1.25 + 0.75 · sin(2π t / 10)         ∈ [0.5, 2.0]
- *   ガンマ γ(t)    = 1.25 + 0.75 · sin(2π t / 10 + π/2)   ∈ [0.5, 2.0]
- *   オフセット b(t) = 0.3 · sin(2π t / 10 + π)             ∈ [-0.3, 0.3]
- *   リフト L(t)    = 0.25 + 0.25 · sin(2π t / 10 + 3π/2)  ∈ [0, 0.5]
+ * 各セルは縦 3 層構造:
+ *   上段 — 「原因名（カテゴリ） 数式」を 1 行見出し
+ *   中段 — 入出力トーンカーブ (補助要素は最小化)
+ *   下段 — スライダーバー + 数値カウンター 1 行
  *
- * 0〜100 信号レンジから一時的にはみ出す挙動 (ハイライトクリップ) は
- * plot 領域の clipPath で平らに見せ、教育的振り幅を優先する。
+ *   ゲイン a(t)    = 1.25 + 0.75 · sin(2π t / 6.5)         ∈ [0.5, 2.0]
+ *   ガンマ γ(t)    = 1.25 + 0.75 · sin(2π t / 6.5 + π/2)   ∈ [0.5, 2.0]
+ *   オフセット b(t) = 0.3  · sin(2π t / 6.5 + π)            ∈ [-0.3, 0.3]
+ *   リフト L(t)    = 0.25 + 0.25 · sin(2π t / 6.5 + 3π/2)  ∈ [0, 0.5]
+ *
  * reducedMotion 時は各パラメータを range 中央値で固定して静止画化する。
  */
 
-const LOOP = 10
+const LOOP = 6.5
 const W = 1600
-const H = 1000
-const CELL_W = 800
+const H = 500
+const CELL_W = 400
 const CELL_H = 500
 
 // セル内レイアウト (セル相対座標)
-const TITLE_X = 60
-const TITLE_Y = 64
-const FORMULA_Y = 116
-const PARAM_LABEL_Y = 200
-const TRACK_X = 60
-const TRACK_Y = 240
-const TRACK_W = 300
-const TRACK_H = 14
-const VALUE_Y = 310
+const HEADER_X = 28
+const HEADER_Y = 52
+const PLOT_X = 28
+const PLOT_Y = 84
+const PLOT_W = 344
+const PLOT_H = 328
+const TRACK_X = 28
+const TRACK_Y = 452
+const TRACK_W = 244
+const TRACK_H = 10
+const VALUE_X = 372
+const VALUE_Y = 460
 
-// トーンカーブの小座標 (セル相対 → cellX, cellY を加えてスクリーン座標)
-const PLOT_X = 410
-const PLOT_Y = 70
-const PLOT_W = 350
-const PLOT_H = 380
-
-const TEXT_PRIMARY = "rgba(28,15,110,0.92)"
-const TEXT_MUTED = "rgba(107,95,168,0.85)"
-const GRID = "rgba(139,127,255,0.30)"
-const AXIS = "rgba(28,15,110,0.55)"
+const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
+const GRID = "rgba(139,127,255,0.18)"
 
 // 配色 (前作 correction-labyrinth-to-factor.tsx の TINT パレットと整合)
 const TINT_GAIN = {
@@ -75,10 +71,9 @@ type Tint = typeof TINT_GAIN
 
 type CellSpec = {
   cellX: number
-  cellY: number
-  title: string
+  opLabel: string
   formula: string
-  paramSymbol: string
+  paramSymbol: "a" | "γ" | "b" | "L"
   tint: Tint
   param: (t: number) => number
   curve: (x: number, p: number) => number
@@ -116,8 +111,7 @@ function curveLift(x: number, l: number) {
 const CELLS: CellSpec[] = [
   {
     cellX: 0,
-    cellY: 0,
-    title: "ゲイン (明部・乗算)",
+    opLabel: "ゲイン（乗算）",
     formula: "y = a · x",
     paramSymbol: "a",
     tint: TINT_GAIN,
@@ -128,9 +122,8 @@ const CELLS: CellSpec[] = [
   },
   {
     cellX: CELL_W,
-    cellY: 0,
-    title: "ガンマ (中間・べき乗)",
-    formula: "y = x ^ γ",
+    opLabel: "ガンマ（べき乗）",
+    formula: "y = x^γ",
     paramSymbol: "γ",
     tint: TINT_GAMMA,
     param: paramGamma,
@@ -139,9 +132,8 @@ const CELLS: CellSpec[] = [
     clipId: "ccm-clip-gamma",
   },
   {
-    cellX: 0,
-    cellY: CELL_H,
-    title: "オフセット (加算)",
+    cellX: CELL_W * 2,
+    opLabel: "オフセット（加算）",
     formula: "y = x + b",
     paramSymbol: "b",
     tint: TINT_OFFSET,
@@ -151,9 +143,8 @@ const CELLS: CellSpec[] = [
     clipId: "ccm-clip-offset",
   },
   {
-    cellX: CELL_W,
-    cellY: CELL_H,
-    title: "リフト (暗部・複合)",
+    cellX: CELL_W * 3,
+    opLabel: "リフト（合成）",
     formula: "y = x + L · (1 − x)",
     paramSymbol: "L",
     tint: TINT_LIFT,
@@ -164,7 +155,7 @@ const CELLS: CellSpec[] = [
   },
 ]
 
-// 96 サンプルで polyline。極端値でも輪郭がガタつかないよう中庸を取る (仕様: 64〜128)。
+// 96 サンプルで polyline。極端値でも輪郭がガタつかないよう中庸を取る (仕様: 64〜96)。
 const SAMPLES = 96
 
 function buildPolyline(
@@ -194,15 +185,13 @@ function knobScreenX(p: number, range: [number, number], cellX: number) {
   return cellX + TRACK_X + norm * TRACK_W
 }
 
-function formatRangeLabel(v: number) {
-  return v.toFixed(1)
-}
-
-function formatParamValue(symbol: string, p: number) {
-  // ゲイン / ガンマは小数 2 桁、オフセット / リフトは符号付 2 桁。
-  const sign = p >= 0 ? "+" : "−"
-  if (symbol === "a" || symbol === "γ") return p.toFixed(2)
-  return `${sign}${Math.abs(p).toFixed(2)}`
+function formatParamValue(symbol: CellSpec["paramSymbol"], p: number) {
+  // オフセットだけ負値をとるので符号付。それ以外は素の小数 2 桁。
+  if (symbol === "b") {
+    const sign = p >= 0 ? "+" : "−"
+    return `${sign}${Math.abs(p).toFixed(2)}`
+  }
+  return p.toFixed(2)
 }
 
 function Cell({
@@ -219,130 +208,57 @@ function Cell({
     ? (spec.range[0] + spec.range[1]) / 2
     : spec.param(t)
   const cellX = spec.cellX
-  const cellY = spec.cellY
 
   const plotX = cellX + PLOT_X
-  const plotY = cellY + PLOT_Y
+  const plotY = PLOT_Y
   const polyPoints = buildPolyline(spec.curve, p, plotX, plotY)
   const knobCX = knobScreenX(p, spec.range, cellX)
-  const knobCY = cellY + TRACK_Y + TRACK_H / 2
+  const knobCY = TRACK_Y + TRACK_H / 2
 
   return (
     <g>
       {/* セル背景 (色カテゴリ識別) */}
       <rect
-        x={cellX + 12}
-        y={cellY + 12}
-        width={CELL_W - 24}
-        height={CELL_H - 24}
-        rx={22}
-        ry={22}
+        x={cellX + 10}
+        y={10}
+        width={CELL_W - 20}
+        height={CELL_H - 20}
+        rx={20}
+        ry={20}
         fill={spec.tint.bg}
         stroke={spec.tint.border}
         strokeOpacity={0.55}
-        strokeWidth={1.6}
+        strokeWidth={1.4}
       />
       <rect
-        x={cellX + 12}
-        y={cellY + 12}
-        width={CELL_W - 24}
-        height={CELL_H - 24}
-        rx={22}
-        ry={22}
+        x={cellX + 10}
+        y={10}
+        width={CELL_W - 20}
+        height={CELL_H - 20}
+        rx={20}
+        ry={20}
         fill="rgba(255,255,255,0.55)"
       />
 
-      {/* タイトル */}
+      {/* 1 行見出し: 原因名（カテゴリ） + 数式 */}
       <text
-        x={cellX + TITLE_X}
-        y={cellY + TITLE_Y}
-        fill={TEXT_PRIMARY}
-        fontSize={24}
+        x={cellX + HEADER_X}
+        y={HEADER_Y}
+        fontSize={22}
         fontWeight={700}
       >
-        {spec.title}
+        <tspan fill={spec.tint.curve}>{spec.opLabel}</tspan>
+        <tspan
+          dx={14}
+          fill={TEXT_PRIMARY}
+          fontWeight={600}
+          fontStyle="italic"
+        >
+          {spec.formula}
+        </tspan>
       </text>
 
-      {/* 数式 (記事本文のフレーミングに揃える) */}
-      <text
-        x={cellX + TITLE_X}
-        y={cellY + FORMULA_Y}
-        fill={spec.tint.curve}
-        fontSize={28}
-        fontWeight={700}
-      >
-        {spec.formula}
-      </text>
-
-      {/* パラメータラベル */}
-      <text
-        x={cellX + TRACK_X}
-        y={cellY + PARAM_LABEL_Y}
-        fill={TEXT_MUTED}
-        fontSize={16}
-        fontWeight={500}
-        letterSpacing={2}
-      >
-        パラメータ {spec.paramSymbol}
-      </text>
-
-      {/* range 端ラベル (min / max) */}
-      <text
-        x={cellX + TRACK_X}
-        y={cellY + TRACK_Y - 10}
-        fill={TEXT_MUTED}
-        fontSize={13}
-        fontWeight={500}
-      >
-        {formatRangeLabel(spec.range[0])}
-      </text>
-      <text
-        x={cellX + TRACK_X + TRACK_W}
-        y={cellY + TRACK_Y - 10}
-        textAnchor="end"
-        fill={TEXT_MUTED}
-        fontSize={13}
-        fontWeight={500}
-      >
-        {formatRangeLabel(spec.range[1])}
-      </text>
-
-      {/* ノブトラック */}
-      <rect
-        x={cellX + TRACK_X}
-        y={cellY + TRACK_Y}
-        width={TRACK_W}
-        height={TRACK_H}
-        rx={TRACK_H / 2}
-        ry={TRACK_H / 2}
-        fill="rgba(255,255,255,0.65)"
-        stroke={spec.tint.border}
-        strokeOpacity={0.55}
-        strokeWidth={1.2}
-      />
-
-      {/* ノブハンドル (parameter 値直結) */}
-      <circle
-        cx={knobCX}
-        cy={knobCY}
-        r={15}
-        fill={spec.tint.curve}
-        stroke="rgba(255,255,255,0.92)"
-        strokeWidth={2.2}
-      />
-
-      {/* 現在値表示 */}
-      <text
-        x={cellX + TRACK_X}
-        y={cellY + VALUE_Y}
-        fill={TEXT_PRIMARY}
-        fontSize={20}
-        fontWeight={600}
-      >
-        {spec.paramSymbol} = {formatParamValue(spec.paramSymbol, p)}
-      </text>
-
-      {/* plot 枠 */}
+      {/* plot 枠 (極めて薄い背景のみ。座標目盛り・軸ラベルは置かない) */}
       <rect
         x={plotX}
         y={plotY}
@@ -350,59 +266,10 @@ function Cell({
         height={PLOT_H}
         rx={4}
         ry={4}
-        fill="rgba(255,255,255,0.55)"
-        stroke={AXIS}
-        strokeOpacity={0.55}
-        strokeWidth={1.2}
-      />
-
-      {/* y = x 参考線 */}
-      <line
-        x1={plotX}
-        y1={plotY + PLOT_H}
-        x2={plotX + PLOT_W}
-        y2={plotY}
+        fill="rgba(255,255,255,0.4)"
         stroke={GRID}
         strokeWidth={1}
-        strokeDasharray="4 4"
       />
-
-      {/* 軸ラベル */}
-      <text
-        x={plotX - 8}
-        y={plotY + PLOT_H + 4}
-        textAnchor="end"
-        fill={TEXT_MUTED}
-        fontSize={13}
-      >
-        0
-      </text>
-      <text
-        x={plotX - 8}
-        y={plotY + 6}
-        textAnchor="end"
-        fill={TEXT_MUTED}
-        fontSize={13}
-      >
-        1
-      </text>
-      <text
-        x={plotX}
-        y={plotY + PLOT_H + 22}
-        fill={TEXT_MUTED}
-        fontSize={13}
-      >
-        x
-      </text>
-      <text
-        x={plotX - 24}
-        y={plotY + 6}
-        textAnchor="middle"
-        fill={TEXT_MUTED}
-        fontSize={13}
-      >
-        y
-      </text>
 
       {/* 入出力カーブ (plot 領域でクリップ) */}
       <g clipPath={`url(#${spec.clipId})`}>
@@ -415,6 +282,41 @@ function Cell({
           strokeLinejoin="round"
         />
       </g>
+
+      {/* スライダーバー (下段左) */}
+      <rect
+        x={cellX + TRACK_X}
+        y={TRACK_Y}
+        width={TRACK_W}
+        height={TRACK_H}
+        rx={TRACK_H / 2}
+        ry={TRACK_H / 2}
+        fill="rgba(255,255,255,0.7)"
+        stroke={spec.tint.border}
+        strokeOpacity={0.55}
+        strokeWidth={1.2}
+      />
+      <circle
+        cx={knobCX}
+        cy={knobCY}
+        r={12}
+        fill={spec.tint.curve}
+        stroke="rgba(255,255,255,0.95)"
+        strokeWidth={2}
+      />
+
+      {/* 数値カウンター (下段右、ラベル無し) */}
+      <text
+        x={cellX + VALUE_X}
+        y={VALUE_Y}
+        textAnchor="end"
+        fill={TEXT_PRIMARY}
+        fontSize={22}
+        fontWeight={600}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+      >
+        {formatParamValue(spec.paramSymbol, p)}
+      </text>
     </g>
   )
 }
@@ -464,34 +366,27 @@ export default function CorrectionControlMath({
       <defs>
         {CELLS.map((spec) => {
           const plotX = spec.cellX + PLOT_X
-          const plotY = spec.cellY + PLOT_Y
           return (
             <clipPath key={spec.clipId} id={spec.clipId}>
-              <rect x={plotX} y={plotY} width={PLOT_W} height={PLOT_H} />
+              <rect x={plotX} y={PLOT_Y} width={PLOT_W} height={PLOT_H} />
             </clipPath>
           )
         })}
       </defs>
 
-      {/* セル境界線 (2×2 グリッドの 十字) */}
-      <line
-        x1={CELL_W}
-        y1={20}
-        x2={CELL_W}
-        y2={H - 20}
-        stroke={GRID}
-        strokeWidth={1}
-        strokeDasharray="6 8"
-      />
-      <line
-        x1={20}
-        y1={CELL_H}
-        x2={W - 20}
-        y2={CELL_H}
-        stroke={GRID}
-        strokeWidth={1}
-        strokeDasharray="6 8"
-      />
+      {/* セル境界線 (横並び 3 本、薄め) */}
+      {[1, 2, 3].map((i) => (
+        <line
+          key={`sep-${i}`}
+          x1={CELL_W * i}
+          y1={20}
+          x2={CELL_W * i}
+          y2={H - 20}
+          stroke={GRID}
+          strokeWidth={1}
+          strokeDasharray="6 8"
+        />
+      ))}
 
       {CELLS.map((spec) => (
         <Cell
