@@ -46,11 +46,14 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
   // ---- placeholder (本フェーズでは図そのものは未実装。本文に slug が来てもエラーにしない) ----
   "correction-control-math": {
     slug: "correction-control-math",
-    kind: "placeholder",
+    kind: "video",
     title: "操作の数学（オペとノブの対応）",
-    caption: "v5 仕様書 ID: correction-control-math。本フェーズでは未実装。",
-    alt: "correction-control-math の placeholder",
+    caption:
+      "ゲイン・ガンマ・オフセット・リフトの 4 ミニ図を 2×2 で並列ループ。各ミニ図がノブ・式・入出力カーブの三つ揃いで、パラメータの動きが式と曲線にどう波及するかを 10 秒で 1 周。",
+    alt: "ゲイン・ガンマ・オフセット・リフトの 4 つのミニ図が独立位相で 10 秒ループし、ノブの動きに連動して入出力トーンカーブが変形するアニメーション",
     aspect: { width: 16, height: 10 },
+    intro: "ノブを動かすと、式と曲線がそのまま動く。",
+    loopSec: 10,
   },
   "correction-reversibility": {
     slug: "correction-reversibility",

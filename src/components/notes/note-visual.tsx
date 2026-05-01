@@ -43,6 +43,10 @@ const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
       ),
     { loading: () => <VisualSkeleton /> }
   ),
+  "correction-control-math": dynamic(
+    () => import("@/components/notes/visuals/correction-control-math"),
+    { loading: () => <VisualSkeleton /> }
+  ),
 }
 
 const STATIC_MODULES: Record<string, ComponentType<unknown>> = {}
