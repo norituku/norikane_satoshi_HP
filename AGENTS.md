@@ -67,3 +67,13 @@ After code changes:
 - Check the affected page locally when possible.
 - For UI changes, verify desktop and mobile behavior.
 - For diagrams, verify `/notes/<slug>` and confirm the figure remains readable in 5 seconds.
+
+## Long-running process lifecycle
+
+Verification dev servers (`pnpm next dev`, etc.) launched during a cc-notion session are owned by Satoshi, not by the session that started them. They are reused across phases for repeated visual verification.
+
+- Do not kill a verification dev server at session end without an explicit instruction from Satoshi. Treat it the same as the launchctl-managed cc-notion daemon: shared infrastructure that outlives any single session.
+- Do not kill a dev server you find already running just because you did not start it. Reuse it (probe the port, attach to the existing PID) and only restart it if it is actually broken.
+- Start dev servers fully detached (e.g. `os.fork()` + `os.setsid()` + `os.execvp("pnpm", ...)` with stdio redirected to a log file) so the cc-notion job exit does not take the server down.
+- When you do start or restart one, report URL, PID, and log path so the next session can find it without rediscovery.
+- If Satoshi explicitly says "kill the dev server" / "stop the dev server" / "restart the dev server", that is the only condition under which terminating it is allowed.
