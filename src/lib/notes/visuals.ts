@@ -57,11 +57,14 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
   },
   "correction-reversibility": {
     slug: "correction-reversibility",
-    kind: "placeholder",
+    kind: "video",
     title: "戻せる / 戻せない（可逆性の比較）",
-    caption: "v5 仕様書 ID: correction-reversibility。本フェーズでは未実装。",
-    alt: "correction-reversibility の placeholder",
+    caption:
+      "ゲイン×ガンマ（左、乗算系）とリフト×ガンマ（右、加算+べき乗の入れ子）の数式を1層ずつ積み上げ、それぞれの数式を正確にグラフ化。10秒で1ループ。",
+    alt: "ゲイン×ガンマとリフト×ガンマの2列比較。各セル4層を1層ずつ積み上げ、入れ子の数式とその数式をそのまま評価したトーンカーブが10秒で1周連動するアニメーション。",
     aspect: { width: 16, height: 10 },
+    intro: "層を重ねていく。形が変わらないか、戻れなくなるか。",
+    loopSec: 10,
   },
   "correction-space-choice": {
     slug: "correction-space-choice",
