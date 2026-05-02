@@ -6,13 +6,14 @@
 // 後続 Phase で予約 UI / GCal 連携 / 3日タイマーバッチを実装する
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
+// Prisma 7: datasource からは provider のみ宣言。
+// 接続 URL（TURSO_DATABASE_URL / TURSO_AUTH_TOKEN）は Phase 2B で prisma.config.ts と
+// PrismaClient コンストラクタの adapter (libsql) 経由で注入する。
 datasource db {
   provider = "sqlite"
-  url      = env("TURSO_DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────────
