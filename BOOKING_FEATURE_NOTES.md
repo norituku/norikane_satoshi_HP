@@ -9,6 +9,8 @@
   - OAuth：Google / X (Twitter) / LINE / Microsoft（Apple は屋号「のりかね映像設計室」開業 + Apple Developer Program 加入後に追加）
 - データ：Turso（libSQL）+ Prisma 7。colorist-scheduler とは別 DB を作成する
 - カレンダー連携：Google Calendar API（Free/Busy 取り込み + 予約イベント書き込み）
+  - Free/Busy 読み取りは cc-notion 系 Service Account `gcal-sync@cc-notion-gcal.iam.gserviceaccount.com` を流用（「智志仕事」カレンダーを当該 SA に共有設定する運用）。`.env` には `GOOGLE_CALENDAR_SA_KEY_PATH=~/.openclaw/gcal-sync-sa.json` を投入し、Vercel には同 SA 鍵を Base64 で別 env に積む
+  - ユーザーログイン用の Google OAuth（`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`）は HP 用に新規発行し、SA 経路とは独立並走する
   - 既存の cc-notion `/gcal-sync` 経路（IB_仕事 ⇔ 「智志仕事」双方向同期）の流用検討余地あり
 - 予約 UI：colorist-scheduler の `src/lib/calendar-utils.ts` / `week-calendar-utils.ts` / `booking-colors.ts` / `holidays.ts` / `validators.ts` を移植して HP 仕様に調整
 - 表示モード：月（俯瞰）/ 週（縦軸 = 時間）切替。週表示は `DEFAULT_WEEK_START_MINUTE = 8 * 60` / `DEFAULT_WEEK_END_MINUTE = 20 * 60` を踏襲
