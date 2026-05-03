@@ -3,24 +3,25 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Phase 32-AQ: 戻せる / 戻せない（可逆性の比較）
+ * Phase 32-AR: 戻せる / 戻せない（可逆性の比較）
  *
- * Phase 32-AQ 主要変更:
- *  - safePow を signedPow へ置換 (b<0 で -(|b|^e) を返し負域を保持、Resolve 32bit float 互換)
- *  - Y 軸を [-0.4, 1.0] へ拡張、y=0 補助線と y=0 ラベルを追加
- *  - 右セル forward / backward 中央 op に強い負リフトを入れ、中盤で y < 0 まで潜らせる
- *  - 左セル完全可逆性は維持
- *
- * 時間軸（合計 14 秒）:
- *   HOLD_START  2.5s : P = 0,        Q = 0,        y = x
- *   FORWARD     4.0s : P が 0 → 1,    Q = 0,        forward 進行（処理追加中）
- *   BACKWARD    4.0s : P = 1,        Q が 0 → 1,   backward 進行（後段で復元中）
- *   HOLD_END    3.5s : P = 1,        Q = 1,        理想線重ね（復元結果）
- *
- * 各 op i に進度区間 [lo_i, hi_i] を割り当て、隣接 op と区間を overlap させる
- * （5 op で [0.00, 0.32], [0.18, 0.50], [0.36, 0.68], [0.54, 0.86], [0.72, 1.00]）。
- *
- * reducedMotion=true のときは HOLD_END 状態（P=1, Q=1, 理想線 1.0）で静止。
+ * Phase 32-AR 主要変更:
+ *  - signedPow / Y 軸下方拡張 / y=0 軸線まわりを撤去（通常 pow + Y[0,1] へ復帰）
+ *  - リフトを「両端不動点 bump 加算」へ: y + L * p * 4y(1-y)
+ *    → y=0 / y=1 を全 p で固定。bump は [0,1] 外でゼロクランプ。
+ *  - shiftOffsets を非負方向のみ (R/G/B = 0 / +0.06 / +0.12) に再配置
+ *    → HOLD_START で必ず y = x 直線
+ *  - applyOp に p<=0 早期 return ガード
+ *  - 右セル forward リズム: 下げ→γ→上げ→γ→下げ
+ *  - 右セル backward 設計逸脱（視覚意図優先で再解釈）:
+ *      forward の逆順 + 解析的逆操作 (kA*Q, kP*Q で gradient)
+ *      add 逆: bump 加算 y' = y + L * 4y(1-y) を二次方程式で解く inverseBumpAdd
+ *      pow 逆: forward の逆 exponent 1/forward.param へ Q で補間
+ *    発注書5 の文言「Q=1 で 1.0 ＝ 直線」と「逆符号 + 振幅 70-85%」を厳密実装すると
+ *    forward の pow が打ち消されず HOLD_END max|y-x| ≈ 0.23 となり(2)復元視覚と
+ *    assert 4 < 0.10 が両立しないため、視覚意図 (HOLD_END で「直線にかなり近い」)
+ *    を優先して backward を完全打ち消し近傍へ再設計。
+ *  - dev assert を 4 本に再構成（HOLD_START 直線 / 端点不動 / FORWARD 終 / HOLD_END）
  */
 
 const LOOP = 14
@@ -49,8 +50,8 @@ const PLOT_H = 480 // 60..540
 const BADGE_CY = 575
 const FORMULA_CY = 630
 
+const Y_MIN = 0
 const Y_MAX = 1.0
-const Y_MIN = -0.4
 const Y_RANGE = Y_MAX - Y_MIN
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
@@ -88,19 +89,17 @@ function shiftOffsets(shift: number): Offsets {
   return BASE_OFFSETS.map(({ lo, hi }) => ({ lo: lo + shift, hi: hi + shift }))
 }
 
+// Phase 32-AR: 全 shift を非負に揃え、HOLD_START (P=0) で全 op の lo>=0 → p=0 → no-op を保証。
 const OFFSETS_LEFT_R: Offsets = shiftOffsets(0)
-const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.12)
-const OFFSETS_LEFT_B: Offsets = shiftOffsets(-0.12)
+const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.06)
+const OFFSETS_LEFT_B: Offsets = shiftOffsets(0.12)
 
-// Phase 32-AQ: 各 chan の idx 2 op (中央リフト負) が P=0.5 付近でしっかり発火するよう
-// 全 shift を負側に再配置（base 中央 0.52 を P=0.5 直近に寄せる）。
 const OFFSETS_RIGHT_R: Offsets = shiftOffsets(0)
-const OFFSETS_RIGHT_G: Offsets = shiftOffsets(-0.06)
-const OFFSETS_RIGHT_B: Offsets = shiftOffsets(-0.12)
+const OFFSETS_RIGHT_G: Offsets = shiftOffsets(0.06)
+const OFFSETS_RIGHT_B: Offsets = shiftOffsets(0.12)
 
-// 左セル（ゲイン × ガンマ）: RGB ごとに param をずらして中盤で識別性を出す。
+// 左セル（ゲイン × ガンマ）: RGB ごとに param をずらして中盤の識別性を出す。
 // 各 chan は自分自身の数学的逆を backward 区間で適用するので完全可逆。
-// Phase 32-AP: param 振幅を拡大して FORWARD 中盤の「ぐじゃぐじゃ」を強化。
 const LEFT_OPS_R: Op[] = [
   { kind: "mul", param: 2.2 },
   { kind: "pow", param: 1.85 },
@@ -123,57 +122,56 @@ const LEFT_OPS_B: Op[] = [
   { kind: "mul", param: 1.4 },
 ]
 
-// 右セル（リフト × ガンマ）forward 用 ops。
-// Phase 32-AQ: 中央 op (idx 2) に強い負リフトを入れ、中盤で y < 0 まで潜らせる。
-//   add +正 → pow >1 → add -大 (中域で y を負域へ) → pow >1 (signedPow が負域保持)
-//   → add +小 (plot 内へ押し戻し)
+// 右セル forward: 下げ → γ強 → 上げ大 → γ弱 → 下げ
+// 各 add は両端不動点 bump 加算 y + L*p*4y(1-y) で y=0/1 を完全固定。
+// G/B は位相ずらしで amp/exponent を 5〜10% ずらす（B が一番激しく、R が穏やか）。
 const RIGHT_FORWARD_R: Op[] = [
-  { kind: "add", param: 0.25 },
-  { kind: "pow", param: 1.5 },
-  { kind: "add", param: -1.0 },
-  { kind: "pow", param: 1.4 },
-  { kind: "add", param: 0.1 },
+  { kind: "add", param: -0.2 },
+  { kind: "pow", param: 1.48 },
+  { kind: "add", param: 0.3 },
+  { kind: "pow", param: 0.65 },
+  { kind: "add", param: -0.21 },
 ]
 const RIGHT_FORWARD_G: Op[] = [
-  { kind: "add", param: 0.22 },
-  { kind: "pow", param: 1.4 },
-  { kind: "add", param: -0.85 },
-  { kind: "pow", param: 1.3 },
-  { kind: "add", param: 0.14 },
+  { kind: "add", param: -0.21 },
+  { kind: "pow", param: 1.5 },
+  { kind: "add", param: 0.32 },
+  { kind: "pow", param: 0.63 },
+  { kind: "add", param: -0.22 },
 ]
 const RIGHT_FORWARD_B: Op[] = [
-  { kind: "add", param: 0.18 },
-  { kind: "pow", param: 1.55 },
-  { kind: "add", param: -0.95 },
-  { kind: "pow", param: 1.45 },
-  { kind: "add", param: 0.18 },
+  { kind: "add", param: -0.22 },
+  { kind: "pow", param: 1.52 },
+  { kind: "add", param: 0.34 },
+  { kind: "pow", param: 0.6 },
+  { kind: "add", param: -0.23 },
 ]
 
-// 右セル backward 用 ops（forward の逆ではない、後段追加適用）。
-// Phase 32-AQ: BACKWARD 中盤で再度 y < 0 へ沈ませ、HOLD_END で plateau+lift。
-//   add -big (一気に負域へ) → pow >1 (負域整形、signedPow) → add -mid (中央 lift down)
-//   → pow <1 (持ち上げ)  → add +final (大きく plot 内へ復帰)
-// 最終 add は (1-y) factor で y=1 不動点を維持しつつ、負域からの持ち上げに効く。
+// 右セル backward: forward の逆順 + raw param（apply 側で解析的逆を実装）。
+// applyOpProgressBackward で:
+//   add: inverseBumpAdd(y, op.param * p * Q) で forward bump 加算を解析的に巻き戻す
+//   pow: forward の逆 exponent 1/op.param へ Q で補間（Q=0 で no-op、Q=1 で完全逆）
+// → HOLD_END で forward を完全打ち消し近傍 (残差 ~0.06 の小さな構造的歪みのみ残る)
 const RIGHT_BACKWARD_R: Op[] = [
-  { kind: "add", param: -0.4 },
-  { kind: "pow", param: 1.85 },
-  { kind: "add", param: -0.1 },
-  { kind: "pow", param: 0.55 },
-  { kind: "add", param: 0.55 },
+  { kind: "add", param: -0.21 },
+  { kind: "pow", param: 0.65 },
+  { kind: "add", param: 0.3 },
+  { kind: "pow", param: 1.48 },
+  { kind: "add", param: -0.2 },
 ]
 const RIGHT_BACKWARD_G: Op[] = [
-  { kind: "add", param: -0.35 },
-  { kind: "pow", param: 1.7 },
-  { kind: "add", param: -0.1 },
-  { kind: "pow", param: 0.6 },
-  { kind: "add", param: 0.5 },
+  { kind: "add", param: -0.22 },
+  { kind: "pow", param: 0.63 },
+  { kind: "add", param: 0.32 },
+  { kind: "pow", param: 1.5 },
+  { kind: "add", param: -0.21 },
 ]
 const RIGHT_BACKWARD_B: Op[] = [
-  { kind: "add", param: -0.4 },
-  { kind: "pow", param: 2.0 },
-  { kind: "add", param: -0.1 },
-  { kind: "pow", param: 0.5 },
-  { kind: "add", param: 0.65 },
+  { kind: "add", param: -0.23 },
+  { kind: "pow", param: 0.6 },
+  { kind: "add", param: 0.34 },
+  { kind: "pow", param: 1.52 },
+  { kind: "add", param: -0.22 },
 ]
 
 const FREQS = [0.7, 0.85, 1.0, 1.15, 1.3]
@@ -185,36 +183,77 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
 
-// Phase 32-AQ: signedPow は b<0 でも -(|b|^e) を返し負域を保持する。
-// DaVinci Resolve の 32bit float 内部計算に揃え、ノードを重ねた中域で y が
-// 負域へ「潜って」から後段で復帰する非線形挙動を可視化できるようにする。
-function signedPow(b: number, e: number): number {
-  if (b === 0) return 0
-  if (b > 0) return Math.pow(b, e)
-  return -Math.pow(-b, e)
-}
-
 function easeInOutCubic(p: number): number {
   return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 }
 
-// リフト操作 (1, 1) 不動点固定: out = y + L * p * (1 - y)
-//   y = 0 → L * p（黒側を持ち上げ）
-//   y = 1 → 1（白側は常に固定）
-function applyOpProgress(y: number, op: Op, p: number): number {
-  if (op.kind === "add") return y + op.param * p * (1 - y)
-  if (op.kind === "pow") return signedPow(y, 1 + (op.param - 1) * p)
+// Phase 32-AR: bump = [0,1] でのみ正の凸関数、外側ではゼロで数値暴走を防ぐ。
+//   bump(0) = bump(1) = 0、bump(0.5) = 1 (× 4 で正規化)
+function bump(y: number): number {
+  if (y <= 0 || y >= 1) return 0
+  return y * (1 - y) * 4
+}
+
+// Phase 32-AR: bump 加算 y' = y + L * 4y(1-y) を y について解析的に逆算。
+//   4L y^2 - (1+4L) y + y' = 0、解は y = ((1+4L) - sqrt(D)) / (8L)
+//   端 y' ∈ {0,1} で y = y' を維持。L=0 で恒等。
+function inverseBumpAdd(yOut: number, L: number): number {
+  if (L === 0) return yOut
+  if (yOut <= 0) return 0
+  if (yOut >= 1) return 1
+  const a = 4 * L
+  const b = -(1 + 4 * L)
+  const c = yOut
+  const D = b * b - 4 * a * c
+  if (D < 0) return yOut
+  const root = (-b - Math.sqrt(D)) / (2 * a)
+  return root < 0 ? 0 : root > 1 ? 1 : root
+}
+
+// Phase 32-AR: リフト = 両端不動点 bump 加算
+//   add: y + L * p * bump(y)
+//     y=0 → 0、y=1 → 1 が全 p で完全固定
+//     y=0.5 で bump の最大値が L*p に揃う
+//   pow: 通常 Math.pow（y=0/1 不動点、[0,1] クランプ）
+//   mul: y * (1 + (param-1)*p)（y=0 不動点）
+function applyOpProgressForward(y: number, op: Op, p: number): number {
+  if (p <= 0) return y
+  if (op.kind === "add") return y + op.param * p * bump(y)
+  if (op.kind === "pow") {
+    if (y <= 0) return 0
+    if (y >= 1) return 1
+    return Math.pow(y, 1 + (op.param - 1) * p)
+  }
   return y * (1 + (op.param - 1) * p)
 }
 
-// applyOpProgress の数学的逆関数。
-//   add 逆: y = (out - L*p) / (1 - L*p)
-function applyOpProgressInverse(y: number, op: Op, p: number): number {
-  if (op.kind === "add") {
-    const denom = 1 - op.param * p
-    return denom === 0 ? y : (y - op.param * p) / denom
+// 右セル backward 専用: 解析的逆 + Q による gradient。
+//   add: forward bump 加算 (L=op.param * p * Q) を inverseBumpAdd で巻き戻し
+//        Q=0 で no-op (L=0 → inverseBumpAdd 恒等)、Q=1 で forward 完全打ち消し
+//   pow: forward の逆 exponent 1/op.param へ Q で補間
+//        targetExp = 1 + (1/op.param - 1) * Q
+//        Q=0 で targetExp=1.0 (no-op)、Q=1 で targetExp=1/op.param (完全逆)
+//        op の exp = 1 + (targetExp - 1) * p で進度補間
+function applyOpProgressBackward(y: number, op: Op, p: number, Q: number): number {
+  if (p <= 0) return y
+  if (op.kind === "add") return inverseBumpAdd(y, op.param * p * Q)
+  if (op.kind === "pow") {
+    if (y <= 0) return 0
+    if (y >= 1) return 1
+    const targetExp = 1 + (1 / op.param - 1) * Q
+    return Math.pow(y, 1 + (targetExp - 1) * p)
   }
-  if (op.kind === "pow") return signedPow(y, 1 / (1 + (op.param - 1) * p))
+  return y * (1 + (op.param - 1) * p)
+}
+
+// 左セル backward: applyOpProgressForward の数学的逆関数。
+//   add 逆: 左セルでは add 不使用、恒等関数を返す
+//   pow 逆: y^(1/exp)
+//   mul 逆: y / (1 + (param-1)*p)
+function applyOpProgressInverse(y: number, op: Op, p: number): number {
+  if (p <= 0) return y
+  if (op.kind === "add") return y
+  if (op.kind === "pow") return Math.pow(y, 1 / (1 + (op.param - 1) * p))
   return y / (1 + (op.param - 1) * p)
 }
 
@@ -264,9 +303,8 @@ function envelopeAmp(P: number, Q: number): number {
 }
 
 /**
- * 左セル用: forward は applyOpProgress、backward は applyOpProgressInverse
- * （同じ ops の数学的逆関数を逆順で適用）。
- * HOLD_END (Q = 1) で常に y = x へ完全復帰。
+ * 左セル用: forward は applyOpProgressForward、backward は applyOpProgressInverse
+ * （同じ ops の数学的逆関数を逆順で適用）。HOLD_END で完全 y=x 復帰。
  */
 function buildLeftFn(
   ops: Op[],
@@ -279,7 +317,7 @@ function buildLeftFn(
     for (let i = 0; i < ops.length; i++) {
       const { lo, hi } = offsets[i]
       const p = easeInOutCubic(clamp01((P - lo) / (hi - lo)))
-      y = applyOpProgress(y, ops[i], p)
+      y = applyOpProgressForward(y, ops[i], p)
     }
     for (let i = ops.length - 1; i >= 0; i--) {
       const { lo, hi } = offsets[i]
@@ -291,10 +329,10 @@ function buildLeftFn(
 }
 
 /**
- * 右セル用: forward は opsForward を applyOpProgress、backward は opsBackward を
- * applyOpProgress で 0..M-1 順に追加適用（数学的逆ではない）。
- * 入れ子非可換性で HOLD_END (Q = 1) でも y = x には戻らず残差が残る。
- * 中間オシレーションは envelope = sin(Pπ) sin(Qπ) で両端 0、中央 max。
+ * 右セル用: forward は opsForward を順に追加適用、backward は opsBackward を順に追加適用。
+ * 入れ子非可換性で HOLD_END でも y=x には戻らず残差が残る。
+ * pow op は backward 側で Q による exponent → 1.0 補間が入り、
+ * Q=1 で全 pow 直線化、add 系の残差だけが残る。
  */
 function buildRightFn(
   opsForward: Op[],
@@ -319,7 +357,7 @@ function buildRightFn(
           p + oscAmp * env * Math.sin(t * 2 * Math.PI * freqs[i] + phaseRgb),
         )
       }
-      y = applyOpProgress(y, opsForward[i], p)
+      y = applyOpProgressForward(y, opsForward[i], p)
     }
     for (let i = 0; i < opsBackward.length; i++) {
       const { lo, hi } = offsetsBackward[i]
@@ -332,14 +370,13 @@ function buildRightFn(
               Math.sin(t * 2 * Math.PI * freqs[i] + phaseRgb + Math.PI),
         )
       }
-      y = applyOpProgress(y, opsBackward[i], p)
+      y = applyOpProgressBackward(y, opsBackward[i], p, Q)
     }
     return y
   }
 }
 
-// Phase 32-AQ: Y 軸 [Y_MIN, Y_MAX] に対する screen Y 変換。
-//   sy = plotY + plotH * (1 - (y - Y_MIN) / Y_RANGE)
+// Phase 32-AR: Y 軸 [0, 1] に戻し、yToScreen は素直な反転。
 function yToScreen(y: number, plotY: number, plotH: number): number {
   return plotY + plotH * (1 - (y - Y_MIN) / Y_RANGE)
 }
@@ -388,8 +425,8 @@ function formulaForOpAt(op: Op, p: number, isInverseDisplay: boolean): string {
     if (op.kind === "add") {
       const v = op.param * p
       const abs = Math.abs(v).toFixed(3)
-      if (v >= 0) return `y + ${abs}`
-      return `y − ${abs}`
+      if (v >= 0) return `y + ${abs}·y(1−y)`
+      return `y − ${abs}·y(1−y)`
     }
     if (op.kind === "pow") return `y^${fmt3(1 + (op.param - 1) * p)}`
     return `y × ${fmt3(1 + (op.param - 1) * p)}`
@@ -397,8 +434,8 @@ function formulaForOpAt(op: Op, p: number, isInverseDisplay: boolean): string {
   if (op.kind === "add") {
     const v = op.param * p
     const abs = Math.abs(v).toFixed(3)
-    if (v >= 0) return `y − ${abs}`
-    return `y + ${abs}`
+    if (v >= 0) return `y − ${abs}·y(1−y)`
+    return `y + ${abs}·y(1−y)`
   }
   if (op.kind === "pow") return `y^(1/${fmt3(1 + (op.param - 1) * p)})`
   return `y ÷ ${fmt3(1 + (op.param - 1) * p)}`
@@ -411,10 +448,6 @@ type FormulaCell = {
   fadeOut: number
 }
 
-/**
- * 左セル channel 1 つぶんの formula state。
- * forward は ops を 0..N-1 順に表示、backward は ops[N-1..0] の逆関数表示。
- */
 function makeFormulaForLeftChannel(
   state: AnimState,
   ops: Op[],
@@ -491,11 +524,6 @@ function makeFormulaForLeftChannel(
   }
 }
 
-/**
- * 右セル channel 1 つぶんの formula state。
- * forward は opsForward の forward 表示、backward は opsBackward の forward 表示
- * （別 ops 列の追加適用なので両区間とも非反転表示）。
- */
 function makeFormulaForRightChannel(
   state: AnimState,
   opsForward: Op[],
@@ -549,7 +577,6 @@ function makeFormulaForRightChannel(
       const ratio = since / FADE_DUR
       return { current, prev: "y = x", fadeIn: ratio, fadeOut: 1 - ratio }
     }
-    // backward 開始直後 → 前は forward 最後 (opsForward[NUM_OPS-1] 完全)
     const ratio = since / FADE_DUR
     return {
       current,
@@ -759,10 +786,6 @@ function CellPlot({
   const polyB = buildPolyline(curveBuilds.fnB, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
   const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
 
-  // Phase 32-AQ: Y_MIN=-0.4, Y_MAX=1.0
-  //   yOneScreen  = plot 上端 (PLOT_Y)
-  //   yHalfScreen = plot の (1 - 0.9/1.4) = 0.357 位置
-  //   yZeroScreen = plot の (1 - 0.4/1.4) = 0.7143 位置 (plot 下端から 28.57% 上)
   const yOneScreen = yToScreen(1, PLOT_Y, PLOT_H)
   const yHalfScreen = yToScreen(0.5, PLOT_Y, PLOT_H)
   const yZeroScreen = yToScreen(0, PLOT_Y, PLOT_H)
@@ -781,7 +804,7 @@ function CellPlot({
         strokeWidth={1}
       />
 
-      {/* y = x 参照線（y=0 ライン上の左端 → y=1 ライン上の右端） */}
+      {/* y = x 参照線（左下原点 → 右上 y=1） */}
       <line
         x1={plotXAbs}
         y1={yZeroScreen}
@@ -792,6 +815,7 @@ function CellPlot({
         strokeDasharray="2 6"
       />
 
+      {/* y = 0.5 中央補助線 */}
       <line
         x1={plotXAbs}
         y1={yHalfScreen}
@@ -802,28 +826,7 @@ function CellPlot({
         strokeDasharray="4 6"
       />
 
-      {/* y = 0 軸線（負域の境界、Phase 32-AQ で追加） */}
-      <line
-        x1={plotXAbs}
-        y1={yZeroScreen}
-        x2={plotXAbs + PLOT_W}
-        y2={yZeroScreen}
-        stroke={GRID}
-        strokeWidth={1}
-        strokeDasharray="4 6"
-      />
-      <text
-        x={plotXAbs - 8}
-        y={yZeroScreen + 4}
-        fontSize={13}
-        fill={TEXT_MUTED}
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        textAnchor="end"
-        dominantBaseline="alphabetic"
-      >
-        y = 0
-      </text>
-
+      {/* y = 1 上端ライン + ラベル */}
       <line
         x1={plotXAbs}
         y1={yOneScreen}
@@ -930,7 +933,7 @@ function FormulaRGB({
             <text
               x={s.cx}
               y={FORMULA_CY}
-              fontSize={22}
+              fontSize={20}
               fontWeight={500}
               fill={TEXT_PRIMARY}
               textAnchor="middle"
@@ -947,7 +950,7 @@ function FormulaRGB({
           <text
             x={s.cx}
             y={FORMULA_CY}
-            fontSize={22}
+            fontSize={20}
             fontWeight={500}
             fill={TEXT_PRIMARY}
             textAnchor="middle"
@@ -1027,93 +1030,130 @@ function Cell({
   )
 }
 
-// 開発時のみ実行: 左セル完全可逆性 + 右セル残差検証
+// Phase 32-AR: 4 本の dev assert + metric ログ
 let _devAssertionsRun = false
 function runDevAssertions() {
   if (_devAssertionsRun) return
   _devAssertionsRun = true
 
-  // Phase 32-AQ: signedPow 6 点ユニット検証ログ
-  console.log(
-    "[Phase 32-AQ] signedPow unit checks:",
-    `signedPow(-0.3, 1.5)=${signedPow(-0.3, 1.5).toFixed(4)}`,
-    `signedPow(-0.1, 1.5)=${signedPow(-0.1, 1.5).toFixed(4)}`,
-    `signedPow(0, 1.5)=${signedPow(0, 1.5).toFixed(4)}`,
-    `signedPow(0.1, 1.5)=${signedPow(0.1, 1.5).toFixed(4)}`,
-    `signedPow(0.3, 1.5)=${signedPow(0.3, 1.5).toFixed(4)}`,
-    `signedPow(-0.5, 0.5)=${signedPow(-0.5, 0.5).toFixed(4)}`,
-  )
+  const N = 96
+  const xs: number[] = []
+  for (let i = 0; i <= N; i++) xs.push(i / N)
 
-  const leftSamples = [0.0, 0.25, 0.5, 0.75, 1.0]
   const leftChans = [
     { name: "LEFT_R", ops: LEFT_OPS_R, offsets: OFFSETS_LEFT_R },
     { name: "LEFT_G", ops: LEFT_OPS_G, offsets: OFFSETS_LEFT_G },
     { name: "LEFT_B", ops: LEFT_OPS_B, offsets: OFFSETS_LEFT_B },
   ]
+  const rightChans = [
+    {
+      name: "RIGHT_R",
+      opsF: RIGHT_FORWARD_R,
+      opsB: RIGHT_BACKWARD_R,
+      off: OFFSETS_RIGHT_R,
+    },
+    {
+      name: "RIGHT_G",
+      opsF: RIGHT_FORWARD_G,
+      opsB: RIGHT_BACKWARD_G,
+      off: OFFSETS_RIGHT_G,
+    },
+    {
+      name: "RIGHT_B",
+      opsF: RIGHT_FORWARD_B,
+      opsB: RIGHT_BACKWARD_B,
+      off: OFFSETS_RIGHT_B,
+    },
+  ]
+
+  // Assert 1: HOLD_START 全サンプル x で |y - x| < 1e-12（左右セル R/G/B 全て）
+  let holdStartMaxErr = 0
   for (const { name, ops, offsets } of leftChans) {
-    const fn = buildLeftFn(ops, offsets, 1, 1)
-    for (const x of leftSamples) {
-      const y = fn(x)
+    const fn = buildLeftFn(ops, offsets, 0, 0)
+    for (const x of xs) {
+      const err = Math.abs(fn(x) - x)
+      holdStartMaxErr = Math.max(holdStartMaxErr, err)
       console.assert(
-        Math.abs(y - x) < 1e-10,
-        `${name}@x=${x}: |y-x|=${Math.abs(y - x)} not reversible`,
+        err < 1e-12,
+        `${name} HOLD_START@x=${x}: |y-x|=${err} >= 1e-12`,
+      )
+    }
+  }
+  for (const { name, opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 0, 0, FREQS, 0, 0, 0)
+    for (const x of xs) {
+      const err = Math.abs(fn(x) - x)
+      holdStartMaxErr = Math.max(holdStartMaxErr, err)
+      console.assert(
+        err < 1e-12,
+        `${name} HOLD_START@x=${x}: |y-x|=${err} >= 1e-12`,
       )
     }
   }
 
-  const rightChans = [
-    { name: "RIGHT_R", opsF: RIGHT_FORWARD_R, opsB: RIGHT_BACKWARD_R, off: OFFSETS_RIGHT_R },
-    { name: "RIGHT_G", opsF: RIGHT_FORWARD_G, opsB: RIGHT_BACKWARD_G, off: OFFSETS_RIGHT_G },
-    { name: "RIGHT_B", opsF: RIGHT_FORWARD_B, opsB: RIGHT_BACKWARD_B, off: OFFSETS_RIGHT_B },
+  // Assert 2: y(0)=0 / y(1)=1 を全フェーズで < 1e-9（右セルのみ。左セル mul は中盤で y(1) 不動点を持たない）
+  let endpointMaxErr = 0
+  const phaseSamples: { P: number; Q: number; label: string }[] = [
+    { P: 0, Q: 0, label: "HOLD_START" },
+    { P: 0.25, Q: 0, label: "FWD@0.25" },
+    { P: 0.5, Q: 0, label: "FWD@0.5" },
+    { P: 0.75, Q: 0, label: "FWD@0.75" },
+    { P: 1, Q: 0, label: "FWD_END" },
+    { P: 1, Q: 0.25, label: "BWD@0.25" },
+    { P: 1, Q: 0.5, label: "BWD@0.5" },
+    { P: 1, Q: 0.75, label: "BWD@0.75" },
+    { P: 1, Q: 1, label: "HOLD_END" },
   ]
-
-  // Phase 32-AQ: 21 点 (0.0, 0.05, ..., 1.0) で位相別検証
-  const N = 20
-  const xs: number[] = []
-  for (let i = 0; i <= N; i++) xs.push(i / N)
-
   for (const { name, opsF, opsB, off } of rightChans) {
-    // (a) FORWARD 中盤 (P=0.5, Q=0): min(y) < -0.15
-    const fnFwdMid = buildRightFn(opsF, opsB, off, off, 0.5, 0, FREQS, 0, 0, 0)
-    const ysFwdMid = xs.map((x) => fnFwdMid(x))
-    const minFwdMid = Math.min(...ysFwdMid)
-    console.assert(
-      minFwdMid < -0.15,
-      `${name} FORWARD mid (P=0.5, Q=0) min(y)=${minFwdMid} not below -0.15`,
-    )
-
-    // (b) BACKWARD 中盤 (P=1, Q=0.5): min(y) < -0.15
-    const fnBwdMid = buildRightFn(opsF, opsB, off, off, 1, 0.5, FREQS, 0, 0, 0)
-    const ysBwdMid = xs.map((x) => fnBwdMid(x))
-    const minBwdMid = Math.min(...ysBwdMid)
-    console.assert(
-      minBwdMid < -0.15,
-      `${name} BACKWARD mid (P=1, Q=0.5) min(y)=${minBwdMid} not below -0.15`,
-    )
-
-    // (c) HOLD_END (P=1, Q=1): リフト不動点 + プラトー+持ち上げ + 下方残差許容
-    const fnEnd = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
-    const ysEnd = xs.map((x) => fnEnd(x))
-    console.assert(
-      Math.abs(ysEnd[N] - 1) < 1e-9,
-      `${name}@x=1 lift fixed-point violation: |y-1|=${Math.abs(ysEnd[N] - 1)}`,
-    )
-    let maxJump = 0
-    for (let i = 0; i + 1 < N; i++) {
-      const dy0 = ysEnd[i + 1] - ysEnd[i]
-      const dy1 = ysEnd[i + 2] - ysEnd[i + 1]
-      maxJump = Math.max(maxJump, dy1 - dy0)
+    for (const ph of phaseSamples) {
+      const fn = buildRightFn(opsF, opsB, off, off, ph.P, ph.Q, FREQS, 0, 0, 0)
+      const e0 = Math.abs(fn(0) - 0)
+      const e1 = Math.abs(fn(1) - 1)
+      endpointMaxErr = Math.max(endpointMaxErr, e0, e1)
+      console.assert(
+        e0 < 1e-9,
+        `${name} ${ph.label}: y(0)=${fn(0)} (err=${e0})`,
+      )
+      console.assert(
+        e1 < 1e-9,
+        `${name} ${ph.label}: y(1)=${fn(1)} (err=${e1})`,
+      )
     }
-    console.assert(
-      maxJump > 0.02,
-      `${name} HOLD_END monotone (no plateau+lift): max(dy[i+1]-dy[i])=${maxJump}`,
-    )
-    const minEnd = Math.min(...ysEnd)
-    console.assert(
-      minEnd > -0.1,
-      `${name} HOLD_END min(y)=${minEnd} below -0.1 (excess residual)`,
-    )
   }
+
+  // Assert 3: FORWARD 終了 (P=1, Q=0) で max|y - x| > 0.20（右セル R/G/B いずれか）
+  let forwardEndMaxDev = 0
+  for (const { opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 1, 0, FREQS, 0, 0, 0)
+    let maxDev = 0
+    for (const x of xs) maxDev = Math.max(maxDev, Math.abs(fn(x) - x))
+    forwardEndMaxDev = Math.max(forwardEndMaxDev, maxDev)
+  }
+  console.assert(
+    forwardEndMaxDev > 0.2,
+    `FORWARD end max|y-x|=${forwardEndMaxDev} <= 0.20 (画として複雑度不足)`,
+  )
+
+  // Assert 4: HOLD_END (P=1, Q=1) で 0.005 < max|y - x| < 0.10（右セル R/G/B いずれか）
+  let holdEndMaxDev = 0
+  for (const { opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
+    let maxDev = 0
+    for (const x of xs) maxDev = Math.max(maxDev, Math.abs(fn(x) - x))
+    holdEndMaxDev = Math.max(holdEndMaxDev, maxDev)
+  }
+  console.assert(
+    holdEndMaxDev > 0.005 && holdEndMaxDev < 0.1,
+    `HOLD_END max|y-x|=${holdEndMaxDev} not in (0.005, 0.10)`,
+  )
+
+  console.log(
+    "[Phase 32-AR assert metrics]",
+    `HOLD_START max|y-x|=${holdStartMaxErr.toExponential(3)}`,
+    `endpoint max err=${endpointMaxErr.toExponential(3)}`,
+    `FORWARD end max|y-x|=${forwardEndMaxDev.toFixed(4)}`,
+    `HOLD_END max|y-x|=${holdEndMaxDev.toFixed(4)}`,
+  )
 }
 
 if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
@@ -1185,7 +1225,7 @@ export default function CorrectionReversibility({
   const leftFnB = buildLeftFn(LEFT_OPS_B, OFFSETS_LEFT_B, state.P, state.Q)
   const leftCurves = { fnR: leftFnR, fnG: leftFnG, fnB: leftFnB }
 
-  // 右セル: forward / backward 別 ops、入れ子非可換性で残差残る (osc あり)
+  // 右セル: forward/backward 別 ops、入れ子非可換性で残差残る (osc あり)
   const rightFnR = buildRightFn(
     RIGHT_FORWARD_R,
     RIGHT_BACKWARD_R,
