@@ -74,6 +74,16 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// パスワードリセット用トークン。identifier はリセット要求時のメールアドレス。
+// expires 過ぎた行と消費済み行はバッチで掃除してよい。
+model PasswordResetToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 // ─────────────────────────────────────────────────
 // 予約者プロフィール
 // ─────────────────────────────────────────────────
