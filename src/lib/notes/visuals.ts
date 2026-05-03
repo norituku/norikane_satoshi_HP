@@ -60,9 +60,9 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
     kind: "video",
     title: "戻せる / 戻せない（可逆性の比較）",
     caption:
-      "ゲイン×ガンマ（左）とリフト×ガンマ（右）を 1 ノードずつ連続補間で 7 層積み上げ（往路）、続けて符号を反転した戻し操作を同順序で 7 層連続補間で積み足す（復路）。HOLD_START 2.5s で y = x 静止 → MIDDLE 8s で 14 op を easeInOutCubic 連続適用 → HOLD_END 3.5s で y = x 理想復元線を重ね、実線とのズレが「戻りきらなかった残差 = くすみ」として残る。14 秒で 1 ループ。",
-    alt: "ゲイン×ガンマとリフト×ガンマの2列比較。HOLD_START 2.5s 静止 → MIDDLE 8s で往路7 op + 復路7 op を sequential に連続補間 → HOLD_END 3.5s で y=x 理想線を点線重ね、実線とのズレで戻りきらない残差を可視化するアニメーション。14秒1ループ。",
-    aspect: { width: 16, height: 10 },
+      "ゲイン×ガンマ（左、RGB 3 本同期で最初と最後にぴったり戻る完全可逆）とリフト×ガンマ（右、RGB ごとに位相と param をずらして中間で大きく揺らぐ非可逆）を 5 op の連続進度で 14 秒 1 ループ。HOLD_START 2.5s で y = x 静止 → 再生 4s で forward 進度 P が 0 → 1 → 逆再生 4s で backward 進度 Q が 0 → 1 → HOLD_END 3.5s で y = x 理想線を点線重ね、左は完全一致 / 右は RGB ごとに違う残差が「くすみ + 色偏り」として可視化される。再生バッジ ▶ と逆再生バッジ ◀ で進行方向を表示。",
+    alt: "ゲイン×ガンマ（左、RGB 3 本同期 + 完全可逆）とリフト×ガンマ（右、RGB 位相 / param ずらし + 中間オシレーション + 非可逆）の 2 列比較。HOLD_START 2.5s 静止 → 再生 4s で forward 進度 P が 0→1 → 逆再生 4s で backward 進度 Q が 0→1 → HOLD_END 3.5s で y=x 理想線を点線重ね、左は完全一致 / 右は RGB ごとに違う残差を可視化するアニメーション。14 秒 1 ループ。",
+    aspect: { width: 1640, height: 680 },
     intro: "戻したつもり、でも戻り切らない。残差が「くすみ」になる。",
     loopSec: 14,
   },
