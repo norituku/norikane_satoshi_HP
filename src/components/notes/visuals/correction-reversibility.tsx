@@ -3,44 +3,51 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Phase 32-AL: 戻せる / 戻せない (可逆性の比較)
+ * Phase 32-AM: 戻せる / 戻せない (可逆性の比較)
  *
- * viewBox 1600×1000 (16:10) を 2 セル横並び (各 800×1000) に分け、
- * 左セル GAIN×GAMMA (×K と ^γ を交互積み) と
- * 右セル LIFT×GAMMA (+β と ^γ を交互積み) を 14 秒で 1 ループする。
+ * viewBox 1600×1000 を 2 セル横並び (各 800×1000) に分け、
+ * 左 GAIN×GAMMA (×K と ^γ 交互 7 op) と
+ * 右 LIFT×GAMMA (+β と ^γ 交互 7 op) を 14 秒で 1 ループ。
  *
- * 14 層往復構造:
- *   1〜7 層 (往路): 7 個の op を順に積む (各 1 秒)
- *   8〜14 層 (復路): naive な戻し ── op1^-1, op2^-1, ..., op7^-1 を
- *                     forward と同順序で適用する (符号だけ反転、順序を逆転しない)
- *   原典の趣旨: カラリストが「ノードを後から積み足して戻そうとする」と、
- *   数学的には正しい逆順では積まれず、戻り切らずに残差が出る。
+ * 時間軸 3 区間:
+ *   HOLD_START = 2.5  : y = x で完全静止
+ *   MIDDLE     = 8.0  : 往路 7 op + 復路 7 op を sequential 連続適用
+ *   HOLD_END   = 3.5  : 14 op 完全適用 + y=x 理想線フェードイン静止
  *
- * 14 層目 (復路終端) のみ y = x 理想復元線を点線で重ね描きし、
- * 実線とのズレで「戻りきらなかった残差」= くすみ を可視化する。
+ * 各 op は 0 → 1 へ easeInOutCubic で連続補間し、
+ * 数式表記は op ごとに実数値（toFixed(3)）でリアルタイム連続表示する。
+ * op 種類 (mul / pow / add) が切り替わる瞬間だけ 200ms クロスフェード、
+ * 同種 op 内は数値だけ滑らかに動く（明滅させない）。
  *
- * reducedMotion=true のときは layerIdx=13 (最終形 + 理想線) で静止画化。
+ * reducedMotion=true のときは HOLD_END 状態（14 op 適用 + 理想線 1.0）で静止。
  */
 
 const LOOP = 14
-const LAYER_DUR = 1.0
+const HOLD_START = 2.5
+const MIDDLE = 8.0
+const HOLD_END = 3.5
+const OPS_PER_SIDE = 7
+const TOTAL_OPS = OPS_PER_SIDE * 2
+const OP_DUR = MIDDLE / TOTAL_OPS // ≈ 0.5714
 const FADE_DUR = 0.2
+const IDEAL_FADE_IN = 0.6
+const IDEAL_FADE_OUT = 0.2
 
 const W = 1600
 const H = 1000
 const CELL_W = 800
 const SAMPLES = 96
 
-const TITLE_Y = 50
-const PLOT_X_LOCAL = 80
-const PLOT_Y = 100
-const PLOT_W = CELL_W - 160 // 640
-const PLOT_H = 560 // 100..660
-const PHASE_LABEL_CY = 730
-const STEP_FORMULA_CY = 800
-const SUBLABEL_CY = 880
+const TITLE_Y = 38
+const PLOT_X_LOCAL = 60
+const PLOT_Y = 80
+const PLOT_W = CELL_W - 120 // 680
+const PLOT_H = 600 // 80..680
+const PHASE_LABEL_CY = 720
+const STEP_FORMULA_CY = 790
+const SUBLABEL_CY = 870
 
-const Y_MAX = 1.7
+const Y_MAX = 2.5
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
@@ -62,85 +69,267 @@ function safePow(b: number, e: number) {
   return Math.pow(Math.max(0, b), e)
 }
 
-// 1 ノード = 1 op。kind="add" は y + β、"pow" は y^γ、"mul" は y · K。
 type Op = { kind: "add" | "pow" | "mul"; param: number }
 
-// 左セル: ×K と ^γ を交互に 7 つ積む。K は現行 A=1.4 / A2=0.85 を流用 + 追加 3 値。
+// 左セル: ×K と ^γ を交互に 7 つ。K=0.7..1.6、γ=1.2..1.5。
 const LEFT_OPS: Op[] = [
-  { kind: "mul", param: 1.4 },
-  { kind: "pow", param: 1.3 },
-  { kind: "mul", param: 0.85 },
+  { kind: "mul", param: 1.6 },
+  { kind: "pow", param: 1.5 },
+  { kind: "mul", param: 0.7 },
+  { kind: "pow", param: 1.35 },
+  { kind: "mul", param: 1.25 },
   { kind: "pow", param: 1.2 },
-  { kind: "mul", param: 1.1 },
-  { kind: "pow", param: 1.1 },
-  { kind: "mul", param: 0.95 },
+  { kind: "mul", param: 0.85 },
 ]
 
-// 右セル: +β と ^γ を交互に 7 つ積む。β は L_LIFT=0.18 / L2_LIFT=0.12 を流用 + 追加 2 値。
-// γ は RG=1.3 / RG2=1.15 を流用 + 追加 1 値。
+// 右セル: +β と ^γ を交互に 7 つ。β=0.10..0.22、γ=1.25..1.5。
 const RIGHT_OPS: Op[] = [
+  { kind: "add", param: 0.22 },
+  { kind: "pow", param: 1.5 },
   { kind: "add", param: 0.18 },
-  { kind: "pow", param: 1.3 },
-  { kind: "add", param: 0.12 },
-  { kind: "pow", param: 1.15 },
-  { kind: "add", param: 0.08 },
-  { kind: "pow", param: 1.1 },
-  { kind: "add", param: 0.05 },
+  { kind: "pow", param: 1.4 },
+  { kind: "add", param: 0.14 },
+  { kind: "pow", param: 1.25 },
+  { kind: "add", param: 0.1 },
 ]
 
-function applyOp(y: number, op: Op): number {
-  if (op.kind === "add") return y + op.param
-  if (op.kind === "pow") return safePow(y, op.param)
-  return y * op.param
+function easeInOutCubic(p: number): number {
+  return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 }
 
-function applyOpInverse(y: number, op: Op): number {
-  if (op.kind === "add") return y - op.param
-  if (op.kind === "pow") return safePow(y, 1 / op.param)
-  return y / op.param
+// p ∈ [0,1] で op を 0(=恒等) → 1(=完全適用) に連続補間。
+function applyOpProgress(y: number, op: Op, p: number): number {
+  if (op.kind === "add") return y + op.param * p
+  if (op.kind === "pow") return safePow(y, 1 + (op.param - 1) * p)
+  return y * (1 + (op.param - 1) * p)
 }
 
-function fmt(n: number): string {
-  return Number.isInteger(n) ? n.toFixed(1) : n.toFixed(2)
+function applyOpProgressInverse(y: number, op: Op, p: number): number {
+  if (op.kind === "add") return y - op.param * p
+  if (op.kind === "pow") return safePow(y, 1 / (1 + (op.param - 1) * p))
+  return y / (1 + (op.param - 1) * p)
 }
 
-function opLabel(op: Op): string {
-  if (op.kind === "add") return `y + ${fmt(op.param)}`
-  if (op.kind === "pow") return `y^${fmt(op.param)}`
-  return `y × ${fmt(op.param)}`
+type AnimState = {
+  phase: "hold-start" | "middle" | "hold-end"
+  // middle / hold-end のみ意味を持つ
+  opIndex: number // 0..13 (forward 0..6, backward 7..13)。hold-start=-1, hold-end=14
+  opLocalT: number // 秒 (op 開始からの経過時間)
+  opP: number // eased 0..1
+  opPRaw: number // raw 0..1
+  isBackward: boolean
+  backIndex: number // backward 内 0..6, forward は -1
+  tEnd: number // hold-end 開始からの秒数
 }
 
-function opInverseLabel(op: Op): string {
-  if (op.kind === "add") return `y − ${fmt(op.param)}`
-  if (op.kind === "pow") return `y^(1/${fmt(op.param)})`
-  return `y ÷ ${fmt(op.param)}`
+function computeAnimState(t: number): AnimState {
+  if (t < HOLD_START) {
+    return {
+      phase: "hold-start",
+      opIndex: -1,
+      opLocalT: 0,
+      opP: 0,
+      opPRaw: 0,
+      isBackward: false,
+      backIndex: -1,
+      tEnd: 0,
+    }
+  }
+  const tMid = t - HOLD_START
+  if (tMid < MIDDLE) {
+    const opIndex = Math.min(TOTAL_OPS - 1, Math.floor(tMid / OP_DUR))
+    const opLocalT = tMid - opIndex * OP_DUR
+    const pRaw = Math.min(1, opLocalT / OP_DUR)
+    const p = easeInOutCubic(pRaw)
+    const isBackward = opIndex >= OPS_PER_SIDE
+    const backIndex = isBackward ? opIndex - OPS_PER_SIDE : -1
+    return {
+      phase: "middle",
+      opIndex,
+      opLocalT,
+      opP: p,
+      opPRaw: pRaw,
+      isBackward,
+      backIndex,
+      tEnd: 0,
+    }
+  }
+  const tEnd = tMid - MIDDLE
+  return {
+    phase: "hold-end",
+    opIndex: TOTAL_OPS,
+    opLocalT: 0,
+    opP: 1,
+    opPRaw: 1,
+    isBackward: true,
+    backIndex: OPS_PER_SIDE - 1,
+    tEnd,
+  }
 }
 
-// layerIdx 0..13 → x → y 累積関数。
-// 0..6 = 往路 (ops[0..i] を順適用)
-// 7..13 = 復路: 全往路完了後、ops[0..k] の逆を「同順序」で重ねる (naive 戻し)
-function buildLayerFn(ops: Op[], layerIdx: number): (x: number) => number {
+// state に応じた x → y の現在カーブ。
+// hold-start: y = x。middle forward: ops[0..i-1] 完全 + ops[i] を p で部分適用。
+// middle backward: 全往路完全 + ops[0..b-1] 逆完全 + ops[b] を p で部分逆適用。
+// hold-end: 全往路完全 + 全復路完全。
+function buildCurrentFn(ops: Op[], state: AnimState): (x: number) => number {
   return (x: number) => {
     let y = x
-    if (layerIdx < 7) {
-      for (let i = 0; i <= layerIdx; i++) y = applyOp(y, ops[i])
+    if (state.phase === "hold-start") return y
+
+    if (state.phase === "hold-end") {
+      for (let i = 0; i < OPS_PER_SIDE; i++) y = applyOpProgress(y, ops[i], 1)
+      for (let i = 0; i < OPS_PER_SIDE; i++)
+        y = applyOpProgressInverse(y, ops[i], 1)
       return y
     }
-    for (let i = 0; i < 7; i++) y = applyOp(y, ops[i])
-    const back = layerIdx - 6 // 1..7
-    for (let i = 0; i < back; i++) y = applyOpInverse(y, ops[i])
+
+    // middle
+    if (!state.isBackward) {
+      for (let i = 0; i < state.opIndex; i++)
+        y = applyOpProgress(y, ops[i], 1)
+      y = applyOpProgress(y, ops[state.opIndex], state.opP)
+      return y
+    }
+    for (let i = 0; i < OPS_PER_SIDE; i++) y = applyOpProgress(y, ops[i], 1)
+    for (let i = 0; i < state.backIndex; i++)
+      y = applyOpProgressInverse(y, ops[i], 1)
+    y = applyOpProgressInverse(y, ops[state.backIndex], state.opP)
     return y
   }
 }
 
-function phaseLabelFor(layerIdx: number): string {
-  if (layerIdx < 7) return `往路 ${layerIdx + 1} / 7 層`
-  return `復路 ${layerIdx - 6} / 7 層`
+function fmt3(n: number): string {
+  return n.toFixed(3)
 }
 
-function stepFormulaFor(ops: Op[], layerIdx: number): string {
-  if (layerIdx < 7) return opLabel(ops[layerIdx])
-  return opInverseLabel(ops[layerIdx - 7])
+// 進行中 op の実数値を表示する（forward は適用方向、backward は逆向き表記）。
+function currentFormulaForOp(op: Op, p: number, isBackward: boolean): string {
+  if (!isBackward) {
+    if (op.kind === "add") return `y + ${fmt3(op.param * p)}`
+    if (op.kind === "pow") return `y^${fmt3(1 + (op.param - 1) * p)}`
+    return `y × ${fmt3(1 + (op.param - 1) * p)}`
+  }
+  if (op.kind === "add") return `y − ${fmt3(op.param * p)}`
+  if (op.kind === "pow") return `y^(1/${fmt3(1 + (op.param - 1) * p)})`
+  return `y ÷ ${fmt3(1 + (op.param - 1) * p)}`
+}
+
+function phaseLabelFor(state: AnimState): string {
+  if (state.phase === "hold-start") return "y = x（初期）"
+  if (state.phase === "hold-end") return "復路 7 / 7 層（終端）"
+  if (!state.isBackward) return `往路 ${state.opIndex + 1} / 7 層`
+  return `復路 ${state.backIndex + 1} / 7 層`
+}
+
+// 1 op 前を取得（forward の最初は null、backward の最初は forward 最後）。
+function previousOpInfo(
+  ops: Op[],
+  state: AnimState,
+): { op: Op; isBackward: boolean } | null {
+  if (state.phase !== "middle") return null
+  if (!state.isBackward) {
+    if (state.opIndex === 0) return null
+    return { op: ops[state.opIndex - 1], isBackward: false }
+  }
+  if (state.backIndex === 0) {
+    return { op: ops[OPS_PER_SIDE - 1], isBackward: false }
+  }
+  return { op: ops[state.backIndex - 1], isBackward: true }
+}
+
+function previousPhaseLabel(state: AnimState): string {
+  if (state.phase !== "middle") return ""
+  if (!state.isBackward) {
+    if (state.opIndex === 0) return ""
+    return `往路 ${state.opIndex} / 7 層`
+  }
+  if (state.backIndex === 0) return `往路 7 / 7 層`
+  return `復路 ${state.backIndex} / 7 層`
+}
+
+type FormulaState = {
+  current: string
+  prev: string | null
+  prevPhase: string
+  currentFadeIn: number // 0..1 (現 op の opacity)
+  prevFadeOut: number // 0..1 (前 op の opacity、prev 非表示なら 0)
+}
+
+function makeFormulaState(ops: Op[], state: AnimState): FormulaState {
+  if (state.phase === "hold-start") {
+    return {
+      current: "y = x",
+      prev: null,
+      prevPhase: "",
+      currentFadeIn: 1,
+      prevFadeOut: 0,
+    }
+  }
+  if (state.phase === "hold-end") {
+    const lastOp = ops[OPS_PER_SIDE - 1]
+    return {
+      current: currentFormulaForOp(lastOp, 1, true),
+      prev: null,
+      prevPhase: "",
+      currentFadeIn: 1,
+      prevFadeOut: 0,
+    }
+  }
+  // middle
+  const op = state.isBackward ? ops[state.backIndex] : ops[state.opIndex]
+  const current = currentFormulaForOp(op, state.opP, state.isBackward)
+
+  const prevInfo = previousOpInfo(ops, state)
+  const prevSameKind = prevInfo != null && prevInfo.op.kind === op.kind
+  const inFadeWindow = state.opLocalT < FADE_DUR
+
+  if (prevInfo && !prevSameKind && inFadeWindow) {
+    const ratio = Math.min(1, state.opLocalT / FADE_DUR)
+    const prevStr = currentFormulaForOp(prevInfo.op, 1, prevInfo.isBackward)
+    return {
+      current,
+      prev: prevStr,
+      prevPhase: previousPhaseLabel(state),
+      currentFadeIn: ratio,
+      prevFadeOut: 1 - ratio,
+    }
+  }
+  return {
+    current,
+    prev: null,
+    prevPhase: "",
+    currentFadeIn: 1,
+    prevFadeOut: 0,
+  }
+}
+
+// phase ラベルも 200ms クロスフェード（op 切り替わり直後で前ラベルと違うとき）。
+type PhaseLabelState = {
+  current: string
+  prev: string | null
+  currentFadeIn: number
+  prevFadeOut: number
+}
+
+function makePhaseLabelState(state: AnimState): PhaseLabelState {
+  const current = phaseLabelFor(state)
+  if (state.phase !== "middle") {
+    return { current, prev: null, currentFadeIn: 1, prevFadeOut: 0 }
+  }
+  if (state.opLocalT >= FADE_DUR) {
+    return { current, prev: null, currentFadeIn: 1, prevFadeOut: 0 }
+  }
+  const prev = previousPhaseLabel(state)
+  if (!prev || prev === current) {
+    return { current, prev: null, currentFadeIn: 1, prevFadeOut: 0 }
+  }
+  const ratio = Math.min(1, state.opLocalT / FADE_DUR)
+  return {
+    current,
+    prev,
+    currentFadeIn: ratio,
+    prevFadeOut: 1 - ratio,
+  }
 }
 
 function buildPolyline(
@@ -167,7 +356,6 @@ function buildIdealPolyline(
   plotW: number,
   plotH: number,
 ) {
-  // y=x を 0..1 区間で描く (Y_MAX=1.7 上では plot 高の 1/1.7 まで)
   const N = 32
   const points: string[] = []
   for (let i = 0; i <= N; i++) {
@@ -186,8 +374,7 @@ function Cell({
   title,
   tint,
   ops,
-  layerIdx,
-  fadeOpacity,
+  state,
   showIdeal,
   idealOpacity,
   clipId,
@@ -196,13 +383,12 @@ function Cell({
   title: string
   tint: Tint
   ops: Op[]
-  layerIdx: number
-  fadeOpacity: number
+  state: AnimState
   showIdeal: boolean
   idealOpacity: number
   clipId: string
 }) {
-  const fn = buildLayerFn(ops, layerIdx)
+  const fn = buildCurrentFn(ops, state)
   const plotXAbs = cellX + PLOT_X_LOCAL
   const polyPoints = buildPolyline(fn, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
   const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
@@ -210,18 +396,18 @@ function Cell({
   const yOneScreen = PLOT_Y + PLOT_H * (1 - 1.0 / Y_MAX)
   const yHalfScreen = PLOT_Y + PLOT_H * (1 - 0.5 / Y_MAX)
 
-  const phase = phaseLabelFor(layerIdx)
-  const stepFormula = stepFormulaFor(ops, layerIdx)
-  const isBackward = layerIdx >= 7
+  const phaseLabel = makePhaseLabelState(state)
+  const formula = makeFormulaState(ops, state)
+  const isBackward = state.phase !== "hold-start" && state.isBackward
 
   return (
     <g>
-      {/* セル背景 */}
+      {/* セル背景（外側パディング 8px） */}
       <rect
-        x={cellX + 14}
-        y={14}
-        width={CELL_W - 28}
-        height={H - 28}
+        x={cellX + 8}
+        y={8}
+        width={CELL_W - 16}
+        height={H - 16}
         rx={20}
         ry={20}
         fill={tint.bg}
@@ -230,10 +416,10 @@ function Cell({
         strokeWidth={1.4}
       />
       <rect
-        x={cellX + 14}
-        y={14}
-        width={CELL_W - 28}
-        height={H - 28}
+        x={cellX + 8}
+        y={8}
+        width={CELL_W - 16}
+        height={H - 16}
         rx={20}
         ry={20}
         fill="rgba(255,255,255,0.55)"
@@ -265,7 +451,7 @@ function Cell({
         strokeWidth={1}
       />
 
-      {/* y=x 参照線 (極めて薄い、常時) */}
+      {/* y=x 参照線（極めて薄い、常時） */}
       <line
         x1={plotXAbs}
         y1={PLOT_Y + PLOT_H}
@@ -287,7 +473,7 @@ function Cell({
         strokeDasharray="4 6"
       />
 
-      {/* y=1.0 参照線 (オーバーシュート目安) */}
+      {/* y=1.0 参照線 */}
       <line
         x1={plotXAbs}
         y1={yOneScreen}
@@ -308,7 +494,7 @@ function Cell({
         y = 1
       </text>
 
-      {/* 入出力カーブ + 14 層目だけ y=x 理想線重ね描き */}
+      {/* 入出力カーブ + HOLD_END 中のみ y=x 理想線重ね */}
       <g clipPath={`url(#${clipId})`}>
         {showIdeal && (
           <polyline
@@ -332,7 +518,22 @@ function Cell({
         />
       </g>
 
-      {/* phase ラベル: 往路 N/7 層 / 復路 M/7 層 (plot 直下) */}
+      {/* phase ラベル（クロスフェード） */}
+      {phaseLabel.prev && (
+        <text
+          x={cellX + CELL_W / 2}
+          y={PHASE_LABEL_CY}
+          fontSize={22}
+          fontWeight={600}
+          fill={isBackward ? tint.curve : TEXT_PRIMARY}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          opacity={phaseLabel.prevFadeOut}
+        >
+          {phaseLabel.prev}
+        </text>
+      )}
       <text
         x={cellX + CELL_W / 2}
         y={PHASE_LABEL_CY}
@@ -342,11 +543,27 @@ function Cell({
         textAnchor="middle"
         dominantBaseline="middle"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        opacity={phaseLabel.currentFadeIn}
       >
-        {phase}
+        {phaseLabel.current}
       </text>
 
-      {/* 直前ステップで適用された差分式 (1 行、グラフ近接) */}
+      {/* 数式（実数値リアルタイム表示 + 種類切替時クロスフェード） */}
+      {formula.prev && (
+        <text
+          x={cellX + CELL_W / 2}
+          y={STEP_FORMULA_CY}
+          fontSize={36}
+          fontWeight={500}
+          fill={TEXT_PRIMARY}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          opacity={formula.prevFadeOut}
+        >
+          {formula.prev}
+        </text>
+      )}
       <text
         x={cellX + CELL_W / 2}
         y={STEP_FORMULA_CY}
@@ -356,12 +573,12 @@ function Cell({
         textAnchor="middle"
         dominantBaseline="middle"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        opacity={fadeOpacity}
+        opacity={formula.currentFadeIn}
       >
-        {stepFormula}
+        {formula.current}
       </text>
 
-      {/* 14 層目: 残差説明サブラベル */}
+      {/* HOLD_END 中: 残差説明サブラベル */}
       {showIdeal && (
         <text
           x={cellX + CELL_W / 2}
@@ -414,22 +631,39 @@ export default function CorrectionReversibility({
     }
   }, [isPlaying, reducedMotion])
 
-  let layerIdx: number
-  let fadeOpacity: number
+  let state: AnimState
+  let showIdeal: boolean
   let idealOpacity: number
   if (reducedMotion) {
-    layerIdx = 13
-    fadeOpacity = 1
+    state = {
+      phase: "hold-end",
+      opIndex: TOTAL_OPS,
+      opLocalT: 0,
+      opP: 1,
+      opPRaw: 1,
+      isBackward: true,
+      backIndex: OPS_PER_SIDE - 1,
+      tEnd: HOLD_END / 2,
+    }
+    showIdeal = true
     idealOpacity = 1
   } else {
-    const t = animT
-    layerIdx = Math.min(13, Math.floor(t / LAYER_DUR))
-    const localT = t - layerIdx * LAYER_DUR
-    fadeOpacity = Math.min(1, localT / FADE_DUR)
-    idealOpacity = layerIdx === 13 ? Math.min(1, localT / FADE_DUR) : 0
+    state = computeAnimState(animT)
+    if (state.phase === "hold-end") {
+      showIdeal = true
+      const tEnd = state.tEnd
+      if (tEnd < IDEAL_FADE_IN) {
+        idealOpacity = tEnd / IDEAL_FADE_IN
+      } else if (tEnd > HOLD_END - IDEAL_FADE_OUT) {
+        idealOpacity = Math.max(0, (HOLD_END - tEnd) / IDEAL_FADE_OUT)
+      } else {
+        idealOpacity = 1
+      }
+    } else {
+      showIdeal = false
+      idealOpacity = 0
+    }
   }
-
-  const showIdeal = layerIdx === 13
 
   return (
     <svg
@@ -451,7 +685,6 @@ export default function CorrectionReversibility({
         </clipPath>
       </defs>
 
-      {/* セル境界線 */}
       <line
         x1={CELL_W}
         y1={20}
@@ -467,8 +700,7 @@ export default function CorrectionReversibility({
         title="ゲイン × ガンマ（乗算+べき乗）"
         tint={TINT_GAMMA}
         ops={LEFT_OPS}
-        layerIdx={layerIdx}
-        fadeOpacity={fadeOpacity}
+        state={state}
         showIdeal={showIdeal}
         idealOpacity={idealOpacity}
         clipId="cr-plot-left"
@@ -478,8 +710,7 @@ export default function CorrectionReversibility({
         title="リフト × ガンマ（加算+べき乗）"
         tint={TINT_LIFT}
         ops={RIGHT_OPS}
-        layerIdx={layerIdx}
-        fadeOpacity={fadeOpacity}
+        state={state}
         showIdeal={showIdeal}
         idealOpacity={idealOpacity}
         clipId="cr-plot-right"
