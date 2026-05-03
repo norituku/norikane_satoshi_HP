@@ -3,59 +3,50 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * v5 動画モジュール: 戻せる / 戻せない (可逆性の比較)
+ * Phase 32-AL: 戻せる / 戻せない (可逆性の比較)
  *
  * viewBox 1600×1000 (16:10) を 2 セル横並び (各 800×1000) に分け、
- * 左セル GAIN×GAMMA (乗算系、クリーン) と
- * 右セル LIFT×GAMMA (加算+べき乗の入れ子、くすむ) を 10 秒で 1 ループする。
+ * 左セル GAIN×GAMMA (×K と ^γ を交互積み) と
+ * 右セル LIFT×GAMMA (+β と ^γ を交互積み) を 14 秒で 1 ループする。
  *
- * 各セル縦 4 層構造:
- *   0–80px      タイトル帯
- *   80–600px    入出力カーブ plot
- *   600–880px   数式表示帯 (層が外側に巻き付いて伸びる)
- *   880–1000px  層インジケータ + 進捗バー
+ * 14 層往復構造:
+ *   1〜7 層 (往路): 7 個の op を順に積む (各 1 秒)
+ *   8〜14 層 (復路): naive な戻し ── op1^-1, op2^-1, ..., op7^-1 を
+ *                     forward と同順序で適用する (符号だけ反転、順序を逆転しない)
+ *   原典の趣旨: カラリストが「ノードを後から積み足して戻そうとする」と、
+ *   数学的には正しい逆順では積まれず、戻り切らずに残差が出る。
  *
- * アニメーション: LOOP=10、SAMPLES=96、層境界 (2.5, 5.0, 7.5) で
- * グラフ更新 + 新規 formula token 部分の opacity 0→1 fade-in (200ms)。
+ * 14 層目 (復路終端) のみ y = x 理想復元線を点線で重ね描きし、
+ * 実線とのズレで「戻りきらなかった残差」= くすみ を可視化する。
  *
- * 数式は簡約せず入れ子のまま表示し、入れ子のまま評価したトーンカーブを描画する。
- * 左セルは数学的に K · x^G に集約されるためグラフは単純な x^p 系曲線、
- * 右セルは項が増え暗部 (x=0 近傍) が持ち上がる、という事実が形として見える。
- *
- * reducedMotion=true のときは layer=4 (最終形) で静止画化し、進捗バー満タン。
+ * reducedMotion=true のときは layerIdx=13 (最終形 + 理想線) で静止画化。
  */
 
-const LOOP = 10
+const LOOP = 14
+const LAYER_DUR = 1.0
+const FADE_DUR = 0.2
+
 const W = 1600
 const H = 1000
 const CELL_W = 800
 const SAMPLES = 96
-const LAYER_DUR = 2.5
-const FADE_DUR = 0.2
 
-// セル相対レイアウト (セル原点からの相対座標)
 const TITLE_Y = 50
 const PLOT_X_LOCAL = 80
 const PLOT_Y = 100
 const PLOT_W = CELL_W - 160 // 640
-const PLOT_H = 490 // 100..590
-const FORMULA_CY = 740
-const FORMULA_MAX_W = CELL_W - 80 // 720
-const FORMULA_BASE_SIZE = 28
-const PROGRESS_X_LOCAL = 80
-const PROGRESS_W = CELL_W - 160 // 640
-const PROGRESS_Y = 910
-const PROGRESS_H = 12
-const LAYER_LABEL_Y = 970
+const PLOT_H = 560 // 100..660
+const PHASE_LABEL_CY = 730
+const STEP_FORMULA_CY = 800
+const SUBLABEL_CY = 880
 
-const Y_MAX = 1.4 // 左セル L4 が最大 ~1.39 なので 1.4 を上限に取る
+const Y_MAX = 1.7
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
 const GRID = "rgba(139,127,255,0.18)"
 const Y_ONE_LINE = "rgba(139,127,255,0.32)"
 
-// 配色 (前作 correction-control-math の TINT パレット流用)
 const TINT_GAMMA = {
   curve: "rgb(45,135,120)",
   border: "rgba(108,180,170,0.85)",
@@ -67,156 +58,89 @@ const TINT_LIFT = {
   bg: "rgba(120,165,225,0.10)",
 }
 
-// === 入れ子のままの数式評価 ===
-const A = 1.4
-const G = 1.3
-const A2 = 0.85
-const G2 = 1.2
-const L_LIFT = 0.18
-const RG = 1.3
-const L2_LIFT = 0.12
-const RG2 = 1.15
-
 function safePow(b: number, e: number) {
   return Math.pow(Math.max(0, b), e)
 }
 
-const LEFT_FNS: Array<(x: number) => number> = [
-  // L1: y = a · x
-  (x) => A * x,
-  // L2: y = (a · x)^γ
-  (x) => safePow(A * x, G),
-  // L3: y = a2 · (a · x)^γ
-  (x) => A2 * safePow(A * x, G),
-  // L4: y = (a2 · (a · x)^γ)^γ2
-  (x) => safePow(A2 * safePow(A * x, G), G2),
+// 1 ノード = 1 op。kind="add" は y + β、"pow" は y^γ、"mul" は y · K。
+type Op = { kind: "add" | "pow" | "mul"; param: number }
+
+// 左セル: ×K と ^γ を交互に 7 つ積む。K は現行 A=1.4 / A2=0.85 を流用 + 追加 3 値。
+const LEFT_OPS: Op[] = [
+  { kind: "mul", param: 1.4 },
+  { kind: "pow", param: 1.3 },
+  { kind: "mul", param: 0.85 },
+  { kind: "pow", param: 1.2 },
+  { kind: "mul", param: 1.1 },
+  { kind: "pow", param: 1.1 },
+  { kind: "mul", param: 0.95 },
 ]
 
-const RIGHT_FNS: Array<(x: number) => number> = [
-  // L1: y = x + L · (1 − x)
-  (x) => x + L_LIFT * (1 - x),
-  // L2: y = (x + L · (1 − x))^γ
-  (x) => safePow(x + L_LIFT * (1 - x), RG),
-  // L3: y = (x + L · (1 − x))^γ + L2 · (1 − ((x + L · (1 − x))^γ))
-  (x) => {
-    const u = safePow(x + L_LIFT * (1 - x), RG)
-    return u + L2_LIFT * (1 - u)
-  },
-  // L4: y = ((x + L · (1 − x))^γ + L2 · (1 − ((x + L · (1 − x))^γ)))^γ2
-  (x) => {
-    const u = safePow(x + L_LIFT * (1 - x), RG)
-    const v = u + L2_LIFT * (1 - u)
-    return safePow(v, RG2)
-  },
+// 右セル: +β と ^γ を交互に 7 つ積む。β は L_LIFT=0.18 / L2_LIFT=0.12 を流用 + 追加 2 値。
+// γ は RG=1.3 / RG2=1.15 を流用 + 追加 1 値。
+const RIGHT_OPS: Op[] = [
+  { kind: "add", param: 0.18 },
+  { kind: "pow", param: 1.3 },
+  { kind: "add", param: 0.12 },
+  { kind: "pow", param: 1.15 },
+  { kind: "add", param: 0.08 },
+  { kind: "pow", param: 1.1 },
+  { kind: "add", param: 0.05 },
 ]
 
-// === 数式トークン (1 トークン = 1 <text> 要素) ===
-// appearLayer: そのトークンが初登場する層 (1..4)。currentLayer 以下のトークンが visible。
-// 表示順は文字列上の出現順 (display order)。層番号は出現順とは独立で、
-// 内側 (a · x) は L1 で出現、外側の () は L2/L4 で後から巻き付く構造。
-type Token = { text: string; sup?: boolean; appearLayer: number }
+function applyOp(y: number, op: Op): number {
+  if (op.kind === "add") return y + op.param
+  if (op.kind === "pow") return safePow(y, op.param)
+  return y * op.param
+}
 
-const LEFT_TOKENS: Token[] = [
-  { text: "y = ", appearLayer: 1 },
-  { text: "(", appearLayer: 4 }, // 最外 (
-  { text: "a₂ · ", appearLayer: 3 },
-  { text: "(", appearLayer: 2 }, // 内側 (
-  { text: "a · x", appearLayer: 1 },
-  { text: ")", appearLayer: 2 }, // 内側 )
-  { text: "γ", sup: true, appearLayer: 2 },
-  { text: ")", appearLayer: 4 }, // 最外 )
-  { text: "γ₂", sup: true, appearLayer: 4 },
-]
+function applyOpInverse(y: number, op: Op): number {
+  if (op.kind === "add") return y - op.param
+  if (op.kind === "pow") return safePow(y, 1 / op.param)
+  return y / op.param
+}
 
-const RIGHT_TOKENS: Token[] = [
-  { text: "y = ", appearLayer: 1 },
-  { text: "(", appearLayer: 4 }, // 最外 (
-  { text: "(", appearLayer: 2 }, // L2 の (
-  { text: "x + L · (1 − x)", appearLayer: 1 },
-  { text: ")", appearLayer: 2 }, // L2 の )
-  { text: "γ", sup: true, appearLayer: 2 },
-  { text: " + L₂ · (1 − ((x + L · (1 − x))", appearLayer: 3 },
-  { text: "γ", sup: true, appearLayer: 3 },
-  { text: "))", appearLayer: 3 },
-  { text: ")", appearLayer: 4 }, // 最外 )
-  { text: "γ₂", sup: true, appearLayer: 4 },
-]
+function fmt(n: number): string {
+  return Number.isInteger(n) ? n.toFixed(1) : n.toFixed(2)
+}
 
-const LEFT_TITLE = "ゲイン × ガンマ（乗算系）"
-const RIGHT_TITLE = "リフト × ガンマ（加算+べき乗の入れ子）"
+function opLabel(op: Op): string {
+  if (op.kind === "add") return `y + ${fmt(op.param)}`
+  if (op.kind === "pow") return `y^${fmt(op.param)}`
+  return `y × ${fmt(op.param)}`
+}
 
-// === レイアウトユーティリティ ===
-// monospace 想定で文字幅を baseSize × 0.6 と概算。sup は 0.7em の縮小サイズ。
-function tokensTotalWidth(tokens: Token[], baseSize: number) {
-  const charW = baseSize * 0.6
-  const supCharW = baseSize * 0.7 * 0.6
-  let total = 0
-  for (const t of tokens) {
-    total += t.text.length * (t.sup ? supCharW : charW)
+function opInverseLabel(op: Op): string {
+  if (op.kind === "add") return `y − ${fmt(op.param)}`
+  if (op.kind === "pow") return `y^(1/${fmt(op.param)})`
+  return `y ÷ ${fmt(op.param)}`
+}
+
+// layerIdx 0..13 → x → y 累積関数。
+// 0..6 = 往路 (ops[0..i] を順適用)
+// 7..13 = 復路: 全往路完了後、ops[0..k] の逆を「同順序」で重ねる (naive 戻し)
+function buildLayerFn(ops: Op[], layerIdx: number): (x: number) => number {
+  return (x: number) => {
+    let y = x
+    if (layerIdx < 7) {
+      for (let i = 0; i <= layerIdx; i++) y = applyOp(y, ops[i])
+      return y
+    }
+    for (let i = 0; i < 7; i++) y = applyOp(y, ops[i])
+    const back = layerIdx - 6 // 1..7
+    for (let i = 0; i < back; i++) y = applyOpInverse(y, ops[i])
+    return y
   }
-  return total
 }
 
-function fitFontSize(tokens: Token[], maxWidth: number, baseSize: number) {
-  const w = tokensTotalWidth(tokens, baseSize)
-  if (w <= maxWidth) return baseSize
-  return baseSize * (maxWidth / w)
+function phaseLabelFor(layerIdx: number): string {
+  if (layerIdx < 7) return `往路 ${layerIdx + 1} / 7 層`
+  return `復路 ${layerIdx - 6} / 7 層`
 }
 
-function FormulaTokens({
-  tokens,
-  currentLayer,
-  fadeOpacity,
-  cx,
-  cy,
-  fill,
-}: {
-  tokens: Token[]
-  currentLayer: number // 1..4
-  fadeOpacity: number
-  cx: number
-  cy: number
-  fill: string
-}) {
-  const visible = tokens.filter((t) => t.appearLayer <= currentLayer)
-  const fontSize = fitFontSize(visible, FORMULA_MAX_W, FORMULA_BASE_SIZE)
-  const charW = fontSize * 0.6
-  const supSize = fontSize * 0.7
-  const supCharW = supSize * 0.6
-
-  const widths = visible.map(
-    (t) => t.text.length * (t.sup ? supCharW : charW)
-  )
-  const totalW = widths.reduce((a, b) => a + b, 0)
-  let cursor = cx - totalW / 2
-
-  return (
-    <>
-      {visible.map((t, i) => {
-        const x = cursor
-        const w = widths[i]
-        cursor += w
-        const localFontSize = t.sup ? supSize : fontSize
-        const offsetY = t.sup ? -fontSize * 0.42 : 0
-        const opacity = t.appearLayer === currentLayer ? fadeOpacity : 1
-        return (
-          <text
-            key={`${i}-${t.text}-${t.sup ? "s" : "n"}`}
-            x={x}
-            y={cy + offsetY}
-            fontSize={localFontSize}
-            fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-            fontWeight={500}
-            fill={fill}
-            opacity={opacity}
-            dominantBaseline="middle"
-          >
-            {t.text}
-          </text>
-        )
-      })}
-    </>
-  )
+function stepFormulaFor(ops: Op[], layerIdx: number): string {
+  if (layerIdx < 7) return opLabel(ops[layerIdx])
+  return opInverseLabel(ops[layerIdx - 7])
 }
 
 function buildPolyline(
@@ -224,7 +148,7 @@ function buildPolyline(
   plotXAbs: number,
   plotY: number,
   plotW: number,
-  plotH: number
+  plotH: number,
 ) {
   const points: string[] = []
   for (let i = 0; i <= SAMPLES; i++) {
@@ -237,43 +161,62 @@ function buildPolyline(
   return points.join(" ")
 }
 
+function buildIdealPolyline(
+  plotXAbs: number,
+  plotY: number,
+  plotW: number,
+  plotH: number,
+) {
+  // y=x を 0..1 区間で描く (Y_MAX=1.7 上では plot 高の 1/1.7 まで)
+  const N = 32
+  const points: string[] = []
+  for (let i = 0; i <= N; i++) {
+    const x = i / N
+    const sx = plotXAbs + x * plotW
+    const sy = plotY + plotH * (1 - x / Y_MAX)
+    points.push(`${sx.toFixed(2)},${sy.toFixed(2)}`)
+  }
+  return points.join(" ")
+}
+
 type Tint = typeof TINT_GAMMA
 
 function Cell({
   cellX,
   title,
   tint,
-  tokens,
-  fns,
+  ops,
   layerIdx,
   fadeOpacity,
-  progress,
+  showIdeal,
+  idealOpacity,
   clipId,
 }: {
   cellX: number
   title: string
   tint: Tint
-  tokens: Token[]
-  fns: Array<(x: number) => number>
-  layerIdx: number // 0..3
+  ops: Op[]
+  layerIdx: number
   fadeOpacity: number
-  progress: number
+  showIdeal: boolean
+  idealOpacity: number
   clipId: string
 }) {
-  const currentLayer = layerIdx + 1
-  const fn = fns[layerIdx]
-
+  const fn = buildLayerFn(ops, layerIdx)
   const plotXAbs = cellX + PLOT_X_LOCAL
   const polyPoints = buildPolyline(fn, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
+  const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
 
   const yOneScreen = PLOT_Y + PLOT_H * (1 - 1.0 / Y_MAX)
   const yHalfScreen = PLOT_Y + PLOT_H * (1 - 0.5 / Y_MAX)
 
-  const progressXAbs = cellX + PROGRESS_X_LOCAL
+  const phase = phaseLabelFor(layerIdx)
+  const stepFormula = stepFormulaFor(ops, layerIdx)
+  const isBackward = layerIdx >= 7
 
   return (
     <g>
-      {/* セル背景 (色カテゴリ識別) */}
+      {/* セル背景 */}
       <rect
         x={cellX + 14}
         y={14}
@@ -296,7 +239,7 @@ function Cell({
         fill="rgba(255,255,255,0.55)"
       />
 
-      {/* タイトル (中央寄せ) */}
+      {/* タイトル */}
       <text
         x={cellX + CELL_W / 2}
         y={TITLE_Y}
@@ -322,7 +265,7 @@ function Cell({
         strokeWidth={1}
       />
 
-      {/* y=x 参照線 (極めて薄い) */}
+      {/* y=x 参照線 (極めて薄い、常時) */}
       <line
         x1={plotXAbs}
         y1={PLOT_Y + PLOT_H}
@@ -344,7 +287,7 @@ function Cell({
         strokeDasharray="4 6"
       />
 
-      {/* y=1.0 参照線 (オーバーシュート判定の目安) */}
+      {/* y=1.0 参照線 (オーバーシュート目安) */}
       <line
         x1={plotXAbs}
         y1={yOneScreen}
@@ -365,8 +308,20 @@ function Cell({
         y = 1
       </text>
 
-      {/* 入出力カーブ (plot 領域でクリップ、層変化時は即時更新) */}
+      {/* 入出力カーブ + 14 層目だけ y=x 理想線重ね描き */}
       <g clipPath={`url(#${clipId})`}>
+        {showIdeal && (
+          <polyline
+            points={idealPoints}
+            fill="none"
+            stroke={tint.curve}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="6 6"
+            opacity={0.5 * idealOpacity}
+          />
+        )}
         <polyline
           points={polyPoints}
           fill="none"
@@ -377,66 +332,50 @@ function Cell({
         />
       </g>
 
-      {/* 数式表示 (新規層トークンが fade-in) */}
-      <FormulaTokens
-        tokens={tokens}
-        currentLayer={currentLayer}
-        fadeOpacity={fadeOpacity}
-        cx={cellX + CELL_W / 2}
-        cy={FORMULA_CY}
-        fill={TEXT_PRIMARY}
-      />
-
-      {/* 進捗バー track */}
-      <rect
-        x={progressXAbs}
-        y={PROGRESS_Y}
-        width={PROGRESS_W}
-        height={PROGRESS_H}
-        rx={PROGRESS_H / 2}
-        ry={PROGRESS_H / 2}
-        fill="rgba(255,255,255,0.7)"
-        stroke={tint.border}
-        strokeOpacity={0.55}
-        strokeWidth={1.2}
-      />
-      {/* 進捗バー fill */}
-      <rect
-        x={progressXAbs}
-        y={PROGRESS_Y}
-        width={PROGRESS_W * progress}
-        height={PROGRESS_H}
-        rx={PROGRESS_H / 2}
-        ry={PROGRESS_H / 2}
-        fill={tint.curve}
-        opacity={0.85}
-      />
-      {/* 層境界マーカー (25% / 50% / 75%) */}
-      {[0.25, 0.5, 0.75].map((p) => (
-        <circle
-          key={p}
-          cx={progressXAbs + PROGRESS_W * p}
-          cy={PROGRESS_Y + PROGRESS_H / 2}
-          r={3.5}
-          fill="rgba(255,255,255,0.95)"
-          stroke={tint.border}
-          strokeWidth={1.2}
-        />
-      ))}
-
-      {/* N / 4 層 ラベル */}
+      {/* phase ラベル: 往路 N/7 層 / 復路 M/7 層 (plot 直下) */}
       <text
         x={cellX + CELL_W / 2}
-        y={LAYER_LABEL_Y}
-        fontSize={20}
+        y={PHASE_LABEL_CY}
+        fontSize={22}
         fontWeight={600}
-        fill={TEXT_PRIMARY}
+        fill={isBackward ? tint.curve : TEXT_PRIMARY}
         textAnchor="middle"
         dominantBaseline="middle"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
-        {currentLayer} / 4 層
+        {phase}
       </text>
+
+      {/* 直前ステップで適用された差分式 (1 行、グラフ近接) */}
+      <text
+        x={cellX + CELL_W / 2}
+        y={STEP_FORMULA_CY}
+        fontSize={36}
+        fontWeight={500}
+        fill={TEXT_PRIMARY}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        opacity={fadeOpacity}
+      >
+        {stepFormula}
+      </text>
+
+      {/* 14 層目: 残差説明サブラベル */}
+      {showIdeal && (
+        <text
+          x={cellX + CELL_W / 2}
+          y={SUBLABEL_CY}
+          fontSize={17}
+          fontWeight={500}
+          fill={TEXT_MUTED}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          opacity={idealOpacity}
+        >
+          点線 = 理想復元 y = x ／ 実線とのズレが残差
+        </text>
+      )}
     </g>
   )
 }
@@ -477,18 +416,20 @@ export default function CorrectionReversibility({
 
   let layerIdx: number
   let fadeOpacity: number
-  let progress: number
+  let idealOpacity: number
   if (reducedMotion) {
-    layerIdx = 3
+    layerIdx = 13
     fadeOpacity = 1
-    progress = 1
+    idealOpacity = 1
   } else {
     const t = animT
-    layerIdx = Math.min(3, Math.floor(t / LAYER_DUR))
+    layerIdx = Math.min(13, Math.floor(t / LAYER_DUR))
     const localT = t - layerIdx * LAYER_DUR
     fadeOpacity = Math.min(1, localT / FADE_DUR)
-    progress = t / LOOP
+    idealOpacity = layerIdx === 13 ? Math.min(1, localT / FADE_DUR) : 0
   }
+
+  const showIdeal = layerIdx === 13
 
   return (
     <svg
@@ -498,12 +439,7 @@ export default function CorrectionReversibility({
     >
       <defs>
         <clipPath id="cr-plot-left">
-          <rect
-            x={PLOT_X_LOCAL}
-            y={PLOT_Y}
-            width={PLOT_W}
-            height={PLOT_H}
-          />
+          <rect x={PLOT_X_LOCAL} y={PLOT_Y} width={PLOT_W} height={PLOT_H} />
         </clipPath>
         <clipPath id="cr-plot-right">
           <rect
@@ -515,7 +451,7 @@ export default function CorrectionReversibility({
         </clipPath>
       </defs>
 
-      {/* セル境界線 (中央、薄い破線) */}
+      {/* セル境界線 */}
       <line
         x1={CELL_W}
         y1={20}
@@ -528,24 +464,24 @@ export default function CorrectionReversibility({
 
       <Cell
         cellX={0}
-        title={LEFT_TITLE}
+        title="ゲイン × ガンマ（乗算+べき乗）"
         tint={TINT_GAMMA}
-        tokens={LEFT_TOKENS}
-        fns={LEFT_FNS}
+        ops={LEFT_OPS}
         layerIdx={layerIdx}
         fadeOpacity={fadeOpacity}
-        progress={progress}
+        showIdeal={showIdeal}
+        idealOpacity={idealOpacity}
         clipId="cr-plot-left"
       />
       <Cell
         cellX={CELL_W}
-        title={RIGHT_TITLE}
+        title="リフト × ガンマ（加算+べき乗）"
         tint={TINT_LIFT}
-        tokens={RIGHT_TOKENS}
-        fns={RIGHT_FNS}
+        ops={RIGHT_OPS}
         layerIdx={layerIdx}
         fadeOpacity={fadeOpacity}
-        progress={progress}
+        showIdeal={showIdeal}
+        idealOpacity={idealOpacity}
         clipId="cr-plot-right"
       />
     </svg>

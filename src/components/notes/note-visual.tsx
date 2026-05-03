@@ -67,7 +67,7 @@ export function NoteVisual({ slug }: { slug: string }) {
         data-diagram-slug={config.slug}
         data-diagram-kind={config.kind}
         aria-label={config.alt}
-        className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10"
+        className="my-6 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-8"
       >
         <VisualBody config={config} />
       </figure>
@@ -77,7 +77,7 @@ export function NoteVisual({ slug }: { slug: string }) {
     <figure
       data-diagram-slug={config.slug}
       data-diagram-kind={config.kind}
-      className="my-8 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-10"
+      className="my-6 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-8"
     >
       <VisualBody config={config} />
       <figcaption className="px-5 py-5 md:px-7 md:py-6">
