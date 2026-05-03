@@ -3,25 +3,24 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Phase 32-AN: 戻せる / 戻せない（可逆性の比較）
+ * Phase 32-AO: 戻せる / 戻せない（可逆性の比較）
  *
- * 「層」概念を内部処理からも表示からも完全撤廃し、
- * 時間軸上の連続進度 P / Q だけで全 op を overlap させながら同時に動かす。
+ * 主要変更:
+ *  - リフト数学を (1, 1) 不動点固定: y + L * p * (1 - y)
+ *  - 左セル（ゲイン × ガンマ）も RGB 3 本に拡張、phase shift で識別性、完全可逆維持
+ *  - 右セル（リフト × ガンマ）backward を「別 ops 列の後段追加」に変更し
+ *    入れ子構造の非可換性で残差が残ることを数学的に実現
+ *  - Y_MAX = 1.0、グラフ上下を目一杯使う
+ *  - バッジ文言: 再生中 → 処理追加中 / 逆再生中 → 後段で復元中
  *
  * 時間軸（合計 14 秒）:
- *   HOLD_START  2.5s : P = 0,        Q = 0,        y = x で 3 本静止
- *   FORWARD     4.0s : P が 0 → 1,    Q = 0,        forward 進行（再生 ▶）
- *   BACKWARD    4.0s : P = 1,        Q が 0 → 1,   backward 進行（逆再生 ◀）
+ *   HOLD_START  2.5s : P = 0,        Q = 0,        y = x
+ *   FORWARD     4.0s : P が 0 → 1,    Q = 0,        forward 進行（処理追加中）
+ *   BACKWARD    4.0s : P = 1,        Q が 0 → 1,   backward 進行（後段で復元中）
  *   HOLD_END    3.5s : P = 1,        Q = 1,        理想線重ね（復元結果）
  *
  * 各 op i に進度区間 [lo_i, hi_i] を割り当て、隣接 op と区間を overlap させる
  * （5 op で [0.00, 0.32], [0.18, 0.50], [0.36, 0.68], [0.54, 0.86], [0.72, 1.00]）。
- * 各 op の進捗は p_i(P) = easeInOutCubic(clamp01((P - lo_i) / (hi_i - lo_i)))。
- *
- * 左セル（ゲイン × ガンマ）: 3 chan 完全同期、5 op 完全可逆。
- * 右セル（リフト × ガンマ）: 3 chan に位相 / param をずらした op 列を配り、
- *   さらに中間オシレーション osc_amp * sin(t * 2π * freq_i + phase_rgb) を加算
- *   （envelope = sin(P π) * sin(Q π) で両端 0 / 中央 max）。
  *
  * reducedMotion=true のときは HOLD_END 状態（P=1, Q=1, 理想線 1.0）で静止。
  */
@@ -37,7 +36,7 @@ const IDEAL_FADE_OUT = 0.2
 
 const NUM_OPS = 5
 const SAMPLES = 96
-const OSC_AMP = 0.06
+const OSC_AMP_RIGHT = 0.06
 
 const W = 1640
 const H = 680
@@ -52,7 +51,7 @@ const PLOT_H = 480 // 60..540
 const BADGE_CY = 575
 const FORMULA_CY = 630
 
-const Y_MAX = 2.5
+const Y_MAX = 1.0
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
@@ -77,7 +76,6 @@ const RGB_B = "rgba(60, 110, 220, 0.88)"
 type Op = { kind: "add" | "pow" | "mul"; param: number }
 type Offsets = { lo: number; hi: number }[]
 
-// 5 op の overlap 区間（基準）。
 const BASE_OFFSETS: Offsets = [
   { lo: 0.0, hi: 0.32 },
   { lo: 0.18, hi: 0.5 },
@@ -90,41 +88,84 @@ function shiftOffsets(shift: number): Offsets {
   return BASE_OFFSETS.map(({ lo, hi }) => ({ lo: lo + shift, hi: hi + shift }))
 }
 
-const OFFSETS_BASE: Offsets = shiftOffsets(0)
-const OFFSETS_R: Offsets = shiftOffsets(0)
-const OFFSETS_G: Offsets = shiftOffsets(0.06)
-const OFFSETS_B: Offsets = shiftOffsets(-0.06)
+const OFFSETS_LEFT_R: Offsets = shiftOffsets(0)
+const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.06)
+const OFFSETS_LEFT_B: Offsets = shiftOffsets(-0.06)
 
-// 左セル（ゲイン × ガンマ）: 3 chan 同一、完全可逆。
-const LEFT_OPS: Op[] = [
+const OFFSETS_RIGHT_R: Offsets = shiftOffsets(0)
+const OFFSETS_RIGHT_G: Offsets = shiftOffsets(0.06)
+const OFFSETS_RIGHT_B: Offsets = shiftOffsets(-0.06)
+
+// 左セル（ゲイン × ガンマ）: RGB ごとに param をずらして中盤で識別性を出す。
+// 各 chan は自分自身の数学的逆を backward 区間で適用するので完全可逆。
+const LEFT_OPS_R: Op[] = [
   { kind: "mul", param: 1.5 },
   { kind: "pow", param: 1.4 },
   { kind: "mul", param: 0.7 },
   { kind: "pow", param: 1.25 },
   { kind: "mul", param: 0.95 },
 ]
+const LEFT_OPS_G: Op[] = [
+  { kind: "mul", param: 1.45 },
+  { kind: "pow", param: 1.35 },
+  { kind: "mul", param: 0.72 },
+  { kind: "pow", param: 1.3 },
+  { kind: "mul", param: 0.93 },
+]
+const LEFT_OPS_B: Op[] = [
+  { kind: "mul", param: 1.55 },
+  { kind: "pow", param: 1.45 },
+  { kind: "mul", param: 0.68 },
+  { kind: "pow", param: 1.2 },
+  { kind: "mul", param: 0.97 },
+]
 
-// 右セル（リフト × ガンマ）: RGB ごとに param をずらして中間で分離させる。
-const RIGHT_OPS_R: Op[] = [
+// 右セル（リフト × ガンマ）forward 用 ops。
+const RIGHT_FORWARD_R: Op[] = [
   { kind: "add", param: 0.22 },
   { kind: "pow", param: 1.5 },
   { kind: "add", param: 0.18 },
   { kind: "pow", param: 1.35 },
   { kind: "add", param: 0.1 },
 ]
-const RIGHT_OPS_G: Op[] = [
+const RIGHT_FORWARD_G: Op[] = [
   { kind: "add", param: 0.18 },
   { kind: "pow", param: 1.4 },
   { kind: "add", param: 0.22 },
   { kind: "pow", param: 1.25 },
   { kind: "add", param: 0.14 },
 ]
-const RIGHT_OPS_B: Op[] = [
+const RIGHT_FORWARD_B: Op[] = [
   { kind: "add", param: 0.14 },
   { kind: "pow", param: 1.55 },
   { kind: "add", param: 0.2 },
   { kind: "pow", param: 1.45 },
   { kind: "add", param: 0.18 },
+]
+
+// 右セル backward 用 ops（forward の概ね逆向きだが完全な逆関数ではない）。
+// add は負値、pow は forward の概ね 1/param。backward 区間は applyOpProgress
+// で単純に後段追加されるため、入れ子非可換性で y = x には戻らない残差が残る。
+const RIGHT_BACKWARD_R: Op[] = [
+  { kind: "add", param: -0.18 },
+  { kind: "pow", param: 0.69 },
+  { kind: "add", param: -0.16 },
+  { kind: "pow", param: 0.77 },
+  { kind: "add", param: -0.08 },
+]
+const RIGHT_BACKWARD_G: Op[] = [
+  { kind: "add", param: -0.16 },
+  { kind: "pow", param: 0.74 },
+  { kind: "add", param: -0.2 },
+  { kind: "pow", param: 0.83 },
+  { kind: "add", param: -0.12 },
+]
+const RIGHT_BACKWARD_B: Op[] = [
+  { kind: "add", param: -0.12 },
+  { kind: "pow", param: 0.67 },
+  { kind: "add", param: -0.18 },
+  { kind: "pow", param: 0.71 },
+  { kind: "add", param: -0.16 },
 ]
 
 const FREQS = [0.7, 0.85, 1.0, 1.15, 1.3]
@@ -144,14 +185,22 @@ function easeInOutCubic(p: number): number {
   return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 }
 
+// リフト操作 (1, 1) 不動点固定: out = y + L * p * (1 - y)
+//   y = 0 → L * p（黒側を持ち上げ）
+//   y = 1 → 1（白側は常に固定）
 function applyOpProgress(y: number, op: Op, p: number): number {
-  if (op.kind === "add") return y + op.param * p
+  if (op.kind === "add") return y + op.param * p * (1 - y)
   if (op.kind === "pow") return safePow(y, 1 + (op.param - 1) * p)
   return y * (1 + (op.param - 1) * p)
 }
 
+// applyOpProgress の数学的逆関数。
+//   add 逆: y = (out - L*p) / (1 - L*p)
 function applyOpProgressInverse(y: number, op: Op, p: number): number {
-  if (op.kind === "add") return y - op.param * p
+  if (op.kind === "add") {
+    const denom = 1 - op.param * p
+    return denom === 0 ? y : (y - op.param * p) / denom
+  }
   if (op.kind === "pow") return safePow(y, 1 / (1 + (op.param - 1) * p))
   return y / (1 + (op.param - 1) * p)
 }
@@ -202,14 +251,43 @@ function envelopeAmp(P: number, Q: number): number {
 }
 
 /**
- * channel ごとの x → y を組み立てる。
- * forward 部は ops を 0..N-1 順に applyOpProgress、続けて backward 部を N-1..0 順に
- * applyOpProgressInverse。各 op の進捗は P / Q から区間補間 + eased。
- * oscAmp > 0 のとき、進捗に sin オシレーションを加算（envelope で両端 0）。
+ * 左セル用: forward は applyOpProgress、backward は applyOpProgressInverse
+ * （同じ ops の数学的逆関数を逆順で適用）。
+ * HOLD_END (Q = 1) で常に y = x へ完全復帰。
  */
-function buildCurrentFn(
+function buildLeftFn(
   ops: Op[],
   offsets: Offsets,
+  P: number,
+  Q: number,
+): (x: number) => number {
+  return (x: number) => {
+    let y = x
+    for (let i = 0; i < ops.length; i++) {
+      const { lo, hi } = offsets[i]
+      const p = easeInOutCubic(clamp01((P - lo) / (hi - lo)))
+      y = applyOpProgress(y, ops[i], p)
+    }
+    for (let i = ops.length - 1; i >= 0; i--) {
+      const { lo, hi } = offsets[i]
+      const p = easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
+      y = applyOpProgressInverse(y, ops[i], p)
+    }
+    return y
+  }
+}
+
+/**
+ * 右セル用: forward は opsForward を applyOpProgress、backward は opsBackward を
+ * applyOpProgress で 0..M-1 順に追加適用（数学的逆ではない）。
+ * 入れ子非可換性で HOLD_END (Q = 1) でも y = x には戻らず残差が残る。
+ * 中間オシレーションは envelope = sin(Pπ) sin(Qπ) で両端 0、中央 max。
+ */
+function buildRightFn(
+  opsForward: Op[],
+  opsBackward: Op[],
+  offsetsForward: Offsets,
+  offsetsBackward: Offsets,
   P: number,
   Q: number,
   freqs: number[],
@@ -220,18 +298,18 @@ function buildCurrentFn(
   const env = oscAmp > 0 ? envelopeAmp(P, Q) : 0
   return (x: number) => {
     let y = x
-    for (let i = 0; i < ops.length; i++) {
-      const { lo, hi } = offsets[i]
+    for (let i = 0; i < opsForward.length; i++) {
+      const { lo, hi } = offsetsForward[i]
       let p = easeInOutCubic(clamp01((P - lo) / (hi - lo)))
       if (oscAmp > 0) {
         p = clamp01(
           p + oscAmp * env * Math.sin(t * 2 * Math.PI * freqs[i] + phaseRgb),
         )
       }
-      y = applyOpProgress(y, ops[i], p)
+      y = applyOpProgress(y, opsForward[i], p)
     }
-    for (let i = ops.length - 1; i >= 0; i--) {
-      const { lo, hi } = offsets[i]
+    for (let i = 0; i < opsBackward.length; i++) {
+      const { lo, hi } = offsetsBackward[i]
       let p = easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
       if (oscAmp > 0) {
         p = clamp01(
@@ -241,7 +319,7 @@ function buildCurrentFn(
               Math.sin(t * 2 * Math.PI * freqs[i] + phaseRgb + Math.PI),
         )
       }
-      y = applyOpProgressInverse(y, ops[i], p)
+      y = applyOpProgress(y, opsBackward[i], p)
     }
     return y
   }
@@ -286,49 +364,25 @@ function fmt3(n: number): string {
   return n.toFixed(3)
 }
 
-function formulaForOpAt(op: Op, p: number, isBackward: boolean): string {
-  if (!isBackward) {
-    if (op.kind === "add") return `y + ${fmt3(op.param * p)}`
+function formulaForOpAt(op: Op, p: number, isInverseDisplay: boolean): string {
+  if (!isInverseDisplay) {
+    if (op.kind === "add") {
+      const v = op.param * p
+      const abs = Math.abs(v).toFixed(3)
+      if (v >= 0) return `y + ${abs}`
+      return `y − ${abs}`
+    }
     if (op.kind === "pow") return `y^${fmt3(1 + (op.param - 1) * p)}`
     return `y × ${fmt3(1 + (op.param - 1) * p)}`
   }
-  if (op.kind === "add") return `y − ${fmt3(op.param * p)}`
+  if (op.kind === "add") {
+    const v = op.param * p
+    const abs = Math.abs(v).toFixed(3)
+    if (v >= 0) return `y − ${abs}`
+    return `y + ${abs}`
+  }
   if (op.kind === "pow") return `y^(1/${fmt3(1 + (op.param - 1) * p)})`
   return `y ÷ ${fmt3(1 + (op.param - 1) * p)}`
-}
-
-/**
- * representative op index と eased 進捗を返す。
- * forward 中は floor(P * NUM_OPS)、backward 中は最後の op から戻り順に進む。
- */
-function representativeOp(
-  state: AnimState,
-  offsets: Offsets,
-): { index: number; p: number; isBackward: boolean } | null {
-  if (state.phase === "hold-start" || state.phase === "hold-end") return null
-  if (state.phase === "forward") {
-    const idx = Math.min(NUM_OPS - 1, Math.max(0, Math.floor(state.P * NUM_OPS)))
-    const { lo, hi } = offsets[idx]
-    const p = easeInOutCubic(clamp01((state.P - lo) / (hi - lo)))
-    return { index: idx, p, isBackward: false }
-  }
-  const fromQ = Math.min(NUM_OPS - 1, Math.max(0, Math.floor(state.Q * NUM_OPS)))
-  const idx = NUM_OPS - 1 - fromQ
-  const { lo, hi } = offsets[idx]
-  const p = easeInOutCubic(clamp01((state.Q - lo) / (hi - lo)))
-  return { index: idx, p, isBackward: true }
-}
-
-function timeSinceRepBoundary(state: AnimState): number {
-  if (state.phase === "forward") {
-    const rep = Math.min(NUM_OPS - 1, Math.floor(state.P * NUM_OPS))
-    return (state.P - rep / NUM_OPS) * FORWARD_DUR
-  }
-  if (state.phase === "backward") {
-    const fromQ = Math.min(NUM_OPS - 1, Math.floor(state.Q * NUM_OPS))
-    return (state.Q - fromQ / NUM_OPS) * BACKWARD_DUR
-  }
-  return Infinity
 }
 
 type FormulaCell = {
@@ -339,10 +393,10 @@ type FormulaCell = {
 }
 
 /**
- * channel 1 つぶんの formula state。rep op が直前境界から FADE_DUR 以内かつ
- * 種類が変わっているならクロスフェード（既存ロジック）。
+ * 左セル channel 1 つぶんの formula state。
+ * forward は ops を 0..N-1 順に表示、backward は ops[N-1..0] の逆関数表示。
  */
-function makeFormulaForChannel(
+function makeFormulaForLeftChannel(
   state: AnimState,
   ops: Op[],
   offsets: Offsets,
@@ -351,7 +405,6 @@ function makeFormulaForChannel(
     return { current: "y = x", prev: null, fadeIn: 1, fadeOut: 0 }
   }
   if (state.phase === "hold-end") {
-    // 最後に適用された backward op = ops[0]
     return {
       current: formulaForOpAt(ops[0], 1, true),
       prev: null,
@@ -359,31 +412,44 @@ function makeFormulaForChannel(
       fadeOut: 0,
     }
   }
-  const rep = representativeOp(state, offsets)
-  if (!rep) return { current: "y = x", prev: null, fadeIn: 1, fadeOut: 0 }
-  const op = ops[rep.index]
-  const current = formulaForOpAt(op, rep.p, rep.isBackward)
+  let idx: number
+  let isInverse: boolean
+  let progress: number
+  if (state.phase === "forward") {
+    idx = Math.min(NUM_OPS - 1, Math.max(0, Math.floor(state.P * NUM_OPS)))
+    isInverse = false
+    progress = state.P
+  } else {
+    const fromQ = Math.min(NUM_OPS - 1, Math.max(0, Math.floor(state.Q * NUM_OPS)))
+    idx = NUM_OPS - 1 - fromQ
+    isInverse = true
+    progress = state.Q
+  }
+  const { lo, hi } = offsets[idx]
+  const easedP = easeInOutCubic(clamp01((progress - lo) / (hi - lo)))
+  const op = ops[idx]
+  const current = formulaForOpAt(op, easedP, isInverse)
 
-  const since = timeSinceRepBoundary(state)
+  const since =
+    state.phase === "forward"
+      ? (state.P - Math.floor(state.P * NUM_OPS) / NUM_OPS) * FORWARD_DUR
+      : (state.Q - Math.floor(state.Q * NUM_OPS) / NUM_OPS) * BACKWARD_DUR
   if (since >= FADE_DUR) {
     return { current, prev: null, fadeIn: 1, fadeOut: 0 }
   }
-  // 前 rep op を求める（forward は rep-1、backward は rep+1）
   let prevIdx: number
-  let prevBackward: boolean
-  if (!rep.isBackward) {
-    prevIdx = rep.index - 1
-    prevBackward = false
+  let prevInverse: boolean
+  if (!isInverse) {
+    prevIdx = idx - 1
+    prevInverse = false
     if (prevIdx < 0) {
-      // forward 開始直後 → 前は hold-start (y = x)
       const ratio = since / FADE_DUR
       return { current, prev: "y = x", fadeIn: ratio, fadeOut: 1 - ratio }
     }
   } else {
-    prevIdx = rep.index + 1
-    prevBackward = true
+    prevIdx = idx + 1
+    prevInverse = true
     if (prevIdx > NUM_OPS - 1) {
-      // backward 開始直後 → 前は forward 最後 (ops[NUM_OPS-1] forward 完全)
       const ratio = since / FADE_DUR
       return {
         current,
@@ -395,13 +461,92 @@ function makeFormulaForChannel(
   }
   const prevOp = ops[prevIdx]
   if (prevOp.kind === op.kind) {
-    // 同種 op → 数値だけ滑らかに動く（クロスフェードなし）
     return { current, prev: null, fadeIn: 1, fadeOut: 0 }
   }
   const ratio = since / FADE_DUR
   return {
     current,
-    prev: formulaForOpAt(prevOp, prevBackward ? 0 : 1, prevBackward),
+    prev: formulaForOpAt(prevOp, prevInverse ? 0 : 1, prevInverse),
+    fadeIn: ratio,
+    fadeOut: 1 - ratio,
+  }
+}
+
+/**
+ * 右セル channel 1 つぶんの formula state。
+ * forward は opsForward の forward 表示、backward は opsBackward の forward 表示
+ * （別 ops 列の追加適用なので両区間とも非反転表示）。
+ */
+function makeFormulaForRightChannel(
+  state: AnimState,
+  opsForward: Op[],
+  opsBackward: Op[],
+  offsetsForward: Offsets,
+  offsetsBackward: Offsets,
+): FormulaCell {
+  if (state.phase === "hold-start") {
+    return { current: "y = x", prev: null, fadeIn: 1, fadeOut: 0 }
+  }
+  if (state.phase === "hold-end") {
+    return {
+      current: formulaForOpAt(
+        opsBackward[opsBackward.length - 1],
+        1,
+        false,
+      ),
+      prev: null,
+      fadeIn: 1,
+      fadeOut: 0,
+    }
+  }
+  let opsToUse: Op[]
+  let offsetsToUse: Offsets
+  let progress: number
+  if (state.phase === "forward") {
+    opsToUse = opsForward
+    offsetsToUse = offsetsForward
+    progress = state.P
+  } else {
+    opsToUse = opsBackward
+    offsetsToUse = offsetsBackward
+    progress = state.Q
+  }
+  const idx = Math.min(NUM_OPS - 1, Math.max(0, Math.floor(progress * NUM_OPS)))
+  const { lo, hi } = offsetsToUse[idx]
+  const easedP = easeInOutCubic(clamp01((progress - lo) / (hi - lo)))
+  const op = opsToUse[idx]
+  const current = formulaForOpAt(op, easedP, false)
+
+  const since =
+    state.phase === "forward"
+      ? (state.P - idx / NUM_OPS) * FORWARD_DUR
+      : (state.Q - idx / NUM_OPS) * BACKWARD_DUR
+  if (since >= FADE_DUR) {
+    return { current, prev: null, fadeIn: 1, fadeOut: 0 }
+  }
+  const prevIdx = idx - 1
+  if (prevIdx < 0) {
+    if (state.phase === "forward") {
+      const ratio = since / FADE_DUR
+      return { current, prev: "y = x", fadeIn: ratio, fadeOut: 1 - ratio }
+    }
+    // backward 開始直後 → 前は forward 最後 (opsForward[NUM_OPS-1] 完全)
+    const ratio = since / FADE_DUR
+    return {
+      current,
+      prev: formulaForOpAt(opsForward[NUM_OPS - 1], 1, false),
+      fadeIn: ratio,
+      fadeOut: 1 - ratio,
+    }
+  }
+  const prevOp = opsToUse[prevIdx]
+  if (prevOp.kind === op.kind) {
+    return { current, prev: null, fadeIn: 1, fadeOut: 0 }
+  }
+  const ratio = since / FADE_DUR
+  return {
+    current,
+    prev: formulaForOpAt(prevOp, 1, false),
     fadeIn: ratio,
     fadeOut: 1 - ratio,
   }
@@ -454,34 +599,44 @@ function Badge({
   if (opacity <= 0.001) return null
   const cfgMap: Record<
     BadgeKind,
-    { fill: string; text: string; icon: "play" | "rev" | "check" | "circle" }
+    {
+      fill: string
+      text: string
+      icon: "play" | "rev" | "check" | "circle"
+      rx: number
+    }
   > = {
     initial: {
       fill: "rgba(120,120,130,0.88)",
       text: "初期状態",
       icon: "circle",
+      rx: 70,
     },
     forward: {
       fill: "rgba(80,180,120,0.88)",
-      text: "再生中",
+      text: "処理追加中",
       icon: "play",
+      rx: 82,
     },
     backward: {
       fill: "rgba(220,130,60,0.88)",
-      text: "逆再生中",
+      text: "後段で復元中",
       icon: "rev",
+      rx: 92,
     },
     "hold-end": {
       fill: "rgba(120,120,130,0.88)",
       text: "復元結果",
       icon: "check",
+      rx: 70,
     },
   }
   const cfg = cfgMap[kind]
-  const iconCx = cx - 40
+  const iconCx = cx - cfg.rx * 0.55
+  const textCx = cx + cfg.rx * 0.18
   return (
     <g opacity={opacity}>
-      <ellipse cx={cx} cy={cy} rx={70} ry={20} fill={cfg.fill} />
+      <ellipse cx={cx} cy={cy} rx={cfg.rx} ry={20} fill={cfg.fill} />
       {cfg.icon === "play" && (
         <polygon
           points={`${iconCx - 6},${cy - 8} ${iconCx - 6},${cy + 8} ${iconCx + 6},${cy}`}
@@ -515,7 +670,7 @@ function Badge({
         />
       )}
       <text
-        x={cx + 14}
+        x={textCx}
         y={cy + 1}
         fontSize={16}
         fontWeight={600}
@@ -568,14 +723,12 @@ function CellBackground({
 
 function CellPlot({
   cellX,
-  state,
   showIdeal,
   idealOpacity,
   curveBuilds,
   clipId,
 }: {
   cellX: number
-  state: AnimState
   showIdeal: boolean
   idealOpacity: number
   curveBuilds: { fnR: (x: number) => number; fnG: (x: number) => number; fnB: (x: number) => number }
@@ -587,8 +740,9 @@ function CellPlot({
   const polyB = buildPolyline(curveBuilds.fnB, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
   const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
 
-  const yOneScreen = PLOT_Y + PLOT_H * (1 - 1.0 / Y_MAX)
-  const yHalfScreen = PLOT_Y + PLOT_H * (1 - 0.5 / Y_MAX)
+  // Y_MAX = 1.0: y = 1 は plot 上端、y = 0.5 は plot 中央
+  const yOneScreen = PLOT_Y // = PLOT_Y + PLOT_H * (1 - 1.0 / 1.0)
+  const yHalfScreen = PLOT_Y + PLOT_H * 0.5
 
   return (
     <g>
@@ -604,11 +758,11 @@ function CellPlot({
         strokeWidth={1}
       />
 
-      {/* y = x 参照線（極薄） */}
+      {/* y = x 参照線（plot の左下隅 → 右上隅） */}
       <line
         x1={plotXAbs}
         y1={PLOT_Y + PLOT_H}
-        x2={plotXAbs + PLOT_W * (1 / Y_MAX)}
+        x2={plotXAbs + PLOT_W}
         y2={PLOT_Y}
         stroke={GRID}
         strokeWidth={1}
@@ -636,7 +790,7 @@ function CellPlot({
       />
       <text
         x={plotXAbs + PLOT_W - 6}
-        y={yOneScreen - 6}
+        y={yOneScreen + 14}
         fontSize={13}
         fill={TEXT_MUTED}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
@@ -645,7 +799,6 @@ function CellPlot({
         y = 1
       </text>
 
-      {/* RGB 3 本 + HOLD_END 中の理想線 */}
       <g clipPath={`url(#${clipId})`}>
         {showIdeal && (
           <polyline
@@ -690,47 +843,6 @@ function CellPlot({
   )
 }
 
-function FormulaSingle({
-  cellX,
-  cell,
-}: {
-  cellX: number
-  cell: FormulaCell
-}) {
-  return (
-    <g>
-      {cell.prev && (
-        <text
-          x={cellX + CELL_W / 2}
-          y={FORMULA_CY}
-          fontSize={32}
-          fontWeight={500}
-          fill={TEXT_PRIMARY}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-          opacity={cell.fadeOut}
-        >
-          {cell.prev}
-        </text>
-      )}
-      <text
-        x={cellX + CELL_W / 2}
-        y={FORMULA_CY}
-        fontSize={32}
-        fontWeight={500}
-        fill={TEXT_PRIMARY}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        opacity={cell.fadeIn}
-      >
-        {cell.current}
-      </text>
-    </g>
-  )
-}
-
 function FormulaRGB({
   cellX,
   rCell,
@@ -742,7 +854,6 @@ function FormulaRGB({
   gCell: FormulaCell
   bCell: FormulaCell
 }) {
-  // 1 行 3 列に並べる: 左から R / G / B 等間隔。font-size 22。
   const slotW = (PLOT_W - 20) / 3
   const baseX = cellX + PLOT_X_LOCAL + 10
   const slots: { label: string; cell: FormulaCell; color: string; cx: number }[] = [
@@ -813,27 +924,21 @@ function Cell({
   cellX,
   title,
   tint,
-  state,
   showIdeal,
   idealOpacity,
   curveBuilds,
   clipId,
-  formulaMode,
-  leftFormula,
   rgbFormula,
   badgeOps,
 }: {
   cellX: number
   title: string
   tint: typeof TINT_GAMMA
-  state: AnimState
   showIdeal: boolean
   idealOpacity: number
   curveBuilds: { fnR: (x: number) => number; fnG: (x: number) => number; fnB: (x: number) => number }
   clipId: string
-  formulaMode: "single" | "rgb"
-  leftFormula?: FormulaCell
-  rgbFormula?: { r: FormulaCell; g: FormulaCell; b: FormulaCell }
+  rgbFormula: { r: FormulaCell; g: FormulaCell; b: FormulaCell }
   badgeOps: Record<BadgeKind, number>
 }) {
   const cx = cellX + CELL_W / 2
@@ -855,32 +960,68 @@ function Cell({
 
       <CellPlot
         cellX={cellX}
-        state={state}
         showIdeal={showIdeal}
         idealOpacity={idealOpacity}
         curveBuilds={curveBuilds}
         clipId={clipId}
       />
 
-      {/* バッジ（4 種類同時 render、 opacity でクロスフェード） */}
       <Badge cx={cx} cy={BADGE_CY} kind="initial" opacity={badgeOps.initial} />
       <Badge cx={cx} cy={BADGE_CY} kind="forward" opacity={badgeOps.forward} />
       <Badge cx={cx} cy={BADGE_CY} kind="backward" opacity={badgeOps.backward} />
       <Badge cx={cx} cy={BADGE_CY} kind="hold-end" opacity={badgeOps["hold-end"]} />
 
-      {formulaMode === "single" && leftFormula && (
-        <FormulaSingle cellX={cellX} cell={leftFormula} />
-      )}
-      {formulaMode === "rgb" && rgbFormula && (
-        <FormulaRGB
-          cellX={cellX}
-          rCell={rgbFormula.r}
-          gCell={rgbFormula.g}
-          bCell={rgbFormula.b}
-        />
-      )}
+      <FormulaRGB
+        cellX={cellX}
+        rCell={rgbFormula.r}
+        gCell={rgbFormula.g}
+        bCell={rgbFormula.b}
+      />
     </g>
   )
+}
+
+// 開発時のみ実行: 左セル完全可逆性 + 右セル残差検証
+let _devAssertionsRun = false
+function runDevAssertions() {
+  if (_devAssertionsRun) return
+  _devAssertionsRun = true
+  const samples = [0.0, 0.25, 0.5, 0.75, 1.0]
+  const leftChans = [
+    { name: "LEFT_R", ops: LEFT_OPS_R, offsets: OFFSETS_LEFT_R },
+    { name: "LEFT_G", ops: LEFT_OPS_G, offsets: OFFSETS_LEFT_G },
+    { name: "LEFT_B", ops: LEFT_OPS_B, offsets: OFFSETS_LEFT_B },
+  ]
+  for (const { name, ops, offsets } of leftChans) {
+    const fn = buildLeftFn(ops, offsets, 1, 1)
+    for (const x of samples) {
+      const y = fn(x)
+      console.assert(
+        Math.abs(y - x) < 1e-10,
+        `${name}@x=${x}: |y-x|=${Math.abs(y - x)} not reversible`,
+      )
+    }
+  }
+  const rightChans = [
+    { name: "RIGHT_R", opsF: RIGHT_FORWARD_R, opsB: RIGHT_BACKWARD_R, off: OFFSETS_RIGHT_R },
+    { name: "RIGHT_G", opsF: RIGHT_FORWARD_G, opsB: RIGHT_BACKWARD_G, off: OFFSETS_RIGHT_G },
+    { name: "RIGHT_B", opsF: RIGHT_FORWARD_B, opsB: RIGHT_BACKWARD_B, off: OFFSETS_RIGHT_B },
+  ]
+  let maxResidual = 0
+  for (const { opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
+    for (const x of samples) {
+      maxResidual = Math.max(maxResidual, Math.abs(fn(x) - x))
+    }
+  }
+  console.assert(
+    maxResidual > 1e-3,
+    `RIGHT cells unexpectedly reversible (max residual=${maxResidual})`,
+  )
+}
+
+if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+  runDevAssertions()
 }
 
 export default function CorrectionReversibility({
@@ -942,56 +1083,76 @@ export default function CorrectionReversibility({
     else idealOpacity = 1
   }
 
-  // 左セル: 3 chan 同一 ops + offsets、 osc なし、 phase shift なし
-  const leftFn = buildCurrentFn(
-    LEFT_OPS,
-    OFFSETS_BASE,
-    state.P,
-    state.Q,
-    FREQS,
-    0,
-    0,
-    state.t,
-  )
-  // 3 本完全同期なので参照同一
-  const leftCurves = { fnR: leftFn, fnG: leftFn, fnB: leftFn }
+  // 左セル: RGB 3 chan + 各 chan 完全可逆 (osc なし)
+  const leftFnR = buildLeftFn(LEFT_OPS_R, OFFSETS_LEFT_R, state.P, state.Q)
+  const leftFnG = buildLeftFn(LEFT_OPS_G, OFFSETS_LEFT_G, state.P, state.Q)
+  const leftFnB = buildLeftFn(LEFT_OPS_B, OFFSETS_LEFT_B, state.P, state.Q)
+  const leftCurves = { fnR: leftFnR, fnG: leftFnG, fnB: leftFnB }
 
-  const rightFnR = buildCurrentFn(
-    RIGHT_OPS_R,
-    OFFSETS_R,
+  // 右セル: forward / backward 別 ops、入れ子非可換性で残差残る (osc あり)
+  const rightFnR = buildRightFn(
+    RIGHT_FORWARD_R,
+    RIGHT_BACKWARD_R,
+    OFFSETS_RIGHT_R,
+    OFFSETS_RIGHT_R,
     state.P,
     state.Q,
     FREQS,
     PHASE_R,
-    OSC_AMP,
+    OSC_AMP_RIGHT,
     state.t,
   )
-  const rightFnG = buildCurrentFn(
-    RIGHT_OPS_G,
-    OFFSETS_G,
+  const rightFnG = buildRightFn(
+    RIGHT_FORWARD_G,
+    RIGHT_BACKWARD_G,
+    OFFSETS_RIGHT_G,
+    OFFSETS_RIGHT_G,
     state.P,
     state.Q,
     FREQS,
     PHASE_G,
-    OSC_AMP,
+    OSC_AMP_RIGHT,
     state.t,
   )
-  const rightFnB = buildCurrentFn(
-    RIGHT_OPS_B,
-    OFFSETS_B,
+  const rightFnB = buildRightFn(
+    RIGHT_FORWARD_B,
+    RIGHT_BACKWARD_B,
+    OFFSETS_RIGHT_B,
+    OFFSETS_RIGHT_B,
     state.P,
     state.Q,
     FREQS,
     PHASE_B,
-    OSC_AMP,
+    OSC_AMP_RIGHT,
     state.t,
   )
   const rightCurves = { fnR: rightFnR, fnG: rightFnG, fnB: rightFnB }
 
-  const leftFormula = makeFormulaForChannel(state, LEFT_OPS, OFFSETS_BASE)
-  const rightFormulaR = makeFormulaForChannel(state, RIGHT_OPS_R, OFFSETS_R)
-  const rightFormulaG = makeFormulaForChannel(state, RIGHT_OPS_G, OFFSETS_G)
-  const rightFormulaB = makeFormulaForChannel(state, RIGHT_OPS_B, OFFSETS_B)
+  const leftFormulaR = makeFormulaForLeftChannel(state, LEFT_OPS_R, OFFSETS_LEFT_R)
+  const leftFormulaG = makeFormulaForLeftChannel(state, LEFT_OPS_G, OFFSETS_LEFT_G)
+  const leftFormulaB = makeFormulaForLeftChannel(state, LEFT_OPS_B, OFFSETS_LEFT_B)
+
+  const rightFormulaR = makeFormulaForRightChannel(
+    state,
+    RIGHT_FORWARD_R,
+    RIGHT_BACKWARD_R,
+    OFFSETS_RIGHT_R,
+    OFFSETS_RIGHT_R,
+  )
+  const rightFormulaG = makeFormulaForRightChannel(
+    state,
+    RIGHT_FORWARD_G,
+    RIGHT_BACKWARD_G,
+    OFFSETS_RIGHT_G,
+    OFFSETS_RIGHT_G,
+  )
+  const rightFormulaB = makeFormulaForRightChannel(
+    state,
+    RIGHT_FORWARD_B,
+    RIGHT_BACKWARD_B,
+    OFFSETS_RIGHT_B,
+    OFFSETS_RIGHT_B,
+  )
 
   const badgeOps = badgeOpacities(state)
 
@@ -1019,25 +1180,21 @@ export default function CorrectionReversibility({
         cellX={0}
         title="ゲイン × ガンマ（乗算 + べき乗）"
         tint={TINT_GAMMA}
-        state={state}
         showIdeal={showIdeal}
         idealOpacity={idealOpacity}
         curveBuilds={leftCurves}
         clipId="cr-plot-left"
-        formulaMode="single"
-        leftFormula={leftFormula}
+        rgbFormula={{ r: leftFormulaR, g: leftFormulaG, b: leftFormulaB }}
         badgeOps={badgeOps}
       />
       <Cell
         cellX={CELL_W + GAP}
         title="リフト × ガンマ（加算 + べき乗）"
         tint={TINT_LIFT}
-        state={state}
         showIdeal={showIdeal}
         idealOpacity={idealOpacity}
         curveBuilds={rightCurves}
         clipId="cr-plot-right"
-        formulaMode="rgb"
         rgbFormula={{
           r: rightFormulaR,
           g: rightFormulaG,
