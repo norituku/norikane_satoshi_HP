@@ -89,8 +89,8 @@ function shiftOffsets(shift: number): Offsets {
 }
 
 const OFFSETS_LEFT_R: Offsets = shiftOffsets(0)
-const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.06)
-const OFFSETS_LEFT_B: Offsets = shiftOffsets(-0.06)
+const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.12)
+const OFFSETS_LEFT_B: Offsets = shiftOffsets(-0.12)
 
 const OFFSETS_RIGHT_R: Offsets = shiftOffsets(0)
 const OFFSETS_RIGHT_G: Offsets = shiftOffsets(0.06)
@@ -98,26 +98,27 @@ const OFFSETS_RIGHT_B: Offsets = shiftOffsets(-0.06)
 
 // 左セル（ゲイン × ガンマ）: RGB ごとに param をずらして中盤で識別性を出す。
 // 各 chan は自分自身の数学的逆を backward 区間で適用するので完全可逆。
+// Phase 32-AP: param 振幅を拡大して FORWARD 中盤の「ぐじゃぐじゃ」を強化。
 const LEFT_OPS_R: Op[] = [
-  { kind: "mul", param: 1.5 },
-  { kind: "pow", param: 1.4 },
-  { kind: "mul", param: 0.7 },
-  { kind: "pow", param: 1.25 },
-  { kind: "mul", param: 0.95 },
+  { kind: "mul", param: 2.2 },
+  { kind: "pow", param: 1.85 },
+  { kind: "mul", param: 0.45 },
+  { kind: "pow", param: 0.55 },
+  { kind: "mul", param: 1.3 },
 ]
 const LEFT_OPS_G: Op[] = [
-  { kind: "mul", param: 1.45 },
-  { kind: "pow", param: 1.35 },
-  { kind: "mul", param: 0.72 },
-  { kind: "pow", param: 1.3 },
-  { kind: "mul", param: 0.93 },
+  { kind: "mul", param: 2.0 },
+  { kind: "pow", param: 1.7 },
+  { kind: "mul", param: 0.5 },
+  { kind: "pow", param: 0.62 },
+  { kind: "mul", param: 1.2 },
 ]
 const LEFT_OPS_B: Op[] = [
-  { kind: "mul", param: 1.55 },
-  { kind: "pow", param: 1.45 },
-  { kind: "mul", param: 0.68 },
-  { kind: "pow", param: 1.2 },
-  { kind: "mul", param: 0.97 },
+  { kind: "mul", param: 2.4 },
+  { kind: "pow", param: 1.95 },
+  { kind: "mul", param: 0.4 },
+  { kind: "pow", param: 0.5 },
+  { kind: "mul", param: 1.4 },
 ]
 
 // 右セル（リフト × ガンマ）forward 用 ops。
@@ -144,28 +145,30 @@ const RIGHT_FORWARD_B: Op[] = [
 ]
 
 // 右セル backward 用 ops（forward の概ね逆向きだが完全な逆関数ではない）。
-// add は負値、pow は forward の概ね 1/param。backward 区間は applyOpProgress
-// で単純に後段追加されるため、入れ子非可換性で y = x には戻らない残差が残る。
+// Phase 32-AP: 「中域を強くリフトダウン → 強くガンマ持ち上げ → 中央で軽く再リフト
+//   → 弱くガンマ降下 → 仕上げのリフト」のリズムで非単調 (プラトー + 持ち上げ) 化。
+// LIFT (add) と GAMMA (pow) の入れ子非可換性で HOLD_END でも y = x には戻らない。
+// x = 1 不動点はリフト y + L*p*(1-y) で (1-y)=0 から自動成立。
 const RIGHT_BACKWARD_R: Op[] = [
-  { kind: "add", param: -0.18 },
-  { kind: "pow", param: 0.69 },
-  { kind: "add", param: -0.16 },
-  { kind: "pow", param: 0.77 },
-  { kind: "add", param: -0.08 },
+  { kind: "add", param: -0.28 },
+  { kind: "pow", param: 1.85 },
+  { kind: "add", param: -0.1 },
+  { kind: "pow", param: 0.55 },
+  { kind: "add", param: 0.08 },
 ]
 const RIGHT_BACKWARD_G: Op[] = [
-  { kind: "add", param: -0.16 },
-  { kind: "pow", param: 0.74 },
-  { kind: "add", param: -0.2 },
-  { kind: "pow", param: 0.83 },
-  { kind: "add", param: -0.12 },
+  { kind: "add", param: -0.25 },
+  { kind: "pow", param: 1.7 },
+  { kind: "add", param: -0.08 },
+  { kind: "pow", param: 0.6 },
+  { kind: "add", param: 0.1 },
 ]
 const RIGHT_BACKWARD_B: Op[] = [
+  { kind: "add", param: -0.32 },
+  { kind: "pow", param: 2.0 },
   { kind: "add", param: -0.12 },
-  { kind: "pow", param: 0.67 },
-  { kind: "add", param: -0.18 },
-  { kind: "pow", param: 0.71 },
-  { kind: "add", param: -0.16 },
+  { kind: "pow", param: 0.5 },
+  { kind: "add", param: 0.06 },
 ]
 
 const FREQS = [0.7, 0.85, 1.0, 1.15, 1.3]
@@ -789,12 +792,13 @@ function CellPlot({
         strokeDasharray="6 6"
       />
       <text
-        x={plotXAbs + PLOT_W - 6}
-        y={yOneScreen + 14}
+        x={plotXAbs + PLOT_W}
+        y={PLOT_Y - 8}
         fontSize={13}
         fill={TEXT_MUTED}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         textAnchor="end"
+        dominantBaseline="alphabetic"
       >
         y = 1
       </text>
@@ -1018,6 +1022,31 @@ function runDevAssertions() {
     maxResidual > 1e-3,
     `RIGHT cells unexpectedly reversible (max residual=${maxResidual})`,
   )
+
+  // Phase 32-AP: 右セル HOLD_END の非単調性を 21 点で検証。
+  // (a) リフト不動点 |y(1) - 1| < 1e-9
+  // (b) 隣接区間差分 dy_i = y(x_{i+1}) - y(x_i) が少なくとも 1 区間で
+  //     「次の区間より小さい」逆転を起こす (= プラトー + 持ち上げの存在証明)
+  for (const { name, opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
+    const N = 20
+    const ys: number[] = []
+    for (let i = 0; i <= N; i++) ys.push(fn(i / N))
+    console.assert(
+      Math.abs(ys[N] - 1) < 1e-9,
+      `${name}@x=1 lift fixed-point violation: |y-1|=${Math.abs(ys[N] - 1)}`,
+    )
+    let maxJump = 0
+    for (let i = 0; i + 1 < N; i++) {
+      const dy0 = ys[i + 1] - ys[i]
+      const dy1 = ys[i + 2] - ys[i + 1]
+      maxJump = Math.max(maxJump, dy1 - dy0)
+    }
+    console.assert(
+      maxJump > 0.02,
+      `${name} HOLD_END monotone (no plateau+lift): max(dy[i+1]-dy[i])=${maxJump}`,
+    )
+  }
 }
 
 if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
