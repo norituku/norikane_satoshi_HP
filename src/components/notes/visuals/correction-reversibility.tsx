@@ -3,15 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Phase 32-AO: 戻せる / 戻せない（可逆性の比較）
+ * Phase 32-AQ: 戻せる / 戻せない（可逆性の比較）
  *
- * 主要変更:
- *  - リフト数学を (1, 1) 不動点固定: y + L * p * (1 - y)
- *  - 左セル（ゲイン × ガンマ）も RGB 3 本に拡張、phase shift で識別性、完全可逆維持
- *  - 右セル（リフト × ガンマ）backward を「別 ops 列の後段追加」に変更し
- *    入れ子構造の非可換性で残差が残ることを数学的に実現
- *  - Y_MAX = 1.0、グラフ上下を目一杯使う
- *  - バッジ文言: 再生中 → 処理追加中 / 逆再生中 → 後段で復元中
+ * Phase 32-AQ 主要変更:
+ *  - safePow を signedPow へ置換 (b<0 で -(|b|^e) を返し負域を保持、Resolve 32bit float 互換)
+ *  - Y 軸を [-0.4, 1.0] へ拡張、y=0 補助線と y=0 ラベルを追加
+ *  - 右セル forward / backward 中央 op に強い負リフトを入れ、中盤で y < 0 まで潜らせる
+ *  - 左セル完全可逆性は維持
  *
  * 時間軸（合計 14 秒）:
  *   HOLD_START  2.5s : P = 0,        Q = 0,        y = x
@@ -52,6 +50,8 @@ const BADGE_CY = 575
 const FORMULA_CY = 630
 
 const Y_MAX = 1.0
+const Y_MIN = -0.4
+const Y_RANGE = Y_MAX - Y_MIN
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(107,95,168,0.85)"
@@ -92,9 +92,11 @@ const OFFSETS_LEFT_R: Offsets = shiftOffsets(0)
 const OFFSETS_LEFT_G: Offsets = shiftOffsets(0.12)
 const OFFSETS_LEFT_B: Offsets = shiftOffsets(-0.12)
 
+// Phase 32-AQ: 各 chan の idx 2 op (中央リフト負) が P=0.5 付近でしっかり発火するよう
+// 全 shift を負側に再配置（base 中央 0.52 を P=0.5 直近に寄せる）。
 const OFFSETS_RIGHT_R: Offsets = shiftOffsets(0)
-const OFFSETS_RIGHT_G: Offsets = shiftOffsets(0.06)
-const OFFSETS_RIGHT_B: Offsets = shiftOffsets(-0.06)
+const OFFSETS_RIGHT_G: Offsets = shiftOffsets(-0.06)
+const OFFSETS_RIGHT_B: Offsets = shiftOffsets(-0.12)
 
 // 左セル（ゲイン × ガンマ）: RGB ごとに param をずらして中盤で識別性を出す。
 // 各 chan は自分自身の数学的逆を backward 区間で適用するので完全可逆。
@@ -122,53 +124,56 @@ const LEFT_OPS_B: Op[] = [
 ]
 
 // 右セル（リフト × ガンマ）forward 用 ops。
+// Phase 32-AQ: 中央 op (idx 2) に強い負リフトを入れ、中盤で y < 0 まで潜らせる。
+//   add +正 → pow >1 → add -大 (中域で y を負域へ) → pow >1 (signedPow が負域保持)
+//   → add +小 (plot 内へ押し戻し)
 const RIGHT_FORWARD_R: Op[] = [
-  { kind: "add", param: 0.22 },
+  { kind: "add", param: 0.25 },
   { kind: "pow", param: 1.5 },
-  { kind: "add", param: 0.18 },
-  { kind: "pow", param: 1.35 },
+  { kind: "add", param: -1.0 },
+  { kind: "pow", param: 1.4 },
   { kind: "add", param: 0.1 },
 ]
 const RIGHT_FORWARD_G: Op[] = [
-  { kind: "add", param: 0.18 },
-  { kind: "pow", param: 1.4 },
   { kind: "add", param: 0.22 },
-  { kind: "pow", param: 1.25 },
+  { kind: "pow", param: 1.4 },
+  { kind: "add", param: -0.85 },
+  { kind: "pow", param: 1.3 },
   { kind: "add", param: 0.14 },
 ]
 const RIGHT_FORWARD_B: Op[] = [
-  { kind: "add", param: 0.14 },
+  { kind: "add", param: 0.18 },
   { kind: "pow", param: 1.55 },
-  { kind: "add", param: 0.2 },
+  { kind: "add", param: -0.95 },
   { kind: "pow", param: 1.45 },
   { kind: "add", param: 0.18 },
 ]
 
-// 右セル backward 用 ops（forward の概ね逆向きだが完全な逆関数ではない）。
-// Phase 32-AP: 「中域を強くリフトダウン → 強くガンマ持ち上げ → 中央で軽く再リフト
-//   → 弱くガンマ降下 → 仕上げのリフト」のリズムで非単調 (プラトー + 持ち上げ) 化。
-// LIFT (add) と GAMMA (pow) の入れ子非可換性で HOLD_END でも y = x には戻らない。
-// x = 1 不動点はリフト y + L*p*(1-y) で (1-y)=0 から自動成立。
+// 右セル backward 用 ops（forward の逆ではない、後段追加適用）。
+// Phase 32-AQ: BACKWARD 中盤で再度 y < 0 へ沈ませ、HOLD_END で plateau+lift。
+//   add -big (一気に負域へ) → pow >1 (負域整形、signedPow) → add -mid (中央 lift down)
+//   → pow <1 (持ち上げ)  → add +final (大きく plot 内へ復帰)
+// 最終 add は (1-y) factor で y=1 不動点を維持しつつ、負域からの持ち上げに効く。
 const RIGHT_BACKWARD_R: Op[] = [
-  { kind: "add", param: -0.28 },
+  { kind: "add", param: -0.4 },
   { kind: "pow", param: 1.85 },
   { kind: "add", param: -0.1 },
   { kind: "pow", param: 0.55 },
-  { kind: "add", param: 0.08 },
+  { kind: "add", param: 0.55 },
 ]
 const RIGHT_BACKWARD_G: Op[] = [
-  { kind: "add", param: -0.25 },
+  { kind: "add", param: -0.35 },
   { kind: "pow", param: 1.7 },
-  { kind: "add", param: -0.08 },
+  { kind: "add", param: -0.1 },
   { kind: "pow", param: 0.6 },
-  { kind: "add", param: 0.1 },
+  { kind: "add", param: 0.5 },
 ]
 const RIGHT_BACKWARD_B: Op[] = [
-  { kind: "add", param: -0.32 },
+  { kind: "add", param: -0.4 },
   { kind: "pow", param: 2.0 },
-  { kind: "add", param: -0.12 },
+  { kind: "add", param: -0.1 },
   { kind: "pow", param: 0.5 },
-  { kind: "add", param: 0.06 },
+  { kind: "add", param: 0.65 },
 ]
 
 const FREQS = [0.7, 0.85, 1.0, 1.15, 1.3]
@@ -180,8 +185,13 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
 
-function safePow(b: number, e: number): number {
-  return Math.pow(Math.max(0, b), e)
+// Phase 32-AQ: signedPow は b<0 でも -(|b|^e) を返し負域を保持する。
+// DaVinci Resolve の 32bit float 内部計算に揃え、ノードを重ねた中域で y が
+// 負域へ「潜って」から後段で復帰する非線形挙動を可視化できるようにする。
+function signedPow(b: number, e: number): number {
+  if (b === 0) return 0
+  if (b > 0) return Math.pow(b, e)
+  return -Math.pow(-b, e)
 }
 
 function easeInOutCubic(p: number): number {
@@ -193,7 +203,7 @@ function easeInOutCubic(p: number): number {
 //   y = 1 → 1（白側は常に固定）
 function applyOpProgress(y: number, op: Op, p: number): number {
   if (op.kind === "add") return y + op.param * p * (1 - y)
-  if (op.kind === "pow") return safePow(y, 1 + (op.param - 1) * p)
+  if (op.kind === "pow") return signedPow(y, 1 + (op.param - 1) * p)
   return y * (1 + (op.param - 1) * p)
 }
 
@@ -204,7 +214,7 @@ function applyOpProgressInverse(y: number, op: Op, p: number): number {
     const denom = 1 - op.param * p
     return denom === 0 ? y : (y - op.param * p) / denom
   }
-  if (op.kind === "pow") return safePow(y, 1 / (1 + (op.param - 1) * p))
+  if (op.kind === "pow") return signedPow(y, 1 / (1 + (op.param - 1) * p))
   return y / (1 + (op.param - 1) * p)
 }
 
@@ -328,6 +338,12 @@ function buildRightFn(
   }
 }
 
+// Phase 32-AQ: Y 軸 [Y_MIN, Y_MAX] に対する screen Y 変換。
+//   sy = plotY + plotH * (1 - (y - Y_MIN) / Y_RANGE)
+function yToScreen(y: number, plotY: number, plotH: number): number {
+  return plotY + plotH * (1 - (y - Y_MIN) / Y_RANGE)
+}
+
 function buildPolyline(
   fn: (x: number) => number,
   plotXAbs: number,
@@ -340,7 +356,7 @@ function buildPolyline(
     const x = i / SAMPLES
     const y = fn(x)
     const sx = plotXAbs + x * plotW
-    const sy = plotY + plotH * (1 - y / Y_MAX)
+    const sy = yToScreen(y, plotY, plotH)
     points.push(`${sx.toFixed(2)},${sy.toFixed(2)}`)
   }
   return points.join(" ")
@@ -357,7 +373,7 @@ function buildIdealPolyline(
   for (let i = 0; i <= N; i++) {
     const x = i / N
     const sx = plotXAbs + x * plotW
-    const sy = plotY + plotH * (1 - x / Y_MAX)
+    const sy = yToScreen(x, plotY, plotH)
     points.push(`${sx.toFixed(2)},${sy.toFixed(2)}`)
   }
   return points.join(" ")
@@ -743,9 +759,13 @@ function CellPlot({
   const polyB = buildPolyline(curveBuilds.fnB, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
   const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
 
-  // Y_MAX = 1.0: y = 1 は plot 上端、y = 0.5 は plot 中央
-  const yOneScreen = PLOT_Y // = PLOT_Y + PLOT_H * (1 - 1.0 / 1.0)
-  const yHalfScreen = PLOT_Y + PLOT_H * 0.5
+  // Phase 32-AQ: Y_MIN=-0.4, Y_MAX=1.0
+  //   yOneScreen  = plot 上端 (PLOT_Y)
+  //   yHalfScreen = plot の (1 - 0.9/1.4) = 0.357 位置
+  //   yZeroScreen = plot の (1 - 0.4/1.4) = 0.7143 位置 (plot 下端から 28.57% 上)
+  const yOneScreen = yToScreen(1, PLOT_Y, PLOT_H)
+  const yHalfScreen = yToScreen(0.5, PLOT_Y, PLOT_H)
+  const yZeroScreen = yToScreen(0, PLOT_Y, PLOT_H)
 
   return (
     <g>
@@ -761,12 +781,12 @@ function CellPlot({
         strokeWidth={1}
       />
 
-      {/* y = x 参照線（plot の左下隅 → 右上隅） */}
+      {/* y = x 参照線（y=0 ライン上の左端 → y=1 ライン上の右端） */}
       <line
         x1={plotXAbs}
-        y1={PLOT_Y + PLOT_H}
+        y1={yZeroScreen}
         x2={plotXAbs + PLOT_W}
-        y2={PLOT_Y}
+        y2={yOneScreen}
         stroke={GRID}
         strokeWidth={1}
         strokeDasharray="2 6"
@@ -781,6 +801,28 @@ function CellPlot({
         strokeWidth={1}
         strokeDasharray="4 6"
       />
+
+      {/* y = 0 軸線（負域の境界、Phase 32-AQ で追加） */}
+      <line
+        x1={plotXAbs}
+        y1={yZeroScreen}
+        x2={plotXAbs + PLOT_W}
+        y2={yZeroScreen}
+        stroke={GRID}
+        strokeWidth={1}
+        strokeDasharray="4 6"
+      />
+      <text
+        x={plotXAbs - 8}
+        y={yZeroScreen + 4}
+        fontSize={13}
+        fill={TEXT_MUTED}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        textAnchor="end"
+        dominantBaseline="alphabetic"
+      >
+        y = 0
+      </text>
 
       <line
         x1={plotXAbs}
@@ -990,7 +1032,19 @@ let _devAssertionsRun = false
 function runDevAssertions() {
   if (_devAssertionsRun) return
   _devAssertionsRun = true
-  const samples = [0.0, 0.25, 0.5, 0.75, 1.0]
+
+  // Phase 32-AQ: signedPow 6 点ユニット検証ログ
+  console.log(
+    "[Phase 32-AQ] signedPow unit checks:",
+    `signedPow(-0.3, 1.5)=${signedPow(-0.3, 1.5).toFixed(4)}`,
+    `signedPow(-0.1, 1.5)=${signedPow(-0.1, 1.5).toFixed(4)}`,
+    `signedPow(0, 1.5)=${signedPow(0, 1.5).toFixed(4)}`,
+    `signedPow(0.1, 1.5)=${signedPow(0.1, 1.5).toFixed(4)}`,
+    `signedPow(0.3, 1.5)=${signedPow(0.3, 1.5).toFixed(4)}`,
+    `signedPow(-0.5, 0.5)=${signedPow(-0.5, 0.5).toFixed(4)}`,
+  )
+
+  const leftSamples = [0.0, 0.25, 0.5, 0.75, 1.0]
   const leftChans = [
     { name: "LEFT_R", ops: LEFT_OPS_R, offsets: OFFSETS_LEFT_R },
     { name: "LEFT_G", ops: LEFT_OPS_G, offsets: OFFSETS_LEFT_G },
@@ -998,7 +1052,7 @@ function runDevAssertions() {
   ]
   for (const { name, ops, offsets } of leftChans) {
     const fn = buildLeftFn(ops, offsets, 1, 1)
-    for (const x of samples) {
+    for (const x of leftSamples) {
       const y = fn(x)
       console.assert(
         Math.abs(y - x) < 1e-10,
@@ -1006,45 +1060,58 @@ function runDevAssertions() {
       )
     }
   }
+
   const rightChans = [
     { name: "RIGHT_R", opsF: RIGHT_FORWARD_R, opsB: RIGHT_BACKWARD_R, off: OFFSETS_RIGHT_R },
     { name: "RIGHT_G", opsF: RIGHT_FORWARD_G, opsB: RIGHT_BACKWARD_G, off: OFFSETS_RIGHT_G },
     { name: "RIGHT_B", opsF: RIGHT_FORWARD_B, opsB: RIGHT_BACKWARD_B, off: OFFSETS_RIGHT_B },
   ]
-  let maxResidual = 0
-  for (const { opsF, opsB, off } of rightChans) {
-    const fn = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
-    for (const x of samples) {
-      maxResidual = Math.max(maxResidual, Math.abs(fn(x) - x))
-    }
-  }
-  console.assert(
-    maxResidual > 1e-3,
-    `RIGHT cells unexpectedly reversible (max residual=${maxResidual})`,
-  )
 
-  // Phase 32-AP: 右セル HOLD_END の非単調性を 21 点で検証。
-  // (a) リフト不動点 |y(1) - 1| < 1e-9
-  // (b) 隣接区間差分 dy_i = y(x_{i+1}) - y(x_i) が少なくとも 1 区間で
-  //     「次の区間より小さい」逆転を起こす (= プラトー + 持ち上げの存在証明)
+  // Phase 32-AQ: 21 点 (0.0, 0.05, ..., 1.0) で位相別検証
+  const N = 20
+  const xs: number[] = []
+  for (let i = 0; i <= N; i++) xs.push(i / N)
+
   for (const { name, opsF, opsB, off } of rightChans) {
-    const fn = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
-    const N = 20
-    const ys: number[] = []
-    for (let i = 0; i <= N; i++) ys.push(fn(i / N))
+    // (a) FORWARD 中盤 (P=0.5, Q=0): min(y) < -0.15
+    const fnFwdMid = buildRightFn(opsF, opsB, off, off, 0.5, 0, FREQS, 0, 0, 0)
+    const ysFwdMid = xs.map((x) => fnFwdMid(x))
+    const minFwdMid = Math.min(...ysFwdMid)
     console.assert(
-      Math.abs(ys[N] - 1) < 1e-9,
-      `${name}@x=1 lift fixed-point violation: |y-1|=${Math.abs(ys[N] - 1)}`,
+      minFwdMid < -0.15,
+      `${name} FORWARD mid (P=0.5, Q=0) min(y)=${minFwdMid} not below -0.15`,
+    )
+
+    // (b) BACKWARD 中盤 (P=1, Q=0.5): min(y) < -0.15
+    const fnBwdMid = buildRightFn(opsF, opsB, off, off, 1, 0.5, FREQS, 0, 0, 0)
+    const ysBwdMid = xs.map((x) => fnBwdMid(x))
+    const minBwdMid = Math.min(...ysBwdMid)
+    console.assert(
+      minBwdMid < -0.15,
+      `${name} BACKWARD mid (P=1, Q=0.5) min(y)=${minBwdMid} not below -0.15`,
+    )
+
+    // (c) HOLD_END (P=1, Q=1): リフト不動点 + プラトー+持ち上げ + 下方残差許容
+    const fnEnd = buildRightFn(opsF, opsB, off, off, 1, 1, FREQS, 0, 0, 0)
+    const ysEnd = xs.map((x) => fnEnd(x))
+    console.assert(
+      Math.abs(ysEnd[N] - 1) < 1e-9,
+      `${name}@x=1 lift fixed-point violation: |y-1|=${Math.abs(ysEnd[N] - 1)}`,
     )
     let maxJump = 0
     for (let i = 0; i + 1 < N; i++) {
-      const dy0 = ys[i + 1] - ys[i]
-      const dy1 = ys[i + 2] - ys[i + 1]
+      const dy0 = ysEnd[i + 1] - ysEnd[i]
+      const dy1 = ysEnd[i + 2] - ysEnd[i + 1]
       maxJump = Math.max(maxJump, dy1 - dy0)
     }
     console.assert(
       maxJump > 0.02,
       `${name} HOLD_END monotone (no plateau+lift): max(dy[i+1]-dy[i])=${maxJump}`,
+    )
+    const minEnd = Math.min(...ysEnd)
+    console.assert(
+      minEnd > -0.1,
+      `${name} HOLD_END min(y)=${minEnd} below -0.1 (excess residual)`,
     )
   }
 }
