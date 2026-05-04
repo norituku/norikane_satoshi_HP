@@ -1,6 +1,7 @@
 import NextAuth, { CredentialsSignin } from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
+import Twitter from "next-auth/providers/twitter"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
@@ -70,6 +71,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
       allowDangerousEmailAccountLinking: true,
+    }),
+    Twitter({
+      clientId: process.env.AUTH_TWITTER_ID!,
+      clientSecret: process.env.AUTH_TWITTER_SECRET!,
     }),
   ],
   callbacks: {
