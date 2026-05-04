@@ -36,18 +36,18 @@ const NUM_OPS = 5
 const SAMPLES = 96
 const OSC_AMP_RIGHT = 0.06
 
-const W = 1640
-const H = 680
+const W = 1600
+const H = 500
 const CELL_W = 760
-const GAP = 120
+const GAP = 80
 
-const TITLE_Y = 30
+const TITLE_Y = 28
 const PLOT_X_LOCAL = 50
-const PLOT_Y = 60
+const PLOT_Y = 56
 const PLOT_W = CELL_W - 100 // 660
-const PLOT_H = 480 // 60..540
-const BADGE_CY = 575
-const FORMULA_CY = 630
+const PLOT_H = 330 // 56..386
+const BADGE_CY = 416
+const FORMULA_CY = 462
 
 const Y_MAX = 1.0
 const Y_MIN = 0

@@ -5,25 +5,23 @@ import { useEffect, useRef, useState } from "react"
 /**
  * v5 動画モジュール: 作業空間の選択 (Log / Linear / Gamma) — 横一列 3 セル
  *
- * viewBox 1500×500 (≒3:1) を 3 セル横並び (各 500×500 完全正方形) に分け、
+ * viewBox 1600×500 (16:5) を 3 セル横並びに分け、
  * 同じ強さのパラメータ揺れを各空間の自然な操作で当てたときの
  * トーンカーブの応答を 6.5 秒ループで比較する。correction-control-math.tsx の
- * 16:5 比に近い縦長プロット感を踏襲しつつ、3 セル化のため幅を 1500 に詰めて
- * セルを 1:1 にしている。
+ * 16:5 比と外形サイズに揃えている。
  *
  * 各セルは縦 3 層構造:
- *   上段 — 空間名 (Log / Linear / Gamma) と当てる操作 (＋ オフセット / × ゲイン / ^ ガンマ)
+ *   上段 — 空間名 (Log / Linear / Gamma) と当てる操作 (＋ オフセット / × ゲイン / ゲイン ×)
  *   中段 — トーンカーブの plot (x, y ∈ [0, 1.4] × [0, 1.5])。0..1 を超えた領域は
  *          薄い赤帯で「out of range」を示す。識別線として y=x を点線。
  *   下段 — 物理 / レンジ ピル + 数値 readout を同じ Y に並べた 1 行レイアウト
  *
  *   Log:    y = log2(7x + 1) / 3 + b,  b(t) = 0.30 · sin(2π t / 6.5)         ∈ [-0.30, 0.30]
  *   Linear: y = a · x,                  a(t) = 1.25 + 0.75 · sin(2π t / 6.5)   ∈ [ 0.50, 2.00]
- *   Gamma:  y = x^γ,                    γ(t) = 1.50 + 0.50 · sin(2π t / 6.5)   ∈ [ 1.00, 2.00]
+ *   Gamma:  y = a · x^2.4,              a(t) = 1.25 + 0.75 · sin(2π t / 6.5)   ∈ [ 0.50, 2.00]
  *
- * Gamma セルは Resolve 等の実機 γ ノブと同じ「下に膨らむ」感触を出すため、
- * γ ∈ [1.0, 2.0] の範囲で y = x^γ を時間揺らしする (correction-control-math.tsx
- * の Gamma セルと数式・挙動を揃える)。γ=1 で恒等、γ>1 で 0..1 内に収まり下凸。
+ * Gamma セルは γ=2.4 を固定し、そこへ掛けるゲイン a だけを時間揺らしする。
+ * γ 固定の下膨らみを維持しながら、ゲイン操作が光物理に乗ることを示す。
  *
  * Log セルの「物理 △」ピル右にアテンションバッジ ("i") を置く。クリックで
  * 注意書きを展開: 「ACEScは物理 ○、ACEScct のときは ○△」。○△ は ○ の中に
@@ -31,23 +29,23 @@ import { useEffect, useRef, useState } from "react"
  * 閉じた状態。SSR safe / curve 描画の純関数性は維持。
  *
  * reducedMotion 時はパラメータを range 中央値で固定して静止画化する
- * (Log: b=0 / Linear: a=1.25 / Gamma: γ=1.50)。
+ * (Log: b=0 / Linear: a=1.25 / Gamma: a=1.25)。
  */
 
 const LOOP = 6.5
-const W = 1500
+const W = 1600
 const H = 500
-const CELL_W = 500
+const CELL_W = W / 3
 const CELL_H = H
 
 // セル内レイアウト (セル相対座標)
-const HEADER_X = 28
+const HEADER_X = 30
 const HEADER_Y = 50
 const SUB_Y = 78
 
-const PLOT_X = 28
+const PLOT_X = 30
 const PLOT_Y = 100
-const PLOT_W = 444
+const PLOT_W = CELL_W - PLOT_X * 2
 const PLOT_H = 280
 const PLOT_X_MAX = 1.4
 const PLOT_Y_MAX = 1.5
@@ -105,9 +103,7 @@ function paramA(t: number) {
 function paramB(t: number) {
   return 0.3 * Math.sin((2 * Math.PI * t) / LOOP)
 }
-function paramGamma(t: number) {
-  return 1.5 + 0.5 * Math.sin((2 * Math.PI * t) / LOOP)
-}
+const GAMMA_FIXED = 2.4
 
 function curveLinear(x: number, a: number) {
   return a * x
@@ -115,8 +111,8 @@ function curveLinear(x: number, a: number) {
 function curveLog(x: number, b: number) {
   return Math.log2(7 * Math.max(0, x) + 1) / 3 + b
 }
-function curveGammaPower(x: number, g: number) {
-  return Math.pow(Math.max(0, x), g)
+function curveGammaGain(x: number, a: number) {
+  return a * Math.pow(Math.max(0, x), GAMMA_FIXED)
 }
 
 type CellSpec = {
@@ -168,12 +164,12 @@ const CELLS: CellSpec[] = [
   {
     cellX: CELL_W * 2,
     spaceLabel: "Gamma",
-    operationLabel: "^ ガンマ",
-    paramSymbol: "γ",
-    param: paramGamma,
-    curve: curveGammaPower,
-    reducedValue: 1.5,
-    formatValue: (g) => g.toFixed(2),
+    operationLabel: "ゲイン ×",
+    paramSymbol: "a",
+    param: paramA,
+    curve: curveGammaGain,
+    reducedValue: 1.25,
+    formatValue: (a) => a.toFixed(2),
     tint: TINT_GAMMA,
     verdictPhysics: "ok",
     verdictRange: "ok",

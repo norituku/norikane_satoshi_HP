@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 /**
  * v5 動画モジュール: 破綻の代表型 — 色のひっくり返り
  *
- * viewBox 1600×640 (≒ 2.5:1)。AY で「暗部の濁り」セルを削除し、
+ * viewBox 1600×500 (16:5)。AY で「暗部の濁り」セルを削除し、
  * 「色のひっくり返り」単独構成に再編した。LOOP = 8s。
  *
  * 加算が偏ると、ある閾値で RGB の信号順位が反転し、chip の hue が跳ぶ。
@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from "react"
 
 const LOOP = 8.0
 const W = 1600
-const H = 640
+const H = 500
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(28,15,110,0.55)"
@@ -118,19 +118,19 @@ const FLIP_COLS = 4
 const FLIP_GRID_W = FLIP_COL_W * FLIP_COLS + FLIP_COL_GAP * (FLIP_COLS - 1)
 const FLIP_GRID_X0 = (W - FLIP_GRID_W) / 2
 
-const FLIP_LABEL_Y = 132
-const FLIP_SWATCH_Y = 150
-const FLIP_SWATCH_SIZE = 200
-const FLIP_INSET_SIZE = 54
-const FLIP_INSET_LABEL_OFFSET = 8
-const FLIP_BAR_Y0 = 374
-const FLIP_BAR_W = 200
-const FLIP_BAR_H = 26
-const FLIP_BAR_GAP = 12
-const FLIP_RANK_BASE_Y = 496
-const FLIP_RANK_NOW_Y = 526
-const FLIP_BADGE_Y = 568
-const VALUE_Y = 614
+const FLIP_LABEL_Y = 112
+const FLIP_SWATCH_Y = 126
+const FLIP_SWATCH_SIZE = 150
+const FLIP_INSET_SIZE = 42
+const FLIP_INSET_LABEL_OFFSET = 6
+const FLIP_BAR_Y0 = 300
+const FLIP_BAR_W = 176
+const FLIP_BAR_H = 20
+const FLIP_BAR_GAP = 8
+const FLIP_RANK_BASE_Y = 400
+const FLIP_RANK_NOW_Y = 424
+const FLIP_BADGE_Y = 456
+const VALUE_Y = 474
 
 function FlipColumn({
   col,
