@@ -79,11 +79,14 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
   },
   "correction-failure-modes": {
     slug: "correction-failure-modes",
-    kind: "placeholder",
-    title: "失敗モード（粒度の取り違え）",
-    caption: "v5 仕様書 ID: correction-failure-modes。本フェーズでは未実装。",
-    alt: "correction-failure-modes の placeholder",
+    kind: "video",
+    title: "破綻の 2 型（暗部の濁り / 色のひっくり返り）",
+    caption:
+      "「暗部の濁り」(左) と「色のひっくり返り」(右) の 2 セルを横並びに置き、8 秒 1 ループで強度 u を 0 → 1 → 0 と振る。左は同じ入力に対する正規スタック (a · x^γ) と入れ子 (((x + Lₖ)^γ₁ + bₖ)^γ₂) の RGB 3 chan 応答を縦 2 段で比較し、入れ子側が暗部で 3 chan を分離させて y=x から浮き上がる「色付きグレーへの濁り」を可視化する。右は赤主 / 緑主 / 青主 / 黄主 の 4 高彩度サンプルに ch 毎に偏った加算をランプし、ある閾値を超えたところで RGB 順位が反転して chip の hue がジャンプする様を、現在 swatch + 起点 inset + RGB バー + 順位ラベル + ひっくり返りバッジで可視化する。",
+    alt: "暗部の濁り (左、正規 vs 入れ子のトーンカーブを RGB 3 chan で縦 2 段比較) と色のひっくり返り (右、4 つの高彩度サンプル chip に偏った加算を当て、RGB 順位反転を swatch + バー + バッジで可視化) の 2 セル横並びアニメーション。8 秒 1 ループ。",
     aspect: { width: 16, height: 10 },
+    intro: "暗部は色付きで濁り、彩度の高い色は順位反転で hue が跳ぶ。",
+    loopSec: 8,
   },
 }
 
