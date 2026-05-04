@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
+import authConfig from "@/auth.config"
 import { prisma } from "@/lib/prisma"
 
 class InvalidCredentialsError extends CredentialsSignin {
@@ -22,6 +23,7 @@ const credentialsSchema = z.object({
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: "jwt",
@@ -71,6 +73,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    ...authConfig.callbacks,
     async jwt({ token, user }) {
       if (user?.id) token.sub = user.id
       return token
