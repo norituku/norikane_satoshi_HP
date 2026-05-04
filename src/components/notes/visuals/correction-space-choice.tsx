@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 /**
  * v5 動画モジュール: 作業空間の選択 (Log / Linear / Gamma) — 横一列 3 セル
  *
- * viewBox 1620×1000 (≒16:10) を 3 セル横並び (各 540×1000) に分け、
+ * viewBox 1620×600 (≒27:10) を 3 セル横並び (各 540×600) に分け、
  * 同じ強さのパラメータ揺れを各空間の自然な操作で当てたときの
  * トーンカーブの応答を 6.5 秒ループで比較する。
  *
@@ -19,41 +19,40 @@ import { useEffect, useRef, useState } from "react"
  *   Linear: y = a · x,                  a(t) = 1.25 + 0.75 · sin(2π t / 6.5)   ∈ [ 0.50, 2.00]
  *   Gamma:  y = a · x^(1/2.4),          a(t) (Linear と共通)                   ∈ [ 0.50, 2.00]
  *
+ * Log セルの「物理 △」ピル右にアテンションバッジ ("i") を置く。クリックで
+ * 注意書きを展開: 「ACEScは物理 ○、ACEScct のときは ○△」。○△ は ○ の中に
+ * △ が入った専用シンボルとして SVG で組む。useState のみで初期 render は
+ * 閉じた状態。SSR safe / curve 描画の純関数性は維持。
+ *
  * reducedMotion 時はパラメータを range 中央値で固定して静止画化する
  * (Log: b=0 / Linear,Gamma: a=1.25)。
- *
- * 配色は既存 4 マーカー (labyrinth-to-factor / control-math / reversibility) で
- * 使用済みの TINT_VIOLET / AMBER / CORAL / ROSE / SKY / TEAL / PLUM / LIME / INDIGO /
- * GAIN / GAMMA / OFFSET / LIFT と重複しない 3 色を選定。
- *   Log     → bronze
- *   Linear  → cobalt
- *   Gamma   → emerald
  */
 
 const LOOP = 6.5
 const W = 1620
-const H = 1000
+const H = 600
 const CELL_W = 540
 const CELL_H = H
 
 // セル内レイアウト (セル相対座標)
-const HEADER_X = 40
-const HEADER_Y = 78
-const SUB_Y = 124
+const HEADER_X = 32
+const HEADER_Y = 56
+const SUB_Y = 88
 
-const PLOT_X = 56
-const PLOT_Y = 184
-const PLOT_W = 428
-const PLOT_H = 612
+const PLOT_X = 44
+const PLOT_Y = 108
+const PLOT_W = 452
+const PLOT_H = 296
 const PLOT_X_MAX = 1.4
 const PLOT_Y_MAX = 1.5
 
-const TICK_LABEL_Y = PLOT_Y + PLOT_H + 30
+const TICK_LABEL_Y = PLOT_Y + PLOT_H + 22
 
-const VERDICT_Y = 858
-const PILL_W = 198
-const PILL_H = 60
-const VALUE_Y = 974
+const VERDICT_Y = 446
+const PILL_W = 152
+const PILL_H = 42
+const PILL_GAP = 14
+const VALUE_Y = 568
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(28,15,110,0.55)"
@@ -94,11 +93,9 @@ const VERDICT_COLOR: Record<Verdict, string> = {
 }
 
 function paramA(t: number) {
-  // gain in [0.5, 2.0]
   return 1.25 + 0.75 * Math.sin((2 * Math.PI * t) / LOOP)
 }
 function paramB(t: number) {
-  // offset in [-0.3, 0.3]
   return 0.3 * Math.sin((2 * Math.PI * t) / LOOP)
 }
 
@@ -106,7 +103,6 @@ function curveLinear(x: number, a: number) {
   return a * x
 }
 function curveLog(x: number, b: number) {
-  // log encode: y = log2(7x + 1) / 3 で y(0)=0 / y(1)=1。x∈[0,1.4] → y∈[0,1.13]。
   return Math.log2(7 * Math.max(0, x) + 1) / 3 + b
 }
 function curveGamma(x: number, a: number) {
@@ -126,6 +122,7 @@ type CellSpec = {
   verdictPhysics: Verdict
   verdictRange: Verdict
   clipId: string
+  hasPhysicsTooltip?: boolean
 }
 
 const CELLS: CellSpec[] = [
@@ -142,6 +139,7 @@ const CELLS: CellSpec[] = [
     verdictPhysics: "warn",
     verdictRange: "ok",
     clipId: "csc-clip-log",
+    hasPhysicsTooltip: true,
   },
   {
     cellX: CELL_W,
@@ -215,24 +213,203 @@ function VerdictPill({
         strokeWidth={1.2}
       />
       <text
-        x={28}
-        y={PILL_H / 2 + 7}
-        fontSize={22}
+        x={20}
+        y={PILL_H / 2 + 6}
+        fontSize={17}
         fontWeight={600}
         fill={TEXT_MUTED}
       >
         {label}
       </text>
       <text
-        x={PILL_W - 36}
-        y={PILL_H / 2 + 14}
+        x={PILL_W - 28}
+        y={PILL_H / 2 + 11}
         textAnchor="middle"
-        fontSize={36}
+        fontSize={28}
         fontWeight={700}
         fill={VERDICT_COLOR[verdict]}
       >
         {VERDICT_GLYPH[verdict]}
       </text>
+    </g>
+  )
+}
+
+/**
+ * 「○△」記号 — 円の中に三角を内接させた専用シンボル。
+ * VERDICT_GLYPH の単一文字流用は不可なので SVG で組む。
+ */
+function CircleTriangleGlyph({
+  cx,
+  cy,
+  r,
+  color,
+}: {
+  cx: number
+  cy: number
+  r: number
+  color: string
+}) {
+  const tr = r * 0.62
+  const p1 = `${cx},${(cy - tr).toFixed(2)}`
+  const p2 = `${(cx - tr * Math.sin(Math.PI / 3)).toFixed(2)},${(cy + tr / 2).toFixed(2)}`
+  const p3 = `${(cx + tr * Math.sin(Math.PI / 3)).toFixed(2)},${(cy + tr / 2).toFixed(2)}`
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.6}
+      />
+      <polygon
+        points={`${p1} ${p2} ${p3}`}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    </g>
+  )
+}
+
+const PHYSICS_TOOLTIP_W = 372
+const PHYSICS_TOOLTIP_H = 64
+const PHYSICS_TOOLTIP_GAP = 14
+
+function PhysicsAttentionBadge({
+  cellX,
+  pillsAnchorX,
+  open,
+  onToggle,
+}: {
+  cellX: number
+  pillsAnchorX: number
+  open: boolean
+  onToggle: () => void
+}) {
+  // バッジは「物理」ピル直右の重畳位置 (ピル右端 + 6) に配置
+  const badgeR = 13
+  const badgeCx = cellX + pillsAnchorX + PILL_W + 6 + badgeR
+  const badgeCy = VERDICT_Y + PILL_H / 2
+  const badgeFill = TINT_LOG.curve
+  const badgeText = "rgba(255,255,255,0.96)"
+
+  // ツールチップは verdict 行の上に展開 (下に寄せると VALUE_Y と被る)
+  const tipX = Math.min(
+    Math.max(cellX + 18, badgeCx - PHYSICS_TOOLTIP_W / 2),
+    cellX + CELL_W - 18 - PHYSICS_TOOLTIP_W
+  )
+  const tipY = VERDICT_Y - PHYSICS_TOOLTIP_GAP - PHYSICS_TOOLTIP_H
+
+  return (
+    <g>
+      {/* バッジ本体 (クリッカブル) */}
+      <g
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        aria-label="物理判定の補足"
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        style={{ cursor: "pointer" }}
+      >
+        <circle
+          cx={badgeCx}
+          cy={badgeCy}
+          r={badgeR}
+          fill={badgeFill}
+          stroke="rgba(255,255,255,0.85)"
+          strokeWidth={1.4}
+        />
+        <text
+          x={badgeCx}
+          y={badgeCy + 5}
+          textAnchor="middle"
+          fontSize={15}
+          fontWeight={700}
+          fill={badgeText}
+          fontFamily="ui-serif, Georgia, 'Times New Roman', serif"
+          fontStyle="italic"
+          style={{ pointerEvents: "none" }}
+        >
+          i
+        </text>
+      </g>
+
+      {/* ツールチップ (open のときだけ描画) */}
+      {open ? (
+        <g style={{ pointerEvents: "none" }}>
+          <rect
+            x={tipX}
+            y={tipY}
+            width={PHYSICS_TOOLTIP_W}
+            height={PHYSICS_TOOLTIP_H}
+            rx={10}
+            ry={10}
+            fill="rgba(255,255,255,0.97)"
+            stroke={TINT_LOG.border}
+            strokeWidth={1.2}
+          />
+          {/* 下向きポインター */}
+          <polygon
+            points={`${badgeCx - 8},${tipY + PHYSICS_TOOLTIP_H} ${badgeCx + 8},${tipY + PHYSICS_TOOLTIP_H} ${badgeCx},${tipY + PHYSICS_TOOLTIP_H + 8}`}
+            fill="rgba(255,255,255,0.97)"
+            stroke={TINT_LOG.border}
+            strokeWidth={1.2}
+          />
+          <line
+            x1={badgeCx - 8}
+            y1={tipY + PHYSICS_TOOLTIP_H}
+            x2={badgeCx + 8}
+            y2={tipY + PHYSICS_TOOLTIP_H}
+            stroke="rgba(255,255,255,0.97)"
+            strokeWidth={1.6}
+          />
+          {/* 1 行目: ACEScは物理 ○ */}
+          <text
+            x={tipX + 18}
+            y={tipY + 26}
+            fontSize={14}
+            fontWeight={500}
+            fill={TEXT_PRIMARY}
+          >
+            ACEScは物理
+          </text>
+          <text
+            x={tipX + 110}
+            y={tipY + 26}
+            fontSize={16}
+            fontWeight={700}
+            fill={VERDICT_COLOR.ok}
+          >
+            ○
+          </text>
+          {/* 2 行目: ACEScct のときは ○△ */}
+          <text
+            x={tipX + 18}
+            y={tipY + 50}
+            fontSize={14}
+            fontWeight={500}
+            fill={TEXT_PRIMARY}
+          >
+            ACEScct のときは
+          </text>
+          <CircleTriangleGlyph
+            cx={tipX + 162}
+            cy={tipY + 45}
+            r={9}
+            color={VERDICT_COLOR.warn}
+          />
+        </g>
+      ) : null}
     </g>
   )
 }
@@ -252,27 +429,24 @@ function Cell({
   const plotY = PLOT_Y
   const polyPoints = buildPolyline(spec.curve, p, plotX, plotY)
 
-  // y=1 (信号レンジ天井) の screen y
   const ySignalTop = plotY + PLOT_H - (1.0 / PLOT_Y_MAX) * PLOT_H
-  // 識別線 y = x を plot 内で。x = min(PLOT_X_MAX, PLOT_Y_MAX) で打ち止め。
   const refEndNorm = Math.min(PLOT_X_MAX, PLOT_Y_MAX)
   const refStartX = plotX
   const refStartY = plotY + PLOT_H
   const refEndX = plotX + (refEndNorm / PLOT_X_MAX) * PLOT_W
   const refEndY = plotY + PLOT_H - (refEndNorm / PLOT_Y_MAX) * PLOT_H
-  // x = 1 の tick 位置
   const xOneScreen = plotX + (1.0 / PLOT_X_MAX) * PLOT_W
 
   return (
     <g>
-      {/* セル背景 (色カテゴリ識別) */}
+      {/* セル背景 */}
       <rect
         x={cellX + 18}
         y={18}
         width={CELL_W - 36}
         height={CELL_H - 36}
-        rx={24}
-        ry={24}
+        rx={20}
+        ry={20}
         fill={spec.tint.bg}
         stroke={spec.tint.border}
         strokeOpacity={0.55}
@@ -283,26 +457,25 @@ function Cell({
         y={18}
         width={CELL_W - 36}
         height={CELL_H - 36}
-        rx={24}
-        ry={24}
+        rx={20}
+        ry={20}
         fill="rgba(255,255,255,0.55)"
       />
 
-      {/* Header: 空間名 (大) */}
+      {/* Header */}
       <text
         x={cellX + HEADER_X}
         y={HEADER_Y}
-        fontSize={48}
+        fontSize={36}
         fontWeight={700}
         fill={spec.tint.curve}
       >
         {spec.spaceLabel}
       </text>
-      {/* 操作 + パラメータ記号 (小、italic) */}
       <text
         x={cellX + HEADER_X}
         y={SUB_Y}
-        fontSize={22}
+        fontSize={18}
         fontWeight={600}
         fill={TEXT_PRIMARY}
         fontStyle="italic"
@@ -341,20 +514,20 @@ function Cell({
         strokeDasharray="6 6"
       />
       <text
-        x={plotX + PLOT_W - 12}
-        y={plotY + 28}
+        x={plotX + PLOT_W - 10}
+        y={plotY + 22}
         textAnchor="end"
-        fontSize={14}
+        fontSize={12}
         fill="rgba(180,60,80,0.88)"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
         out of range
       </text>
       <text
-        x={plotX + PLOT_W - 12}
-        y={ySignalTop + 22}
+        x={plotX + PLOT_W - 10}
+        y={ySignalTop + 18}
         textAnchor="end"
-        fontSize={13}
+        fontSize={11}
         fill={TEXT_MUTED}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
@@ -378,7 +551,7 @@ function Cell({
           points={polyPoints}
           fill="none"
           stroke={spec.tint.curve}
-          strokeWidth={4}
+          strokeWidth={3.6}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -389,7 +562,7 @@ function Cell({
         x1={xOneScreen}
         y1={plotY + PLOT_H}
         x2={xOneScreen}
-        y2={plotY + PLOT_H + 8}
+        y2={plotY + PLOT_H + 6}
         stroke={TEXT_MUTED}
         strokeWidth={1}
       />
@@ -397,7 +570,7 @@ function Cell({
         x={xOneScreen}
         y={TICK_LABEL_Y}
         textAnchor="middle"
-        fontSize={13}
+        fontSize={11}
         fill={TEXT_MUTED}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
@@ -407,7 +580,11 @@ function Cell({
       {/* Verdict 二判定 */}
       <g transform={`translate(${cellX + HEADER_X}, ${VERDICT_Y})`}>
         <VerdictPill label="物理" verdict={spec.verdictPhysics} x={0} />
-        <VerdictPill label="レンジ" verdict={spec.verdictRange} x={PILL_W + 22} />
+        <VerdictPill
+          label="レンジ"
+          verdict={spec.verdictRange}
+          x={PILL_W + PILL_GAP + (spec.hasPhysicsTooltip ? 32 : 0)}
+        />
       </g>
 
       {/* パラメータ readout */}
@@ -416,7 +593,7 @@ function Cell({
         y={VALUE_Y}
         textAnchor="end"
         fill={TEXT_PRIMARY}
-        fontSize={28}
+        fontSize={22}
         fontWeight={600}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
@@ -434,6 +611,7 @@ export default function CorrectionSpaceChoice({
   reducedMotion: boolean
 }) {
   const [animT, setAnimT] = useState(0)
+  const [physicsTooltipOpen, setPhysicsTooltipOpen] = useState(false)
   const lastRef = useRef<number | null>(null)
   const rafRef = useRef<number | null>(null)
 
@@ -461,6 +639,7 @@ export default function CorrectionSpaceChoice({
   }, [isPlaying, reducedMotion])
 
   const t = animT
+  const logCell = CELLS.find((c) => c.hasPhysicsTooltip)
 
   return (
     <svg
@@ -501,6 +680,16 @@ export default function CorrectionSpaceChoice({
           reducedMotion={reducedMotion}
         />
       ))}
+
+      {/* Log セルの物理アテンションバッジ + ツールチップ */}
+      {logCell ? (
+        <PhysicsAttentionBadge
+          cellX={logCell.cellX}
+          pillsAnchorX={HEADER_X}
+          open={physicsTooltipOpen}
+          onToggle={() => setPhysicsTooltipOpen((v) => !v)}
+        />
+      ) : null}
     </svg>
   )
 }
