@@ -50,7 +50,7 @@ const BADGE_CY = 575
 const FORMULA_CY = 630
 
 const Y_MAX = 1.0
-const Y_MIN = -0.4
+const Y_MIN = 0
 const Y_RANGE = Y_MAX - Y_MIN
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
@@ -278,12 +278,12 @@ function buildLeftFn(
     let y = x
     for (let i = 0; i < ops.length; i++) {
       const { lo, hi } = offsets[i]
-      const p = easeInOutCubic(clamp01((P - lo) / (hi - lo)))
+      const p = P <= 0 ? 0 : easeInOutCubic(clamp01((P - lo) / (hi - lo)))
       y = applyOpProgress(y, ops[i], p)
     }
     for (let i = ops.length - 1; i >= 0; i--) {
       const { lo, hi } = offsets[i]
-      const p = easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
+      const p = Q <= 0 ? 0 : easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
       y = applyOpProgressInverse(y, ops[i], p)
     }
     return y
@@ -313,8 +313,8 @@ function buildRightFn(
     let y = x
     for (let i = 0; i < opsForward.length; i++) {
       const { lo, hi } = offsetsForward[i]
-      let p = easeInOutCubic(clamp01((P - lo) / (hi - lo)))
-      if (oscAmp > 0) {
+      let p = P <= 0 ? 0 : easeInOutCubic(clamp01((P - lo) / (hi - lo)))
+      if (oscAmp > 0 && p > 0) {
         p = clamp01(
           p + oscAmp * env * Math.sin(t * 2 * Math.PI * freqs[i] + phaseRgb),
         )
@@ -323,8 +323,8 @@ function buildRightFn(
     }
     for (let i = 0; i < opsBackward.length; i++) {
       const { lo, hi } = offsetsBackward[i]
-      let p = easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
-      if (oscAmp > 0) {
+      let p = Q <= 0 ? 0 : easeInOutCubic(clamp01((Q - lo) / (hi - lo)))
+      if (oscAmp > 0 && p > 0) {
         p = clamp01(
           p +
             oscAmp *
@@ -759,10 +759,7 @@ function CellPlot({
   const polyB = buildPolyline(curveBuilds.fnB, plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
   const idealPoints = buildIdealPolyline(plotXAbs, PLOT_Y, PLOT_W, PLOT_H)
 
-  // Phase 32-AQ: Y_MIN=-0.4, Y_MAX=1.0
-  //   yOneScreen  = plot 上端 (PLOT_Y)
-  //   yHalfScreen = plot の (1 - 0.9/1.4) = 0.357 位置
-  //   yZeroScreen = plot の (1 - 0.4/1.4) = 0.7143 位置 (plot 下端から 28.57% 上)
+  // Phase 32-AT: Y_MIN=0, Y_MAX=1.0 (y=0 が plot 下端、y=1 が plot 上端)
   const yOneScreen = yToScreen(1, PLOT_Y, PLOT_H)
   const yHalfScreen = yToScreen(0.5, PLOT_Y, PLOT_H)
   const yZeroScreen = yToScreen(0, PLOT_Y, PLOT_H)
@@ -801,28 +798,6 @@ function CellPlot({
         strokeWidth={1}
         strokeDasharray="4 6"
       />
-
-      {/* y = 0 軸線（負域の境界、Phase 32-AQ で追加） */}
-      <line
-        x1={plotXAbs}
-        y1={yZeroScreen}
-        x2={plotXAbs + PLOT_W}
-        y2={yZeroScreen}
-        stroke={GRID}
-        strokeWidth={1}
-        strokeDasharray="4 6"
-      />
-      <text
-        x={plotXAbs - 8}
-        y={yZeroScreen + 4}
-        fontSize={13}
-        fill={TEXT_MUTED}
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        textAnchor="end"
-        dominantBaseline="alphabetic"
-      >
-        y = 0
-      </text>
 
       <line
         x1={plotXAbs}
@@ -1061,16 +1036,38 @@ function runDevAssertions() {
     }
   }
 
+  // Phase 32-AT: 21 点 (0.0, 0.05, ..., 1.0) 共通サンプル
+  const N = 20
+  const xs: number[] = []
+  for (let i = 0; i <= N; i++) xs.push(i / N)
+
+  // Phase 32-AT: HOLD_START (P=0, Q=0) 左セル直線検証
+  for (const { name, ops, offsets } of leftChans) {
+    const fn = buildLeftFn(ops, offsets, 0, 0)
+    const ys = xs.map((x) => fn(x))
+    const maxErr = Math.max(...xs.map((x, i) => Math.abs(ys[i] - x)))
+    console.assert(
+      maxErr < 1e-12,
+      `${name} HOLD_START (P=0, Q=0) max|y-x|=${maxErr} not y=x`,
+    )
+  }
+
   const rightChans = [
     { name: "RIGHT_R", opsF: RIGHT_FORWARD_R, opsB: RIGHT_BACKWARD_R, off: OFFSETS_RIGHT_R },
     { name: "RIGHT_G", opsF: RIGHT_FORWARD_G, opsB: RIGHT_BACKWARD_G, off: OFFSETS_RIGHT_G },
     { name: "RIGHT_B", opsF: RIGHT_FORWARD_B, opsB: RIGHT_BACKWARD_B, off: OFFSETS_RIGHT_B },
   ]
 
-  // Phase 32-AQ: 21 点 (0.0, 0.05, ..., 1.0) で位相別検証
-  const N = 20
-  const xs: number[] = []
-  for (let i = 0; i <= N; i++) xs.push(i / N)
+  // Phase 32-AT: HOLD_START (P=0, Q=0) 右セル直線検証
+  for (const { name, opsF, opsB, off } of rightChans) {
+    const fn = buildRightFn(opsF, opsB, off, off, 0, 0, FREQS, 0, 0, 0)
+    const ys = xs.map((x) => fn(x))
+    const maxErr = Math.max(...xs.map((x, i) => Math.abs(ys[i] - x)))
+    console.assert(
+      maxErr < 1e-12,
+      `${name} HOLD_START (P=0, Q=0) max|y-x|=${maxErr} not y=x`,
+    )
+  }
 
   for (const { name, opsF, opsB, off } of rightChans) {
     // (a) FORWARD 中盤 (P=0.5, Q=0): min(y) < -0.15
