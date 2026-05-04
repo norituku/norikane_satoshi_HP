@@ -88,6 +88,29 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
     intro: "彩度の高い色は、加算の偏りで順位が反転して hue が跳ぶ。",
     loopSec: 8,
   },
+  // ---- grading (A 2 本: 本文マーカー確定) --------------------------------
+  "grading-look-decomposition": {
+    slug: "grading-look-decomposition",
+    kind: "video",
+    title: "言葉 → 4 軸の足場",
+    caption:
+      "現場の 4 つの言葉が、色の広がり・転がり / 濃度 / カーブ / RGB カラーバランスの対応軸へ落ち、刺さった軸だけが反応する。12 秒で 1 ループ。",
+    alt: "監督や DP の言葉が 4 つの知覚軸のどこに落ちるかを示し、矢印が刺さった軸だけが反応して他の 3 軸は静止するループアニメーション",
+    aspect: { width: 16, height: 5 },
+    intro: "言葉が、4 つの足場へ落ちる。動くのは刺さった軸だけ。",
+    loopSec: 12,
+  },
+  "grading-words-to-knobs": {
+    slug: "grading-words-to-knobs",
+    kind: "video",
+    title: "言葉からノブへの応答時間",
+    caption:
+      "同じ刺激に対して、カーブ / RGB バランスは即応し、色の広がり・転がり / 濃度は遅れて立ち上がる。4 軸の応答プロフィールを 10 秒で 1 ループ。",
+    alt: "4 つの知覚軸を時間軸に並べ、同じインパルス刺激に対して即応軸と仕込み軸のラグと立ち上がりが異なることを示すループアニメーション",
+    aspect: { width: 16, height: 5 },
+    intro: "同じ言葉でも、すぐ返せる軸と仕込んで返す軸がある。",
+    loopSec: 10,
+  },
 }
 
 export function getVisualConfig(slug: string): VisualConfig | null {

@@ -59,6 +59,14 @@ const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
     () => import("@/components/notes/visuals/correction-failure-modes"),
     { loading: () => <VisualSkeleton /> }
   ),
+  "grading-look-decomposition": dynamic(
+    () => import("@/components/notes/visuals/grading-look-decomposition"),
+    { loading: () => <VisualSkeleton /> }
+  ),
+  "grading-words-to-knobs": dynamic(
+    () => import("@/components/notes/visuals/grading-words-to-knobs"),
+    { loading: () => <VisualSkeleton /> }
+  ),
 }
 
 const STATIC_MODULES: Record<string, ComponentType<unknown>> = {}
