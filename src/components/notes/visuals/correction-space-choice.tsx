@@ -5,19 +5,25 @@ import { useEffect, useRef, useState } from "react"
 /**
  * v5 動画モジュール: 作業空間の選択 (Log / Linear / Gamma) — 横一列 3 セル
  *
- * viewBox 1620×600 (≒27:10) を 3 セル横並び (各 540×600) に分け、
+ * viewBox 1500×500 (≒3:1) を 3 セル横並び (各 500×500 完全正方形) に分け、
  * 同じ強さのパラメータ揺れを各空間の自然な操作で当てたときの
- * トーンカーブの応答を 6.5 秒ループで比較する。
+ * トーンカーブの応答を 6.5 秒ループで比較する。correction-control-math.tsx の
+ * 16:5 比に近い縦長プロット感を踏襲しつつ、3 セル化のため幅を 1500 に詰めて
+ * セルを 1:1 にしている。
  *
  * 各セルは縦 3 層構造:
- *   上段 — 空間名 (Log / Linear / Gamma) と当てる操作 (＋ オフセット / × ゲイン)
+ *   上段 — 空間名 (Log / Linear / Gamma) と当てる操作 (＋ オフセット / × ゲイン / ^ ガンマ)
  *   中段 — トーンカーブの plot (x, y ∈ [0, 1.4] × [0, 1.5])。0..1 を超えた領域は
  *          薄い赤帯で「out of range」を示す。識別線として y=x を点線。
- *   下段 — 物理 (光物理に乗るか) / レンジ (0..1 信号レンジに収まるか) の二判定 + 数値
+ *   下段 — 物理 / レンジ ピル + 数値 readout を同じ Y に並べた 1 行レイアウト
  *
  *   Log:    y = log2(7x + 1) / 3 + b,  b(t) = 0.30 · sin(2π t / 6.5)         ∈ [-0.30, 0.30]
  *   Linear: y = a · x,                  a(t) = 1.25 + 0.75 · sin(2π t / 6.5)   ∈ [ 0.50, 2.00]
- *   Gamma:  y = a · x^(1/2.4),          a(t) (Linear と共通)                   ∈ [ 0.50, 2.00]
+ *   Gamma:  y = x^γ,                    γ(t) = 1.50 + 0.50 · sin(2π t / 6.5)   ∈ [ 1.00, 2.00]
+ *
+ * Gamma セルは Resolve 等の実機 γ ノブと同じ「下に膨らむ」感触を出すため、
+ * γ ∈ [1.0, 2.0] の範囲で y = x^γ を時間揺らしする (correction-control-math.tsx
+ * の Gamma セルと数式・挙動を揃える)。γ=1 で恒等、γ>1 で 0..1 内に収まり下凸。
  *
  * Log セルの「物理 △」ピル右にアテンションバッジ ("i") を置く。クリックで
  * 注意書きを展開: 「ACEScは物理 ○、ACEScct のときは ○△」。○△ は ○ の中に
@@ -25,34 +31,35 @@ import { useEffect, useRef, useState } from "react"
  * 閉じた状態。SSR safe / curve 描画の純関数性は維持。
  *
  * reducedMotion 時はパラメータを range 中央値で固定して静止画化する
- * (Log: b=0 / Linear,Gamma: a=1.25)。
+ * (Log: b=0 / Linear: a=1.25 / Gamma: γ=1.50)。
  */
 
 const LOOP = 6.5
-const W = 1620
-const H = 600
-const CELL_W = 540
+const W = 1500
+const H = 500
+const CELL_W = 500
 const CELL_H = H
 
 // セル内レイアウト (セル相対座標)
-const HEADER_X = 32
-const HEADER_Y = 56
-const SUB_Y = 88
+const HEADER_X = 28
+const HEADER_Y = 50
+const SUB_Y = 78
 
-const PLOT_X = 44
-const PLOT_Y = 108
-const PLOT_W = 452
-const PLOT_H = 296
+const PLOT_X = 28
+const PLOT_Y = 100
+const PLOT_W = 444
+const PLOT_H = 280
 const PLOT_X_MAX = 1.4
 const PLOT_Y_MAX = 1.5
 
-const TICK_LABEL_Y = PLOT_Y + PLOT_H + 22
+const TICK_LABEL_Y = PLOT_Y + PLOT_H + 18 // 398
 
-const VERDICT_Y = 446
-const PILL_W = 152
-const PILL_H = 42
-const PILL_GAP = 14
-const VALUE_Y = 568
+const PILL_W = 104
+const PILL_H = 36
+const PILL_GAP = 12
+const VERDICT_Y = 422
+// 値 readout は pill 行の中心ベースラインに揃える
+const VALUE_Y = VERDICT_Y + PILL_H / 2 + 8 // 448
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.95)"
 const TEXT_MUTED = "rgba(28,15,110,0.55)"
@@ -98,6 +105,9 @@ function paramA(t: number) {
 function paramB(t: number) {
   return 0.3 * Math.sin((2 * Math.PI * t) / LOOP)
 }
+function paramGamma(t: number) {
+  return 1.5 + 0.5 * Math.sin((2 * Math.PI * t) / LOOP)
+}
 
 function curveLinear(x: number, a: number) {
   return a * x
@@ -105,8 +115,8 @@ function curveLinear(x: number, a: number) {
 function curveLog(x: number, b: number) {
   return Math.log2(7 * Math.max(0, x) + 1) / 3 + b
 }
-function curveGamma(x: number, a: number) {
-  return a * Math.pow(Math.max(0, x), 1 / 2.4)
+function curveGammaPower(x: number, g: number) {
+  return Math.pow(Math.max(0, x), g)
 }
 
 type CellSpec = {
@@ -158,12 +168,12 @@ const CELLS: CellSpec[] = [
   {
     cellX: CELL_W * 2,
     spaceLabel: "Gamma",
-    operationLabel: "× ゲイン",
-    paramSymbol: "a",
-    param: paramA,
-    curve: curveGamma,
-    reducedValue: 1.25,
-    formatValue: (a) => a.toFixed(2),
+    operationLabel: "^ ガンマ",
+    paramSymbol: "γ",
+    param: paramGamma,
+    curve: curveGammaPower,
+    reducedValue: 1.5,
+    formatValue: (g) => g.toFixed(2),
     tint: TINT_GAMMA,
     verdictPhysics: "ok",
     verdictRange: "ok",
@@ -213,19 +223,19 @@ function VerdictPill({
         strokeWidth={1.2}
       />
       <text
-        x={20}
-        y={PILL_H / 2 + 6}
-        fontSize={17}
+        x={14}
+        y={PILL_H / 2 + 5}
+        fontSize={15}
         fontWeight={600}
         fill={TEXT_MUTED}
       >
         {label}
       </text>
       <text
-        x={PILL_W - 28}
-        y={PILL_H / 2 + 11}
+        x={PILL_W - 22}
+        y={PILL_H / 2 + 9}
         textAnchor="middle"
-        fontSize={28}
+        fontSize={22}
         fontWeight={700}
         fill={VERDICT_COLOR[verdict]}
       >
@@ -278,6 +288,7 @@ function CircleTriangleGlyph({
 const PHYSICS_TOOLTIP_W = 372
 const PHYSICS_TOOLTIP_H = 64
 const PHYSICS_TOOLTIP_GAP = 14
+const BADGE_OFFSET = 32 // レンジ pill を物理 pill から右に押し出す量 (バッジを置けるだけのスペース)
 
 function PhysicsAttentionBadge({
   cellX,
@@ -291,7 +302,7 @@ function PhysicsAttentionBadge({
   onToggle: () => void
 }) {
   // バッジは「物理」ピル直右の重畳位置 (ピル右端 + 6) に配置
-  const badgeR = 13
+  const badgeR = 12
   const badgeCx = cellX + pillsAnchorX + PILL_W + 6 + badgeR
   const badgeCy = VERDICT_Y + PILL_H / 2
   const badgeFill = TINT_LOG.curve
@@ -333,7 +344,7 @@ function PhysicsAttentionBadge({
           x={badgeCx}
           y={badgeCy + 5}
           textAnchor="middle"
-          fontSize={15}
+          fontSize={14}
           fontWeight={700}
           fill={badgeText}
           fontFamily="ui-serif, Georgia, 'Times New Roman', serif"
@@ -466,7 +477,7 @@ function Cell({
       <text
         x={cellX + HEADER_X}
         y={HEADER_Y}
-        fontSize={36}
+        fontSize={32}
         fontWeight={700}
         fill={spec.tint.curve}
       >
@@ -475,7 +486,7 @@ function Cell({
       <text
         x={cellX + HEADER_X}
         y={SUB_Y}
-        fontSize={18}
+        fontSize={17}
         fontWeight={600}
         fill={TEXT_PRIMARY}
         fontStyle="italic"
@@ -577,23 +588,21 @@ function Cell({
         x = 1
       </text>
 
-      {/* Verdict 二判定 */}
+      {/* Verdict 二判定 + 値 readout を同 Y で並べる */}
       <g transform={`translate(${cellX + HEADER_X}, ${VERDICT_Y})`}>
         <VerdictPill label="物理" verdict={spec.verdictPhysics} x={0} />
         <VerdictPill
           label="レンジ"
           verdict={spec.verdictRange}
-          x={PILL_W + PILL_GAP + (spec.hasPhysicsTooltip ? 32 : 0)}
+          x={PILL_W + PILL_GAP + (spec.hasPhysicsTooltip ? BADGE_OFFSET : 0)}
         />
       </g>
-
-      {/* パラメータ readout */}
       <text
         x={cellX + CELL_W - HEADER_X}
         y={VALUE_Y}
         textAnchor="end"
         fill={TEXT_PRIMARY}
-        fontSize={22}
+        fontSize={20}
         fontWeight={600}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
