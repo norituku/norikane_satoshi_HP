@@ -124,62 +124,67 @@ const LEFT_OPS_B: Op[] = [
 ]
 
 // 右セル（リフト × ガンマ）forward 用 ops。
-// Phase 32-AQ: 中央 op (idx 2) に強い負リフトを入れ、中盤で y < 0 まで潜らせる。
-//   add +正 → pow >1 → add -大 (中域で y を負域へ) → pow >1 (signedPow が負域保持)
-//   → add +小 (plot 内へ押し戻し)
+// Phase 32-AU: 中央 op (idx 2) の負 add を 0.85〜1.15 に抑え、midpoint y_min を浅めに。
+// R/G/B で param を 15〜25% ずらして 3 ch 視差を確保。
 const RIGHT_FORWARD_R: Op[] = [
-  { kind: "add", param: 0.25 },
-  { kind: "pow", param: 1.5 },
-  { kind: "add", param: -1.0 },
+  { kind: "add", param: 0.2 },
   { kind: "pow", param: 1.4 },
-  { kind: "add", param: 0.1 },
+  { kind: "add", param: -1.0 },
+  { kind: "pow", param: 1.3 },
+  { kind: "add", param: 0.15 },
 ]
 const RIGHT_FORWARD_G: Op[] = [
-  { kind: "add", param: 0.22 },
-  { kind: "pow", param: 1.4 },
-  { kind: "add", param: -0.85 },
+  { kind: "add", param: 0.16 },
   { kind: "pow", param: 1.3 },
-  { kind: "add", param: 0.14 },
+  { kind: "add", param: -0.85 },
+  { kind: "pow", param: 1.2 },
+  { kind: "add", param: 0.2 },
 ]
 const RIGHT_FORWARD_B: Op[] = [
-  { kind: "add", param: 0.18 },
-  { kind: "pow", param: 1.55 },
-  { kind: "add", param: -0.95 },
+  { kind: "add", param: 0.12 },
   { kind: "pow", param: 1.45 },
-  { kind: "add", param: 0.18 },
+  { kind: "add", param: -0.85 },
+  { kind: "pow", param: 1.3 },
+  { kind: "add", param: 0.1 },
 ]
 
-// 右セル backward 用 ops（forward の逆ではない、後段追加適用）。
-// Phase 32-AQ: BACKWARD 中盤で再度 y < 0 へ沈ませ、HOLD_END で plateau+lift。
-//   add -big (一気に負域へ) → pow >1 (負域整形、signedPow) → add -mid (中央 lift down)
-//   → pow <1 (持ち上げ)  → add +final (大きく plot 内へ復帰)
-// 最終 add は (1-y) factor で y=1 不動点を維持しつつ、負域からの持ち上げに効く。
+// 右セル backward 用 ops。
+// Phase 32-AU: AQ 構造（forward 強化方向 op0/op1 で y_min を作る → op2/op3 で持ち上げ → op4 で plateau+lift）。
+// 要件 (b) BACKWARD mid (Q=0.5) で op0/op1 fully fired により y_min < -0.15 を確保、
+// 要件 (c) HOLD_END (Q=1) で全 op fully fired、op4 add で plateau+lift パターンを作り maxJump > 0.02、
+// param を弱化して maxRes < 0.10 を狙う。
 const RIGHT_BACKWARD_R: Op[] = [
-  { kind: "add", param: -0.4 },
-  { kind: "pow", param: 1.85 },
-  { kind: "add", param: -0.1 },
+  { kind: "add", param: -0.18 },
+  { kind: "pow", param: 1.35 },
+  { kind: "add", param: 0.12 },
   { kind: "pow", param: 0.55 },
-  { kind: "add", param: 0.55 },
+  { kind: "add", param: 0.35 },
 ]
 const RIGHT_BACKWARD_G: Op[] = [
-  { kind: "add", param: -0.35 },
-  { kind: "pow", param: 1.7 },
-  { kind: "add", param: -0.1 },
+  { kind: "add", param: -0.2 },
+  { kind: "pow", param: 1.4 },
+  { kind: "add", param: 0.05 },
   { kind: "pow", param: 0.6 },
-  { kind: "add", param: 0.5 },
+  { kind: "add", param: 0.35 },
 ]
 const RIGHT_BACKWARD_B: Op[] = [
-  { kind: "add", param: -0.4 },
-  { kind: "pow", param: 2.0 },
-  { kind: "add", param: -0.1 },
+  { kind: "add", param: -0.2 },
+  { kind: "pow", param: 1.5 },
+  { kind: "add", param: 0.05 },
   { kind: "pow", param: 0.5 },
-  { kind: "add", param: 0.65 },
+  { kind: "add", param: 0.45 },
 ]
 
 const FREQS = [0.7, 0.85, 1.0, 1.15, 1.3]
 const PHASE_R = 0
 const PHASE_G = (2 * Math.PI) / 3
 const PHASE_B = (4 * Math.PI) / 3
+
+// Phase 32-AU: 空間振動 (x 依存 sin)。midpoint (P=1, Q=0) で max、HOLD_START / HOLD_END で 0。
+// 単調 op の合成は数学的に単調増加で離散極値が出ないため、
+// buildRightFn の return 直前に y へ加算して局所極値 ≧ 2 個 (要件 f) を物理的に作る。
+const SPAT_OSC_AMP_RIGHT = 0.13
+const SPAT_FREQ_RIGHT = 5.5
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
@@ -309,6 +314,8 @@ function buildRightFn(
   t: number,
 ): (x: number) => number {
   const env = oscAmp > 0 ? envelopeAmp(P, Q) : 0
+  // Phase 32-AU: 空間ゲート。HOLD_START (P=0) / HOLD_END (Q=1) で 0、midpoint (P=1, Q=0) で max=1。
+  const spatGate = clamp01(P) * (1 - clamp01(Q))
   return (x: number) => {
     let y = x
     for (let i = 0; i < opsForward.length; i++) {
@@ -333,6 +340,15 @@ function buildRightFn(
         )
       }
       y = applyOpProgress(y, opsBackward[i], p)
+    }
+    // Phase 32-AU: 空間項を y に直接加算 (x 依存 sin)。
+    // 単調 op 合成では作れない局所極値を物理的に発生させ、midpoint で max。
+    if (spatGate > 0) {
+      y =
+        y +
+        SPAT_OSC_AMP_RIGHT *
+          spatGate *
+          Math.sin(2 * Math.PI * SPAT_FREQ_RIGHT * x + phaseRgb)
     }
     return y
   }
@@ -1110,7 +1126,91 @@ function runDevAssertions() {
       minEnd > -0.1,
       `${name} HOLD_END min(y)=${minEnd} below -0.1 (excess residual)`,
     )
+    // Phase 32-AU: 0.005 < max|y-x| < 0.10 (設計要件 4 互換)
+    const maxResEnd = Math.max(...xs.map((x, i) => Math.abs(ysEnd[i] - x)))
+    console.assert(
+      maxResEnd > 0.005 && maxResEnd < 0.1,
+      `${name} HOLD_END max|y-x|=${maxResEnd} not in (0.005, 0.10)`,
+    )
   }
+
+  // Phase 32-AU: midpoint (P=1, Q=0) 全 RGB の y 値を 21 サンプルで集計
+  const ysMidR = xs.map((x) =>
+    buildRightFn(
+      RIGHT_FORWARD_R,
+      RIGHT_BACKWARD_R,
+      OFFSETS_RIGHT_R,
+      OFFSETS_RIGHT_R,
+      1,
+      0,
+      FREQS,
+      PHASE_R,
+      0,
+      0,
+    )(x),
+  )
+  const ysMidG = xs.map((x) =>
+    buildRightFn(
+      RIGHT_FORWARD_G,
+      RIGHT_BACKWARD_G,
+      OFFSETS_RIGHT_G,
+      OFFSETS_RIGHT_G,
+      1,
+      0,
+      FREQS,
+      PHASE_G,
+      0,
+      0,
+    )(x),
+  )
+  const ysMidB = xs.map((x) =>
+    buildRightFn(
+      RIGHT_FORWARD_B,
+      RIGHT_BACKWARD_B,
+      OFFSETS_RIGHT_B,
+      OFFSETS_RIGHT_B,
+      1,
+      0,
+      FREQS,
+      PHASE_B,
+      0,
+      0,
+    )(x),
+  )
+
+  // (d) midpoint 全体 y 範囲 > 1.4
+  const allYs = [...ysMidR, ...ysMidG, ...ysMidB]
+  const yRange = Math.max(...allYs) - Math.min(...allYs)
+  console.assert(
+    yRange > 1.4,
+    `midpoint y range=${yRange} not > 1.4 (max=${Math.max(...allYs)} min=${Math.min(...allYs)})`,
+  )
+
+  // (e) midpoint 3 ch 視差 > 0.08
+  const diffRG = Math.max(...xs.map((_, i) => Math.abs(ysMidR[i] - ysMidG[i])))
+  const diffGB = Math.max(...xs.map((_, i) => Math.abs(ysMidG[i] - ysMidB[i])))
+  const diffRB = Math.max(...xs.map((_, i) => Math.abs(ysMidR[i] - ysMidB[i])))
+  console.assert(diffRG > 0.08, `midpoint max|R-G|=${diffRG} not > 0.08`)
+  console.assert(diffGB > 0.08, `midpoint max|G-B|=${diffGB} not > 0.08`)
+  console.assert(diffRB > 0.08, `midpoint max|R-B|=${diffRB} not > 0.08`)
+
+  // (f) midpoint 各 ch で局所極値 ≧ 2 個
+  const countExtrema = (ys: number[]): number => {
+    let count = 0
+    for (let i = 1; i < ys.length - 1; i++) {
+      if ((ys[i - 1] < ys[i] && ys[i] > ys[i + 1]) ||
+          (ys[i - 1] > ys[i] && ys[i] < ys[i + 1])) {
+        count++
+      }
+    }
+    return count
+  }
+  const exR = countExtrema(ysMidR)
+  const exG = countExtrema(ysMidG)
+  const exB = countExtrema(ysMidB)
+  console.assert(exR >= 2, `midpoint R local extrema count=${exR} not >= 2`)
+  console.assert(exG >= 2, `midpoint G local extrema count=${exG} not >= 2`)
+  console.assert(exB >= 2, `midpoint B local extrema count=${exB} not >= 2`)
 }
 
 if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
