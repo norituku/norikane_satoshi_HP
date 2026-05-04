@@ -68,11 +68,14 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
   },
   "correction-space-choice": {
     slug: "correction-space-choice",
-    kind: "placeholder",
+    kind: "video",
     title: "作業空間の選択（Log / Linear / Gamma）",
-    caption: "v5 仕様書 ID: correction-space-choice。本フェーズでは未実装。",
-    alt: "correction-space-choice の placeholder",
+    caption:
+      "Log・Linear・Gamma の 3 セルを横並びに置き、各空間で自然な操作（オフセット / ゲイン / ゲイン）を同じ強さで揺らしたときのトーンカーブの応答を 6.5 秒 1 ループで比較。各セルに「物理（光物理に乗るか）」と「レンジ（0..1 信号レンジに収まるか）」の二判定バッジを置き、Log は物理 △ / レンジ ○、Linear は物理 ○ / レンジ ✗、Gamma は物理 ○ / レンジ ○ となる構図を可視化する。",
+    alt: "Log・Linear・Gamma の 3 空間でそれぞれオフセット / ゲイン / ゲインを同位相で揺らし、トーンカーブが 0..1 の信号レンジ内外でどう振る舞うかを比較するアニメーション。各セル下部に物理 / レンジの二判定バッジを表示。6.5 秒 1 ループ。",
     aspect: { width: 16, height: 10 },
+    intro: "ゲインで物理に乗りつつ、レンジに収まるのはどこか。",
+    loopSec: 6.5,
   },
   "correction-failure-modes": {
     slug: "correction-failure-modes",
