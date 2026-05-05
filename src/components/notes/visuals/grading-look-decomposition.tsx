@@ -194,6 +194,22 @@ function sCurveRgb({ r, g, b }: Rgb, k: number): Rgb {
   }
 }
 
+function rgbToY({ r, g, b }: Rgb): number {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+}
+
+function applyLuminanceCurve({ r, g, b }: Rgb, k: number): Rgb {
+  const y = rgbToY({ r, g, b })
+  if (y < 1e-6) return { r, g, b }
+  const yNew = clamp01(y + k * Math.sin((y - 0.5) * Math.PI))
+  const scale = yNew / y
+  return {
+    r: clamp255(r * scale),
+    g: clamp255(g * scale),
+    b: clamp255(b * scale),
+  }
+}
+
 function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   let rgb = chip.rgb
   const kindAmp = axisId === 4 && chip.kind !== "gray" ? amp * 0.45 : amp
@@ -206,7 +222,7 @@ function chipColor(axisId: AxisId, chip: Chip, amp: number) {
     rgb = hslToRgb(hsl.h, hsl.s, clamp01(hsl.l + amp * 0.3))
   }
   if (axisId === 3) {
-    rgb = sCurveRgb(rgb, amp * 0.5)
+    rgb = applyLuminanceCurve(rgb, amp * 0.5)
   }
   if (axisId === 4) {
     const shift = kindAmp * 0.2 * 255

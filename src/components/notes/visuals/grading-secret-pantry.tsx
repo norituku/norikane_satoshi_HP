@@ -254,17 +254,8 @@ function pourOpacity(bottle: Bottle, t: number) {
   return clamp01(Math.min((localT - 0.5) / 0.1, (1.6 - localT) / 0.1))
 }
 
-function pourLip(pose: BottlePose, mirror: boolean) {
-  const lipLocalX = mirror ? 42 : 98
-  const lipLocalY = 0
-  const cx = 70
-  const cy = 18
-  const angle = (pose.bottleRotate * Math.PI) / 180
-  const dx = lipLocalX - cx
-  const dy = lipLocalY - cy
-  const rotX = dx * Math.cos(angle) - dy * Math.sin(angle)
-  const rotY = dx * Math.sin(angle) + dy * Math.cos(angle)
-  return { x: pose.x + cx + rotX, y: pose.y + cy + rotY }
+function pourLip(pose: BottlePose, _mirror: boolean) {
+  return { x: pose.x + 70, y: pose.y + 18 }
 }
 
 function pourPath(pose: BottlePose, mirror: boolean) {
@@ -352,7 +343,6 @@ function Shelf({ side }: { side: "left" | "right" }) {
 }
 
 function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
-  const liquidTopY = lerp(140, 30, pose.liquidLevel)
   const capPivotX = bottle.mirror ? 48 : 92
   return (
     <g
@@ -361,9 +351,9 @@ function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
       <g transform={`rotate(${pose.bottleRotate.toFixed(2)} 70 18)`}>
         <rect
           x={32}
-          y={liquidTopY}
+          y={30}
           width={76}
-          height={140 - liquidTopY}
+          height={110 * pose.liquidLevel}
           fill={bottle.color}
           opacity={0.76}
           clipPath="url(#sp-bottle-clip)"
