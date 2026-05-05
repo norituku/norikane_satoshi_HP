@@ -84,6 +84,19 @@ model PasswordResetToken {
   @@unique([identifier, token])
 }
 
+// Google Calendar Free/Busy 取得用の独立 OAuth flow で保存する owner token。
+// NextAuth の Account とは分離し、さとし本人が一度だけ同意した refresh_token を保持する。
+model CalendarToken {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────
 // 予約者プロフィール
 // ─────────────────────────────────────────────────
