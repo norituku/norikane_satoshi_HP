@@ -47,6 +47,7 @@ try {
   })
 
   const url = new URL(targetUrl)
+  const consoleRunId = `E2E Booking Console ${Date.now()}`
   await page.goto(`${url.origin}/api/dev/auth-bypass`, { waitUntil: "networkidle" })
 
   async function clearBookingDrafts() {
@@ -58,25 +59,25 @@ try {
     })
   }
 
-  async function seedBookingDraft(step = "form") {
-    await page.evaluate((draftStep) => {
-      const start = new Date("2026-05-06T10:00:00+09:00")
-      const end = new Date("2026-05-06T11:00:00+09:00")
+  async function seedBookingDraft(step = "form", valid = false) {
+    await page.evaluate(({ draftStep, validDraft, runId }) => {
+      const start = new Date(Number(runId.replace(/\D/g, "")) + 1000 * 60 * 60 * 24 * 120)
+      const end = new Date(start.getTime() + 1000 * 60 * 60)
       const payload = {
         formData: {
           bookingKind: "confirmed",
-          projectTitle: "",
-          workScopes: [],
+          projectTitle: validDraft ? runId : "",
+          workScopes: validDraft ? ["カラーグレーディング"] : [],
           otherWorkDetail: "",
           estimatedDuration: "consult",
           dueDate: "",
           companyName: "",
-          contactName: "",
+          contactName: validDraft ? "Console Tester" : "",
           sessionEmail: "norikane.satoshi@gmail.com",
           contactEmail: "",
           phone: "",
           memo: "",
-          agreed: false,
+          agreed: validDraft,
         },
         selectedSlot: {
           start: start.toISOString(),
@@ -86,7 +87,7 @@ try {
         savedAt: Date.now(),
       }
       window.sessionStorage.setItem("booking-draft-session", JSON.stringify(payload))
-    }, step)
+    }, { draftStep: step, validDraft: valid, runId: consoleRunId })
   }
 
   async function runScenario(name, action) {
@@ -159,6 +160,14 @@ try {
     await runScenario("s7-done", async () => {
       await seedBookingDraft("done")
       await page.goto(`${url.origin}/booking?step=done`, { waitUntil: "networkidle" })
+      await page.locator(".booking-done").waitFor()
+    })
+
+    await runScenario("s8-confirm-submit-done", async () => {
+      await seedBookingDraft("confirm", true)
+      await page.goto(`${url.origin}/booking?step=confirm`, { waitUntil: "networkidle" })
+      await page.locator(".booking-confirm").waitFor()
+      await page.locator(".booking-footer__primary").click()
       await page.locator(".booking-done").waitFor()
     })
   } else {
