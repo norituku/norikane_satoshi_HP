@@ -115,7 +115,7 @@ function axisById(id: AxisId) {
 }
 
 function response(localT: number) {
-  const p = clamp01((localT - 3.075) / 1.425)
+  const p = clamp01((localT - 2.9) / 1.6)
   if (p <= 0 || p >= 1) return 0
   return Math.sin(Math.PI * 2 * easeInOutCubic(p))
 }
@@ -124,7 +124,7 @@ function wordState(localT: number) {
   const enter = easeOutCubic(clamp01(localT / 0.6))
   const fadeOut = 1 - clamp01((localT - 3.9) / 0.6)
   return {
-    x: lerp(440, WORD_X, enter),
+    x: WORD_X,
     opacity: Math.min(enter, fadeOut),
   }
 }
@@ -321,7 +321,14 @@ function ReducedFrame() {
               stroke={axis.color}
               strokeOpacity={0.42}
             />
-            <text x={x + 24} y={cardY + 42} fontSize={22} fontWeight={700} fill={TEXT_PRIMARY}>
+            <text
+              x={x + cardW / 2}
+              y={cardY + 42}
+              textAnchor="middle"
+              fontSize={22}
+              fontWeight={700}
+              fill={TEXT_PRIMARY}
+            >
               {word.text}
             </text>
             <path
@@ -375,7 +382,8 @@ export default function GradingLookDecomposition({
   const activeWord = WORDS[wordIndex]
   const activeAxis = activeWord.axis
   const state = wordState(localT)
-  const arrowP = clamp01((localT - 2.325) / 1.05)
+  const arrowP = clamp01((localT - 2.4) / 0.5)
+  const arrowOpacity = 1 - clamp01((localT - 3.4) / 1.0)
   const amp = response(localT)
 
   return (
@@ -426,20 +434,21 @@ export default function GradingLookDecomposition({
             strokeOpacity={0.6}
           />
           <text
-            x={state.x + 34}
+            x={state.x + WORD_W / 2}
             y={WORD_Y + 52}
+            textAnchor="middle"
             fontSize={31}
             fontWeight={760}
             fill={TEXT_PRIMARY}
           >
             {activeWord.text}
           </text>
-          {arrowP > 0 ? (
+          {arrowOpacity > 0 ? (
             <path
               d={arrowPath(
                 state.x + WORD_W / 2,
                 WORD_Y,
-                sliderKnobX(activeAxis, amp),
+                sliderKnobX(activeAxis, 0),
                 SLIDER_Y,
                 arrowP,
               )}
@@ -447,6 +456,7 @@ export default function GradingLookDecomposition({
               stroke={axisById(activeAxis).color}
               strokeWidth={4}
               strokeLinecap="round"
+              opacity={arrowOpacity}
               markerEnd={`url(#gld-arrow-${activeAxis})`}
             />
           ) : null}

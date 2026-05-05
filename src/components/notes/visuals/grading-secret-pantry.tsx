@@ -28,6 +28,7 @@ type Bottle = {
   color: string
   x: number
   y: number
+  mirror: boolean
 }
 
 type BottlePose = {
@@ -40,10 +41,10 @@ type BottlePose = {
 }
 
 const BOTTLES: Bottle[] = [
-  { id: 1, label: "Gamut", color: MAGENTA, x: 138, y: 84 },
-  { id: 2, label: "Lum", color: NAVY, x: 138, y: 306 },
-  { id: 3, label: "Curve", color: AMBER, x: 1350, y: 84 },
-  { id: 4, label: "RGB", color: TEAL, x: 1350, y: 306 },
+  { id: 1, label: "Gamut", color: MAGENTA, x: 138, y: 84, mirror: true },
+  { id: 2, label: "Lum", color: NAVY, x: 138, y: 306, mirror: true },
+  { id: 3, label: "Curve", color: AMBER, x: 1350, y: 84, mirror: false },
+  { id: 4, label: "RGB", color: TEAL, x: 1350, y: 306, mirror: false },
 ]
 
 function clamp01(v: number) {
@@ -93,7 +94,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     }
   }
 
-  const hoverX = PREVIEW_CX - 35
+  const sign = bottle.mirror ? -1 : 1
+  const hoverX = PREVIEW_CX + (bottle.mirror ? 35 : -35)
   const hoverY = PREVIEW_Y - 30
   const start = axisStart(bottle.id)
 
@@ -139,8 +141,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: lerp(0, -22, p),
-      capRotate: lerp(0, + 60, p),
+      bottleRotate: lerp(0, sign * -22, p),
+      capRotate: lerp(0, sign * 60, p),
       liquidLevel: 1,
     }
   }
@@ -151,8 +153,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: -22,
-      capRotate: + 60,
+      bottleRotate: sign * -22,
+      capRotate: sign * 60,
       liquidLevel: lerp(1, 0, p),
     }
   }
@@ -163,8 +165,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: lerp(-22, 0, p),
-      capRotate: lerp(+ 60, 0, p),
+      bottleRotate: lerp(sign * -22, 0, p),
+      capRotate: lerp(sign * 60, 0, p),
       liquidLevel: 0,
     }
   }
@@ -197,8 +199,8 @@ function pourOpacity(bottle: Bottle, t: number) {
   return clamp01(Math.min((localT - 0.7) / 0.1, (1.5 - localT) / 0.1))
 }
 
-function pourPath(pose: BottlePose) {
-  const x0 = pose.x + 42
+function pourPath(pose: BottlePose, mirror: boolean) {
+  const x0 = pose.x + (mirror ? 98 : 42)
   const y0 = pose.y + 24
   const x1 = PREVIEW_CX
   const y1 = PREVIEW_Y + 30
@@ -282,6 +284,7 @@ function Shelf({ side }: { side: "left" | "right" }) {
 
 function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
   const liquidTopY = lerp(140, 30, pose.liquidLevel)
+  const capPivotX = bottle.mirror ? 48 : 92
   return (
     <g
       transform={`translate(${pose.x.toFixed(2)} ${pose.y.toFixed(2)}) rotate(${pose.slideRotate.toFixed(2)} 70 70)`}
@@ -303,21 +306,21 @@ function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
           strokeOpacity={0.62}
           strokeWidth={3}
         />
-        <g transform={`rotate(${pose.capRotate.toFixed(2)} 92 9)`}>
+        <g transform={`rotate(${pose.capRotate.toFixed(2)} ${capPivotX} 9)`}>
           <rect x={48} y={0} width={44} height={18} rx={5} fill={bottle.color} />
-          <rect x={34} y={68} width={72} height={34} rx={8} fill={bottle.color} />
-          <text
-            x={70}
-            y={91}
-            textAnchor="middle"
-            fontFamily="var(--font-geist-mono), 'Notion Mono Editorial', monospace"
-            fontSize={bottle.label.length > 4 ? 18 : 21}
-            fontWeight={760}
-            fill="white"
-          >
-            {bottle.label}
-          </text>
         </g>
+        <rect x={34} y={68} width={72} height={34} rx={8} fill={bottle.color} />
+        <text
+          x={70}
+          y={91}
+          textAnchor="middle"
+          fontFamily="var(--font-geist-mono), 'Notion Mono Editorial', monospace"
+          fontSize={bottle.label.length > 4 ? 18 : 21}
+          fontWeight={760}
+          fill="white"
+        >
+          {bottle.label}
+        </text>
       </g>
     </g>
   )
@@ -427,7 +430,7 @@ export default function GradingSecretPantry({
           pourOpacity > 0 ? (
             <path
               key={`pour-${bottle.id}`}
-              d={pourPath(pose)}
+              d={pourPath(pose, bottle.mirror)}
               fill="none"
               stroke={bottle.color}
               strokeWidth={12}
