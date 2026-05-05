@@ -1,0 +1,66 @@
+import {
+  getDurationLabel,
+  type BookingFormData,
+  type BookingSlot,
+} from "@/lib/booking/form-schema"
+
+type BookingConfirmProps = {
+  formData: BookingFormData
+  selectedSlot: BookingSlot | null
+}
+
+function formatSlot(slot: BookingSlot | null): string {
+  if (!slot) return "日時未選択"
+
+  const start = new Date(slot.start)
+  const end = new Date(slot.end)
+  return `${start.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })} - ${end.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`
+}
+
+function valueOrDash(value: string | string[]): string {
+  if (Array.isArray(value)) return value.length > 0 ? value.join(" / ") : "-"
+  return value.trim() || "-"
+}
+
+export function BookingConfirm({ formData, selectedSlot }: BookingConfirmProps) {
+  const rows = [
+    ["予約種別", formData.bookingKind === "tentative" ? "仮キープ" : "本予約"],
+    ["案件名", formData.projectTitle],
+    ["作業内容", formData.workScopes],
+    ["その他詳細", formData.otherWorkDetail],
+    ["想定作業時間", getDurationLabel(formData.estimatedDuration)],
+    ["納期", formData.dueDate],
+    ["会社名", formData.companyName],
+    ["担当者氏名", formData.contactName],
+    ["メールアドレス", formData.sessionEmail],
+    ["連絡用メール", formData.contactEmail],
+    ["電話番号", formData.phone],
+    ["補足メモ", formData.memo],
+  ] as const
+
+  return (
+    <div className="booking-confirm">
+      <div>
+        <span className="glass-badge booking-confirm__slot-pill">{formatSlot(selectedSlot)}</span>
+        <h2 className="booking-confirm__title">申込内容の確認</h2>
+      </div>
+      <dl className="booking-confirm__list glass-inset">
+        {rows.map(([label, value]) => (
+          <div className="booking-confirm__row" key={label}>
+            <dt className="text-hp-muted">{label}</dt>
+            <dd className="text-hp">{valueOrDash(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}

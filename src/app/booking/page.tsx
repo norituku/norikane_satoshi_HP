@@ -1,5 +1,5 @@
 import { auth } from "@/auth"
-import { BookingCalendar } from "@/components/booking/booking-calendar"
+import { BookingSection } from "@/components/booking/booking-section"
 import { redirect } from "next/navigation"
 
 export default async function BookingPage() {
@@ -16,7 +16,7 @@ export default async function BookingPage() {
           予約カレンダー
         </h1>
         <div className="mt-8">
-          <BookingCalendar />
+          <BookingSection userId={session.user.id} userEmail={session.user.email ?? ""} />
         </div>
       </div>
     </section>
