@@ -250,6 +250,28 @@
   gap: 18px;
 }
 
+.booking-confirm__submit-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--accent-primary);
+  padding: 12px 14px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  line-height: 1.8;
+}
+
+.booking-confirm__submit-error p {
+  margin: 0;
+}
+
+.booking-confirm__submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 .booking-confirm__title,
 .booking-done__title {
   margin-top: 16px;

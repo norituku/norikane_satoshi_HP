@@ -8,6 +8,7 @@ import { BookingDone } from "@/components/booking/booking-done"
 import { BookingFooter } from "@/components/booking/booking-footer"
 import { BookingForm } from "@/components/booking/booking-form"
 import { BookingProgressBar } from "@/components/booking/booking-progress-bar"
+import { mapErrorCodeToJa } from "@/lib/booking/api-schema"
 import { clearDraft, hasDraft, loadDraft, saveDraft } from "@/lib/booking/draft-storage"
 import {
   createDefaultBookingFormData,
@@ -69,6 +70,8 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   const [formValid, setFormValid] = useState(false)
   const [localDraftAvailable, setLocalDraftAvailable] = useState(false)
   const [draftHydrated, setDraftHydrated] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const applyDraft = useCallback(
     (draft: ReturnType<typeof loadDraft>, restoreStep = false) => {
@@ -117,6 +120,7 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   }, [draftHydrated, formData, selectedSlot, step, userId])
 
   const goToStep = useCallback((nextStep: BookingStep) => {
+    setSubmitError(null)
     setStep(nextStep)
     pushStep(nextStep)
   }, [])
@@ -135,6 +139,7 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   }
 
   const handleSlotSelect = (slot: { start: Date; end: Date }) => {
+    setSubmitError(null)
     setSelectedSlot({
       start: slot.start.toISOString(),
       end: slot.end.toISOString(),
@@ -146,7 +151,42 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
     setFormData(defaultFormData)
     setSelectedSlot(null)
     setFormValid(false)
+    setSubmitError(null)
     goToStep("calendar")
+  }
+
+  const handleSubmitBooking = async () => {
+    if (!selectedSlot || submitting) return
+
+    setSubmitting(true)
+    setSubmitError(null)
+
+    try {
+      const response = await fetch("/api/booking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...formData,
+          selectedSlot,
+        }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as { error?: string }
+
+      if (response.ok) {
+        clearDraft(userId)
+        setLocalDraftAvailable(false)
+        goToStep("done")
+        return
+      }
+
+      setSubmitError(mapErrorCodeToJa(payload.error))
+    } catch {
+      setSubmitError(mapErrorCodeToJa("unknown"))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const canGoNext =
@@ -169,7 +209,13 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
         />
       </div>
       <div className={step === "confirm" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingConfirm formData={formData} selectedSlot={selectedSlot} />
+        <BookingConfirm
+          formData={formData}
+          selectedSlot={selectedSlot}
+          submitError={submitError}
+          onDismissSubmitError={() => setSubmitError(null)}
+          onReselectDate={() => goToStep("calendar")}
+        />
       </div>
       <div className={step === "done" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingDone selectedSlot={selectedSlot} />
@@ -197,8 +243,15 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
       <BookingFooter
         step={step}
         canGoNext={canGoNext}
+        submitting={step === "confirm" && submitting}
         onBack={() => goToStep(getPreviousStep(step))}
-        onNext={() => goToStep(getNextStep(step))}
+        onNext={() => {
+          if (step === "confirm") {
+            void handleSubmitBooking()
+            return
+          }
+          goToStep(getNextStep(step))
+        }}
         onReset={handleReset}
       />
     </div>

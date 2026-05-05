@@ -3,17 +3,19 @@ import type { BookingStep } from "@/lib/booking/form-schema"
 type BookingFooterProps = {
   step: BookingStep
   canGoNext: boolean
+  submitting?: boolean
   onBack: () => void
   onNext: () => void
   onReset: () => void
 }
 
-function nextLabel(step: BookingStep): string {
+function nextLabel(step: BookingStep, submitting: boolean): string {
+  if (submitting) return "送信中…"
   if (step === "confirm") return "予約を申し込む"
   return "進む"
 }
 
-export function BookingFooter({ step, canGoNext, onBack, onNext, onReset }: BookingFooterProps) {
+export function BookingFooter({ step, canGoNext, submitting = false, onBack, onNext, onReset }: BookingFooterProps) {
   if (step === "done") {
     return (
       <footer className="booking-footer">
@@ -39,10 +41,10 @@ export function BookingFooter({ step, canGoNext, onBack, onNext, onReset }: Book
       <button
         className="booking-footer__primary glass-btn"
         type="button"
-        disabled={!canGoNext}
+        disabled={!canGoNext || submitting}
         onClick={onNext}
       >
-        {nextLabel(step)}
+        {nextLabel(step, submitting)}
       </button>
     </footer>
   )

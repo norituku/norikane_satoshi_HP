@@ -7,6 +7,9 @@ import {
 type BookingConfirmProps = {
   formData: BookingFormData
   selectedSlot: BookingSlot | null
+  submitError?: string | null
+  onDismissSubmitError?: () => void
+  onReselectDate?: () => void
 }
 
 function formatSlot(slot: BookingSlot | null): string {
@@ -31,7 +34,13 @@ function valueOrDash(value: string | string[]): string {
   return value.trim() || "-"
 }
 
-export function BookingConfirm({ formData, selectedSlot }: BookingConfirmProps) {
+export function BookingConfirm({
+  formData,
+  selectedSlot,
+  submitError,
+  onDismissSubmitError,
+  onReselectDate,
+}: BookingConfirmProps) {
   const rows = [
     ["予約種別", formData.bookingKind === "tentative" ? "仮キープ" : "本予約"],
     ["案件名", formData.projectTitle],
@@ -49,6 +58,26 @@ export function BookingConfirm({ formData, selectedSlot }: BookingConfirmProps) 
 
   return (
     <div className="booking-confirm">
+      {submitError ? (
+        <div className="booking-confirm__submit-error glass-flat" role="alert">
+          <span aria-hidden="true">⚠</span>
+          <div>
+            <p>{submitError}</p>
+            <div className="booking-confirm__submit-actions">
+              {onReselectDate ? (
+                <button className="booking-section__text-button" type="button" onClick={onReselectDate}>
+                  日時を選び直す
+                </button>
+              ) : null}
+              {onDismissSubmitError ? (
+                <button className="booking-section__text-button" type="button" onClick={onDismissSubmitError}>
+                  閉じる
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div>
         <span className="glass-badge booking-confirm__slot-pill">{formatSlot(selectedSlot)}</span>
         <h2 className="booking-confirm__title">申込内容の確認</h2>
