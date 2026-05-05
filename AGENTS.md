@@ -6,46 +6,55 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
-# HP Design Skill — ニューモーフィズム品質3層定義
+# HP Design Skill — グラスニューモフィズム品質3層定義
 
 フリーランスカラリスト Satoshi Norikane のHP（NCS Grading）の全画面・全コンポーネントに適用するデザインルール。
 このスキルは「品質3層」で構成され、Layer 1 を破ると即座にデザイン破綻、Layer 2 を外すと統一感喪失、Layer 3 は判断の指針となる。
 
 ## Layer 1: 絶対ルール（破ったら即破綻）
 
-### 1-1. カラーパレット — 4色だけ
+### 1-1. カラーパレット — Glass tokens のみ
 
 | トークン | 値 | 用途 |
 |---|---|---|
-| --neu-bg | #e8f1f2 | 背景・カード・ボタンの地色 |
-| --neu-shadow-dark | #c4d2d6 | 影（暗い側） |
-| --neu-shadow-light | #f8fdff | 影（明るい側） |
-| --neu-accent | #79c7c7 | アクセント（CTA・アクティブ状態・装飾） |
+| --bg-base | #F8F6FF | body の基準背景 |
+| --accent-primary | #8B7FFF | 予約可・予約確定・CTA・アクティブ状態 |
+| --accent-secondary | #C4B5FD | 補助アクセント |
+| --aurora-purple | rgba(139, 127, 255, 0.28) | Aurora 背景 |
+| --aurora-pink | rgba(255, 143, 171, 0.20) | Aurora 背景 |
+| --aurora-sky | rgba(125, 211, 252, 0.20) | Aurora 背景 |
+| --glass-bg | rgba(255, 255, 255, 0.55) | ガラス面 |
+| --glass-border | rgba(139, 127, 255, 0.22) | ガラス境界線 |
+| --glass-shadow | 0 8px 32px rgba(139, 127, 255, 0.15) | ガラス影 |
+| --text-primary | #1C0F6E | メインテキスト |
+| --text-muted | #6B5FA8 | ミュートテキスト |
 
-- **それ以外の色を新規追加しない。** テキストは --neu-text: #213136 と --neu-text-muted: #60757a の2段階のみ。
-- グラデーションは既存の body 背景パターンのみ。新しいグラデーション背景を作らない。
-- ダークモードは存在しない。ライトニューモーフィズム一本。
+- **新色を追加しない。** 予約不可は `--text-primary` 由来の濃いめグレー半透明、予約可・予約確定は `--accent-primary` で意味分けする。
+- body は `--bg-base` + `--aurora-purple` / `--aurora-pink` / `--aurora-sky` の3色 Aurora 固定背景にする。
+- Aurora 背景を画面・セクション・カードの全面塗りで隠さない。
+- ダークモードは存在しない。ライトのグラスニューモフィズム一本。
 
-### 1-2. 影の文法 — 3パターンのみ
+### 1-2. 影の文法 — ガラス影 + 境界線 + blur
 
-| クラス | 状態 | shadow |
+| 要素 | CSS | 用途 |
 |---|---|---|
-| .neu-raised | 浮き出し（カード・ナビ） | 8px 8px 16px dark, -8px -8px 16px light |
-| .neu-raised-sm | 小さい浮き出し（ボタン・タグ） | 4px 4px 8px dark, -4px -4px 8px light |
-| .neu-inset | 凹み（入力・アクティブ状態） | inset 4px 4px 8px dark, inset -4px -4px 8px light |
+| ガラス影 | `box-shadow: var(--glass-shadow)` | 浮いているガラス面 |
+| 淡い境界線 | `border: 1px solid var(--glass-border)` | Aurora 背景との分離 |
+| 背景ブラー | `backdrop-filter: blur(20px)` | ガラス質感 |
 
-- **新しいbox-shadow値を発明しない。** 上記3パターン＋ .neu-btn の hover/active 遷移だけで全UIを構成する。
-- drop-shadow, filter: shadow, 半透明オーバーレイなどの代替影は使わない。
+- **新しいbox-shadow値を発明しない。** ガラス面は上記3要素で表現する。
+- Tailwind デフォルト影（`shadow-lg`, `shadow-xl`）、`drop-shadow`、`filter: shadow` の直書きは禁止。
+- 凹み状態は `glass-inset`、フラット状態は `glass-flat` を使う。
 
 ### 1-3. 角丸 — 3段階のみ
 
 | トークン | 値 | 用途 |
 |---|---|---|
-| --neu-radius-sm | 12px | ボタン・入力・小カード |
-| --neu-radius | 16px | 標準カード・セクション |
-| --neu-radius-lg | 20px | 大きいカード・モーダル |
+| --hp-radius-sm | 12px | ボタン・入力・小カード |
+| --hp-radius | 16px | 標準カード・セクション |
+| --hp-radius-lg | 20px | 大きいカード・モーダル |
 
-- 例外: ヒーロー画像エリアの 32px と badge の full。それ以外で新しい角丸を作らない。
+- 例外: badge の full。それ以外で新しい角丸を作らない。
 
 ### 1-4. タイポグラフィ — 固定
 
@@ -58,27 +67,30 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ### 1-5. レイアウト制約
 
-- 最大幅: max-w-[1440px] + mx-auto
-- 外側パディング: px-4 md:px-8 xl:px-12
-- セクション間余白: py-12 md:py-16
-- **全ページでこの幅とパディングを統一する。** ページごとに独自のmax-widthを設定しない。
+- 最大幅: `max-w-[1440px]` + `mx-auto`
+- 外側パディング: `px-4 md:px-8 xl:px-12`
+- セクション間余白: `py-12 md:py-16`
+- **全ページでこの幅とパディングを統一する。** ページごとに独自の max-width を設定しない。
 
 ## Layer 2: 標準パターン（外すと統一感喪失）
 
 ### 2-1. コンポーネント構成ルール
 
 **カード（情報ブロック）:**
-neu-raised → 内側 p-8 md:p-10 → コンテンツ
+`glass-card` → 内側 `p-8 md:p-10` → コンテンツ
+
+**小カード・タイル:**
+`glass-card-sm` → 内側 `p-4 md:p-5`
 
 **入力フィールド:**
-neu-input → px-4 py-3 → placeholder は text-neu-muted
+`glass-input` → `px-4 py-3` → placeholder は `text-hp-muted`
 
 **ボタン:**
-neu-btn → px-6 py-3 → hover で影が大きくなる → active で neu-inset に反転
+`glass-btn` → `px-6 py-3` → hover でガラス濃度と影を上げる
 
-**アクティブ状態（ナビ等）:**
-通常: neu-flat + text-neu-muted
-選択中: neu-inset + text-neu
+**アクティブ状態（ナビ・タブ等）:**
+通常: `glass-flat + text-hp-muted`
+選択中: `glass-inset + text-hp`
 
 ### 2-2. セクション構成パターン
 
@@ -86,15 +98,15 @@ neu-btn → px-6 py-3 → hover で影が大きくなる → active で neu-inse
 
 ```tsx
 <section className="mx-auto w-full max-w-[1440px] px-4 md:px-8 xl:px-12">
-  <div className="neu-raised p-8 md:p-10 xl:p-14">
+  <div className="glass-card p-8 md:p-10 xl:p-14">
     {/* コンテンツ */}
   </div>
 </section>
 ```
 
-- 1セクション = 1つの neu-raised カード。
-- カード内の小区分には neu-inset を使う。
-- カードの中にカードをネストしない（影が喧嘩する）。
+- 1セクション = 1つの `glass-card`。
+- カード内の小区分には `glass-inset` / `glass-card-sm` / `glass-flat` を使う。
+- **カードの中に `glass-card` をネストしない。** ガラス層が重なりすぎる場合は `glass-card-sm` か unframed layout にする。
 
 ### 2-3. レスポンシブ戦略
 
@@ -104,37 +116,37 @@ neu-btn → px-6 py-3 → hover で影が大きくなる → active で neu-inse
 | 768px~1279px | 2カラムグリッド開始、p-10 |
 | 1280px~ | フルレイアウト、p-14 |
 
-- グリッドは lg:grid-cols-[...] で比率指定。均等分割ではなくコンテンツに合わせた比率を使う。
-- モバイルではカード内パディングを縮小するが、影のサイズは変えない。
+- グリッドは `lg:grid-cols-[...]` で比率指定。均等分割ではなくコンテンツに合わせた比率を使う。
+- モバイルではカード内パディングを縮小するが、Glass tokens は変えない。
 
 ### 2-4. テキスト階層
 
 | 役割 | スタイル |
 |---|---|
-| ページ見出し | text-4xl md:text-5xl xl:text-6xl font-bold text-neu |
-| セクション見出し | text-2xl md:text-3xl font-semibold text-neu |
-| ラベル（上部） | text-xs uppercase tracking-[0.22em] text-neu-muted |
-| 本文 | text-base md:text-lg text-neu-muted leading-relaxed |
-| 強調テキスト | font-semibold text-neu |
+| ページ見出し | `text-4xl md:text-5xl xl:text-6xl font-bold text-hp` |
+| セクション見出し | `text-2xl md:text-3xl font-semibold text-hp` |
+| ラベル（上部） | `text-xs uppercase tracking-[0.22em] text-hp-muted` |
+| 本文 | `text-base md:text-lg text-hp-muted leading-relaxed` |
+| 強調テキスト | `font-semibold text-hp` |
 
 ### 2-5. アクセントカラーの使用制限
 
---neu-accent (#79c7c7) は以下にのみ使う:
-- ステータスドット（h-2 w-2 rounded-full bg-[var(--neu-accent)]）
-- ホバー時のテキストカラー変化（控えめに）
-- 背景のぼかし装飾（blur-3xl で薄く）
-- リンクの下線やアイコン
+`--accent-primary` (#8B7FFF) は以下にのみ使う:
+- CTA・リンク・ホバー時のテキストカラー変化
+- アクティブ状態の薄い背景（不透明度 20% 以下）
+- 予約可・予約確定を示す UI
+- 今日の下線や小さなステータス表示
 
-**ボタンの背景色にアクセントを使わない。** ボタンはニューモーフィズムの影で存在を示す。
+**アクセントを予約不可や全面背景に使わない。** 予約不可は `--text-primary` 由来の濃いめグレー半透明で示す。
 
 ## Layer 3: 判断基準（新しい画面・要素を作るとき）
 
 ### 3-1. 新コンポーネントのチェックリスト
 
 新しいUIを作る前に確認:
-1. **既存クラスで表現できないか？** → neu-raised, neu-inset, neu-btn, neu-input の組み合わせで足りることが多い
-2. **影は3パターンのどれか？** → 新しい影を作る衝動を抑える
-3. **色は既存トークンか？** → 新色を追加する前にLayer 1を再読する
+1. **既存クラスで表現できないか？** → `glass-card`, `glass-card-sm`, `glass-inset`, `glass-btn`, `glass-input` を優先する
+2. **ガラス面は3要素で成立しているか？** → 影・境界線・blur の組み合わせを確認する
+3. **色は Glass tokens か？** → 新色を追加する前に Layer 1 を再読する
 4. **テキスト階層は2-4のどれに該当するか？** → 該当しないサイズを作らない
 
 ### 3-2. トーン判断: nicolegoode.com 基準
@@ -149,45 +161,53 @@ neu-btn → px-6 py-3 → hover で影が大きくなる → active で neu-inse
 
 | やりがちなこと | なぜダメか |
 |---|---|
-| bg-gradient-to-r from-teal-400 to-cyan-500 | ニューモーフィズムの平面感が壊れる |
-| shadow-lg shadow-xl | Tailwindデフォルト影はneu影と喧嘩する |
-| border-2 border-teal-500 | 太いボーダーはニューモーフィズムの柔らかさを殺す |
-| rounded-none or 角丸なし | 全要素に角丸がある世界観 |
-| backdrop-blur-xl の多用 | 1箇所（badgeのみ）に留める |
-| ダークセクション挿入 | ライトニューモーフィズム一貫 |
+| 新しいグラデーション背景 | Aurora 正典と衝突する |
+| `shadow-lg` / `shadow-xl` / `drop-shadow` | Glass tokens の影文法が崩れる |
+| `border-2` 以上の太いボーダー | ガラス境界線の軽さが壊れる |
+| 角丸なし | 全要素に角丸がある世界観 |
+| ガラス層 3 層以上のネスト | 背景がぼけすぎて崩れる |
+| 色の不透明度 80% 超 | ガラスでなく全面塗りになる |
+| Aurora 背景を上書きする全面塗り | HP全体の質感が消える |
+| アクセントを予約不可・全面背景に使う | 意味色の分離が崩れる |
 | animate-bounce, animate-pulse | 過剰なアニメーション。transition のみ許可 |
 | Inter/Noto以外のフォント追加 | タイポグラフィの一貫性破綻 |
 
 ### 3-4. 将来拡張時のルール
 
-- **ポートフォリオ追加時**: サムネイルは neu-raised カード内に配置。ホバーで neu-inset に遷移。新しいカードスタイルを作らない。
-- **カレンダー機能**: 日付セルは neu-raised-sm、選択状態は neu-inset。カレンダー全体は1つの neu-raised でラップ。
-- **ツール販売導線**: 商品カードも同じ neu-raised + 内部テキスト階層。購入ボタンは neu-btn。特別なスタイルを作らない。
+- **ポートフォリオ追加時**: サムネイルは `glass-card-sm` 内に配置。ホバーはガラス濃度と境界線で表現する。
+- **カレンダー機能**: 日付セルは `glass-card-sm` 相当、選択状態は `glass-inset`。カレンダー全体は1つの `glass-card` でラップする。
+- **ツール販売導線**: 商品カードも同じ `glass-card` / `glass-card-sm` + 内部テキスト階層。購入ボタンは `glass-btn`。特別なスタイルを作らない。
 - **多言語対応**: フォント変更なし。英語ページでも Noto Sans JP + Inter のまま。
+
+## Deprecated: `.neu-*` 系クラス
+
+- `.neu-*` 系クラスは互換のために残すが、新規実装では使わない。
+- 既存箇所も UI 変更時に Glass Design System へ移行する。
+- Booking ページや新規導線では `glass-*` / `text-hp*` を正典とする。
 
 ### 実装チートシート
 
 ```tsx
 // セクションの骨格
 <section className="mx-auto w-full max-w-[1440px] px-4 md:px-8 xl:px-12">
-  <div className="neu-raised p-8 md:p-10 xl:p-14">
-    <p className="text-xs uppercase tracking-[0.22em] text-neu-muted">Label</p>
-    <h2 className="mt-2 text-2xl font-semibold text-neu md:text-3xl">見出し</h2>
-    <p className="mt-4 text-base leading-relaxed text-neu-muted md:text-lg">本文</p>
+  <div className="glass-card p-8 md:p-10 xl:p-14">
+    <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">Label</p>
+    <h2 className="mt-2 text-2xl font-semibold text-hp md:text-3xl">見出し</h2>
+    <p className="mt-4 text-base leading-relaxed text-hp-muted md:text-lg">本文</p>
   </div>
 </section>
 
 // 情報カード（カード内の小ブロック）
-<div className="neu-inset px-5 py-4">
-  <p className="text-xs uppercase tracking-[0.22em] text-neu-muted">Label</p>
-  <p className="mt-2 text-sm font-semibold text-neu">Value</p>
+<div className="glass-inset px-5 py-4">
+  <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">Label</p>
+  <p className="mt-2 text-sm font-semibold text-hp">Value</p>
 </div>
 
 // ボタン
-<button className="neu-btn px-6 py-3 text-sm font-medium text-neu">
+<button className="glass-btn px-6 py-3 text-sm font-medium text-hp">
   送信する
 </button>
 
 // 入力
-<input className="neu-input w-full px-4 py-3" placeholder="お名前" />
+<input className="glass-input w-full px-4 py-3" placeholder="お名前" />
 ```

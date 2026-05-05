@@ -99,8 +99,8 @@
   --aurora-purple: rgba(139, 127, 255, 0.28);
   --aurora-pink: rgba(255, 143, 171, 0.20);
   --aurora-sky: rgba(125, 211, 252, 0.20);
-  --glass-bg: rgba(255, 255, 255, 0.45);
-  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(139, 127, 255, 0.22);
   --glass-shadow: 0 8px 32px rgba(139, 127, 255, 0.15);
   --text-primary: #1C0F6E;
   --text-muted: #6B5FA8;
@@ -139,17 +139,17 @@
   }
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
     border-radius: var(--hp-radius);
   }
   .glass-card-sm {
-    background: rgba(255, 255, 255, 0.35);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.52);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
     box-shadow: 0 4px 16px rgba(139, 127, 255, 0.10);
     border-radius: var(--hp-radius-sm);
   }

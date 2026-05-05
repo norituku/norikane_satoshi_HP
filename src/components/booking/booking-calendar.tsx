@@ -9,9 +9,12 @@ import type {
   DateSelectArg,
   DayCellContentArg,
   EventClickArg,
+  EventContentArg,
   EventInput,
   EventSourceFuncArg,
 } from "@fullcalendar/core"
+import { format } from "date-fns"
+import { Lock } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { getHolidayName } from "@/lib/booking/holidays"
@@ -27,6 +30,11 @@ type FreeBusyResponse = {
   busy?: BusySlot[]
 }
 
+type BusyEventProps = {
+  kind: "busy"
+  label: string
+}
+
 const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
   { label: "月", value: "dayGridMonth" },
   { label: "週", value: "timeGridWeek" },
@@ -39,7 +47,51 @@ function toDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-async function fetchBusyEvents(arg: EventSourceFuncArg): Promise<EventInput[]> {
+function hasTimePart(value: string): boolean {
+  return /T\d{2}:\d{2}/.test(value)
+}
+
+function isFullDayBusySlot(slot: BusySlot): boolean {
+  if (!hasTimePart(slot.start) || !hasTimePart(slot.end)) return true
+
+  const start = new Date(slot.start)
+  const end = new Date(slot.end)
+  const startsAtMidnight = start.getHours() === 0 && start.getMinutes() === 0
+  const endsAtMidnight = end.getHours() === 0 && end.getMinutes() === 0
+  const durationMs = end.getTime() - start.getTime()
+
+  return startsAtMidnight && endsAtMidnight && durationMs >= 24 * 60 * 60 * 1000
+}
+
+function getBusyLabel(slot: BusySlot): string {
+  if (isFullDayBusySlot(slot)) return "終日"
+
+  return `${format(new Date(slot.start), "HH:mm")}-${format(new Date(slot.end), "HH:mm")}`
+}
+
+function toBusyEvent(slot: BusySlot, view: CalendarView): EventInput {
+  const isMonthView = view === "dayGridMonth"
+  const allDay = isFullDayBusySlot(slot)
+  const label = getBusyLabel(slot)
+  const extendedProps: BusyEventProps = {
+    kind: "busy",
+    label,
+  }
+
+  return {
+    id: `busy-${slot.start}-${slot.end}`,
+    start: slot.start,
+    end: slot.end,
+    allDay,
+    display: isMonthView ? "block" : "background",
+    classNames: isMonthView
+      ? ["booking-calendar__busy-pill"]
+      : ["booking-calendar__busy"],
+    extendedProps,
+  }
+}
+
+async function fetchBusyEvents(arg: EventSourceFuncArg, view: CalendarView): Promise<EventInput[]> {
   const params = new URLSearchParams({
     start: arg.startStr,
     end: arg.endStr,
@@ -53,12 +105,7 @@ async function fetchBusyEvents(arg: EventSourceFuncArg): Promise<EventInput[]> {
   }
 
   const data = (await response.json()) as FreeBusyResponse
-  return (data.busy ?? []).map((slot) => ({
-    start: slot.start,
-    end: slot.end,
-    display: "background",
-    classNames: ["booking-calendar__busy"],
-  }))
+  return (data.busy ?? []).map((slot) => toBusyEvent(slot, view))
 }
 
 export function BookingCalendar() {
@@ -68,10 +115,10 @@ export function BookingCalendar() {
     () => [
       {
         id: "google-calendar-busy",
-        events: fetchBusyEvents,
+        events: (arg: EventSourceFuncArg) => fetchBusyEvents(arg, view),
       },
     ],
-    [],
+    [view],
   )
 
   const handleDateClick = (arg: DateClickArg) => {
@@ -104,6 +151,19 @@ export function BookingCalendar() {
     )
   }
 
+  const eventContent = (arg: EventContentArg) => {
+    const props = arg.event.extendedProps as Partial<BusyEventProps>
+    if (props.kind !== "busy" || arg.view.type !== "dayGridMonth") return undefined
+
+    return (
+      <span className="booking-calendar__busy-pill-content">
+        <Lock aria-hidden="true" size={16} strokeWidth={2.4} />
+        <span>{props.label}</span>
+        <span>予約済み</span>
+      </span>
+    )
+  }
+
   return (
     <div className="booking-calendar">
       <div className="booking-calendar__tabs" aria-label="カレンダー表示切替">
@@ -113,7 +173,7 @@ export function BookingCalendar() {
             <button
               key={option.value}
               type="button"
-              className={`booking-calendar__tab ${isActive ? "neu-inset text-neu" : "neu-flat text-neu-muted"}`}
+              className={`booking-calendar__tab ${isActive ? "glass-inset text-hp" : "glass-flat text-hp-muted"}`}
               aria-pressed={isActive}
               onClick={() => setView(option.value)}
             >
@@ -122,7 +182,7 @@ export function BookingCalendar() {
           )
         })}
       </div>
-      <div className="booking-calendar__surface neu-inset">
+      <div className="booking-calendar__surface glass-flat">
         <FullCalendar
           key={view}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -146,6 +206,7 @@ export function BookingCalendar() {
           slotDuration="00:30:00"
           allDaySlot={false}
           eventSources={eventSources}
+          eventContent={eventContent}
           dayCellClassNames={dayCellClassNames}
           dayCellContent={dayCellContent}
           dateClick={handleDateClick}
