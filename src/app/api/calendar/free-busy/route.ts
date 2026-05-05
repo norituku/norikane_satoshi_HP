@@ -14,8 +14,8 @@ function isValidDateTime(value: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  const timeMin = request.nextUrl.searchParams.get("timeMin")
-  const timeMax = request.nextUrl.searchParams.get("timeMax")
+  const timeMin = request.nextUrl.searchParams.get("timeMin") ?? request.nextUrl.searchParams.get("start")
+  const timeMax = request.nextUrl.searchParams.get("timeMax") ?? request.nextUrl.searchParams.get("end")
   const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
 
   if (!timeMin || !timeMax) {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_JP, Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@/components/booking/booking-calendar.css";
 import { NavHeader } from "@/components/hp/nav-header";
 import { SITE_BRAND_NAME, SITE_OWNER_NAME, SITE_TAGLINE, SITE_TITLE } from "@/lib/site-brand";
 
