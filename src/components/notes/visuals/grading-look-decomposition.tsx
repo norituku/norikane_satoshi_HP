@@ -61,7 +61,7 @@ const AXES: Axis[] = [
 
 const WORDS: Word[] = [
   { text: "もう少し暖かく", axis: 4 },
-  { text: "青の濃度だけ落として", axis: 2 },
+  { text: "もっと色に立体感が欲しい", axis: 2 },
   { text: "もう少し抜けを", axis: 3 },
   { text: "肌の転がりをリッチに", axis: 1 },
 ]
@@ -182,6 +182,18 @@ function sCurve(l: number, k: number) {
   return clamp01(l + k * 0.5 * Math.sin((l - 0.5) * Math.PI))
 }
 
+function sCurveChannel(v: number, k: number) {
+  return clamp01(v + k * Math.sin((v - 0.5) * Math.PI))
+}
+
+function sCurveRgb({ r, g, b }: Rgb, k: number): Rgb {
+  return {
+    r: clamp255(sCurveChannel(r / 255, k) * 255),
+    g: clamp255(sCurveChannel(g / 255, k) * 255),
+    b: clamp255(sCurveChannel(b / 255, k) * 255),
+  }
+}
+
 function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   let rgb = chip.rgb
   const kindAmp = axisId === 4 && chip.kind !== "gray" ? amp * 0.45 : amp
@@ -194,8 +206,7 @@ function chipColor(axisId: AxisId, chip: Chip, amp: number) {
     rgb = hslToRgb(hsl.h, hsl.s, clamp01(hsl.l + amp * 0.3))
   }
   if (axisId === 3) {
-    const hsl = rgbToHsl(rgb)
-    rgb = hslToRgb(hsl.h, hsl.s, sCurve(hsl.l, amp * 0.3))
+    rgb = sCurveRgb(rgb, amp * 0.5)
   }
   if (axisId === 4) {
     const shift = kindAmp * 0.2 * 255

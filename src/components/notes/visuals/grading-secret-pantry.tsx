@@ -131,8 +131,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
 
   const localT = t - start
 
-  if (localT < 0.4) {
-    const p = easeInOutCubic(localT / 0.4)
+  if (localT < 0.3) {
+    const p = easeInOutCubic(localT / 0.3)
     return {
       x: lerp(bottle.x, hoverX, p),
       y: lerp(bottle.y, hoverY, p),
@@ -143,8 +143,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     }
   }
 
-  if (localT < 0.7) {
-    const p = easeInOutCubic((localT - 0.4) / 0.3)
+  if (localT < 0.5) {
+    const p = easeInOutCubic((localT - 0.3) / 0.2)
     return {
       x: hoverX,
       y: hoverY,
@@ -155,20 +155,67 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     }
   }
 
-  if (localT < 1.5) {
-    const p = clamp01((localT - 0.7) / 0.8)
+  if (localT < 0.8) {
+    const p = easeInOutCubic((localT - 0.5) / 0.3)
     return {
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: sign * -22,
+      bottleRotate: lerp(sign * -22, sign * -50, p),
       capRotate: sign * 60,
-      liquidLevel: lerp(1, 0, p),
+      liquidLevel: lerp(1.0, 0.75, p),
     }
   }
 
-  if (localT < 1.8) {
-    const p = easeInOutCubic((localT - 1.5) / 0.3)
+  if (localT < 1.1) {
+    const p = easeInOutCubic((localT - 0.8) / 0.3)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: lerp(sign * -50, sign * -110, p),
+      capRotate: sign * 60,
+      liquidLevel: lerp(0.75, 0.35, p),
+    }
+  }
+
+  if (localT < 1.4) {
+    const p = easeInOutCubic((localT - 1.1) / 0.3)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: lerp(sign * -110, sign * -180, p),
+      capRotate: sign * 60,
+      liquidLevel: lerp(0.35, 0.0, p),
+    }
+  }
+
+  if (localT < 1.6) {
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: sign * -180,
+      capRotate: sign * 60,
+      liquidLevel: 0,
+    }
+  }
+
+  if (localT < 1.9) {
+    const p = easeInOutCubic((localT - 1.6) / 0.3)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: lerp(sign * -180, sign * -22, p),
+      capRotate: sign * 60,
+      liquidLevel: 0,
+    }
+  }
+
+  if (localT < 2.1) {
+    const p = easeInOutCubic((localT - 1.9) / 0.2)
     return {
       x: hoverX,
       y: hoverY,
@@ -180,7 +227,7 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
   }
 
   if (localT < 2.4) {
-    const p = easeInOutCubic((localT - 1.8) / 0.6)
+    const p = easeInOutCubic((localT - 2.1) / 0.3)
     return {
       x: lerp(hoverX, bottle.x, p),
       y: lerp(hoverY, bottle.y, p),
@@ -203,8 +250,8 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
 
 function pourOpacity(bottle: Bottle, t: number) {
   const localT = t - axisStart(bottle.id)
-  if (localT < 0.7 || localT >= 1.5 || t >= 9.5) return 0
-  return clamp01(Math.min((localT - 0.7) / 0.1, (1.5 - localT) / 0.1))
+  if (localT < 0.5 || localT >= 1.6 || t >= 9.5) return 0
+  return clamp01(Math.min((localT - 0.5) / 0.1, (1.6 - localT) / 0.1))
 }
 
 function pourLip(pose: BottlePose, mirror: boolean) {
@@ -466,6 +513,7 @@ export default function GradingSecretPantry({
         />
         {bottleStates.map(({ bottle, pose, pourOpacity }) => {
           const path = pourPath(pose, bottle.mirror)
+          const tiltScale = clamp01(Math.abs(pose.bottleRotate) / 90)
           const splashX = PREVIEW_CX
           const splashY = PREVIEW_Y + 60
           return pourOpacity > 0 ? (
@@ -474,7 +522,7 @@ export default function GradingSecretPantry({
                 d={path}
                 fill="none"
                 stroke={`url(#sp-pour-${bottle.id})`}
-                strokeWidth={20}
+                strokeWidth={20 * tiltScale}
                 strokeLinecap="round"
                 opacity={0.35}
               />
@@ -482,7 +530,7 @@ export default function GradingSecretPantry({
                 d={path}
                 fill="none"
                 stroke={`url(#sp-pour-${bottle.id})`}
-                strokeWidth={14}
+                strokeWidth={14 * tiltScale}
                 strokeLinecap="round"
                 opacity={0.7}
               />
@@ -490,7 +538,7 @@ export default function GradingSecretPantry({
                 d={path}
                 fill="none"
                 stroke={`url(#sp-pour-${bottle.id})`}
-                strokeWidth={6}
+                strokeWidth={6 * tiltScale}
                 strokeLinecap="round"
                 opacity={1.0}
               />
