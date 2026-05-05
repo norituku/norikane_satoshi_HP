@@ -6,8 +6,6 @@ import type { VideoVisualProps } from "@/components/notes/note-visual"
 const LOOP = 12
 const W = 1600
 const H = 500
-const LEFT_W = 800
-const RIGHT_X = 800
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.94)"
 const TEXT_MUTED = "rgba(107,95,168,0.84)"
@@ -19,6 +17,15 @@ const NAVY = "rgb(42,79,143)"
 const AMBER = "rgb(200,146,58)"
 const TEAL = "rgb(46,140,132)"
 
+const CARD_X = 40
+const CARD_Y = 200
+const CARD_W = 374
+const CARD_H = 280
+const CARD_GAP = 8
+const KNOB_Y = 224
+const PATTERN_Y = 256
+const PATTERN_H = 216
+
 type AxisId = 1 | 2 | 3 | 4
 type ChipKind = "color" | "gray" | "skin"
 type Rgb = { r: number; g: number; b: number }
@@ -28,7 +35,6 @@ type Axis = {
   name: string
   sub: string
   color: string
-  y: number
 }
 
 type Word = {
@@ -38,32 +44,14 @@ type Word = {
 
 type Chip = {
   kind: ChipKind
-  label: string
   rgb: Rgb
 }
 
-type PatchBlock = {
-  key: ChipKind
-  chips: Chip[]
-}
-
 const AXES: Axis[] = [
-  {
-    id: 1,
-    name: "色の広がり・転がり",
-    sub: "hue / saturation",
-    color: MAGENTA,
-    y: 116,
-  },
-  { id: 2, name: "濃度", sub: "color density", color: NAVY, y: 222 },
-  { id: 3, name: "カーブ", sub: "tone curve", color: AMBER, y: 328 },
-  {
-    id: 4,
-    name: "RGB カラーバランス",
-    sub: "gray balance",
-    color: TEAL,
-    y: 434,
-  },
+  { id: 1, name: "色の広がり・転がり", sub: "hue / saturation", color: MAGENTA },
+  { id: 2, name: "濃度", sub: "color density", color: NAVY },
+  { id: 3, name: "カーブ", sub: "tone curve", color: AMBER },
+  { id: 4, name: "RGB カラーバランス", sub: "gray balance", color: TEAL },
 ]
 
 const WORDS: Word[] = [
@@ -74,24 +62,18 @@ const WORDS: Word[] = [
 ]
 
 const TEST_CHIPS: Chip[] = [
-  { kind: "color", label: "R", rgb: { r: 224, g: 44, b: 58 } },
-  { kind: "color", label: "O", rgb: { r: 235, g: 126, b: 28 } },
-  { kind: "color", label: "B", rgb: { r: 36, g: 94, b: 224 } },
-  { kind: "color", label: "G", rgb: { r: 34, g: 172, b: 82 } },
-  { kind: "gray", label: "12", rgb: gray(0.12) },
-  { kind: "gray", label: "38", rgb: gray(0.38) },
-  { kind: "gray", label: "64", rgb: gray(0.64) },
-  { kind: "gray", label: "86", rgb: gray(0.86) },
-  { kind: "skin", label: "D1", rgb: { r: 105, g: 62, b: 44 } },
-  { kind: "skin", label: "D2", rgb: { r: 139, g: 83, b: 58 } },
-  { kind: "skin", label: "L1", rgb: { r: 204, g: 142, b: 102 } },
-  { kind: "skin", label: "L2", rgb: { r: 230, g: 180, b: 136 } },
-]
-
-const PATCH_BLOCKS: PatchBlock[] = [
-  { key: "color", chips: TEST_CHIPS.filter((chip) => chip.kind === "color") },
-  { key: "gray", chips: TEST_CHIPS.filter((chip) => chip.kind === "gray").slice(0, 3) },
-  { key: "skin", chips: TEST_CHIPS.filter((chip) => chip.kind === "skin") },
+  { kind: "color", rgb: { r: 224, g: 44, b: 58 } },
+  { kind: "color", rgb: { r: 235, g: 126, b: 28 } },
+  { kind: "color", rgb: { r: 36, g: 94, b: 224 } },
+  { kind: "color", rgb: { r: 34, g: 172, b: 82 } },
+  { kind: "gray", rgb: gray(0.12) },
+  { kind: "gray", rgb: gray(0.38) },
+  { kind: "gray", rgb: gray(0.64) },
+  { kind: "gray", rgb: gray(0.86) },
+  { kind: "skin", rgb: { r: 105, g: 62, b: 44 } },
+  { kind: "skin", rgb: { r: 139, g: 83, b: 58 } },
+  { kind: "skin", rgb: { r: 204, g: 142, b: 102 } },
+  { kind: "skin", rgb: { r: 230, g: 180, b: 136 } },
 ]
 
 function gray(v: number): Rgb {
@@ -119,6 +101,18 @@ function lerp(a: number, b: number, p: number) {
   return a + (b - a) * p
 }
 
+function axisX(axisId: AxisId) {
+  return CARD_X + (axisId - 1) * (CARD_W + CARD_GAP)
+}
+
+function knobX(axisId: AxisId) {
+  return axisX(axisId) + CARD_W / 2
+}
+
+function axisById(id: AxisId) {
+  return AXES.find((axis) => axis.id === id)!
+}
+
 function response(localT: number) {
   const p = clamp01((localT - 2.05) / 0.95)
   if (p <= 0 || p >= 1) return 0
@@ -129,25 +123,16 @@ function wordState(localT: number) {
   const enter = easeOutCubic(clamp01(localT / 0.4))
   const fadeOut = 1 - clamp01((localT - 2.6) / 0.4)
   return {
-    x: lerp(82, 260, enter),
+    x: lerp(450, 560, enter),
     opacity: Math.min(enter, fadeOut),
   }
 }
 
-function targetY(axisId: AxisId) {
-  return AXES.find((axis) => axis.id === axisId)!.y
-}
-
-function axisById(id: AxisId) {
-  return AXES.find((axis) => axis.id === id)!
-}
-
-function arrowPath(fromX: number, fromY: number, toY: number, p: number) {
-  const toX = RIGHT_X + 142
+function arrowPath(fromX: number, fromY: number, toX: number, toY: number, p: number) {
   const x1 = lerp(fromX, toX, p)
   const y1 = lerp(fromY, toY, p)
-  const cx = lerp(fromX, toX, 0.54)
-  const cy = fromY + (toY - fromY) * 0.18
+  const cx = lerp(fromX, toX, 0.52)
+  const cy = lerp(fromY, toY, 0.44)
   const cpx = lerp(fromX, cx, p)
   const cpy = lerp(fromY, cy, p)
   return `M ${fromX} ${fromY} Q ${cpx} ${cpy}, ${x1} ${y1}`
@@ -218,138 +203,36 @@ function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   return `rgb(${clamp255(rgb.r)},${clamp255(rgb.g)},${clamp255(rgb.b)})`
 }
 
-function PatchBlock({
-  axis,
-  block,
-  x,
-  y,
-  width,
-}: {
-  axis: Axis
-  block: PatchBlock
-  x: number
-  y: number
-  width: number
-}) {
-  const gap = 6
-  const tileH = 70
-  const tileW = (width - gap * (block.chips.length - 1)) / block.chips.length
+function TestPattern({ axis, amp }: { axis: Axis; amp: number }) {
+  const x = axisX(axis.id) + 10
+  const y = PATTERN_Y
+  const gap = 4
+  const chipW = (CARD_W - 20 - gap * 3) / 4
+  const chipH = (PATTERN_H - gap * 2) / 3
+
   return (
     <g>
-      {block.chips.map((chip, i) => (
-        <rect
-          key={`${axis.id}-${chip.label}`}
-          x={x + i * (tileW + gap)}
-          y={y}
-          width={tileW}
-          height={tileH}
-          rx={7}
-          fill={chipColor(axis.id, chip, 0)}
-          stroke="rgba(255,255,255,0.72)"
-        />
-      ))}
+      {TEST_CHIPS.map((chip, i) => {
+        const col = i % 4
+        const row = Math.floor(i / 4)
+        return (
+          <rect
+            key={`${axis.id}-${i}`}
+            x={x + col * (chipW + gap)}
+            y={y + row * (chipH + gap)}
+            width={chipW}
+            height={chipH}
+            rx={6}
+            fill={chipColor(axis.id, chip, amp)}
+            stroke="rgba(255,255,255,0.70)"
+          />
+        )
+      })}
     </g>
   )
 }
 
-function AnimatedPatchBlock({
-  axis,
-  block,
-  amp,
-  x,
-  y,
-  width,
-}: {
-  axis: Axis
-  block: PatchBlock
-  amp: number
-  x: number
-  y: number
-  width: number
-}) {
-  const gap = 6
-  const tileH = 70
-  const tileW = (width - gap * (block.chips.length - 1)) / block.chips.length
-  return (
-    <g>
-      {block.chips.map((chip, i) => (
-        <rect
-          key={`${axis.id}-${chip.label}`}
-          x={x + i * (tileW + gap)}
-          y={y}
-          width={tileW}
-          height={tileH}
-          rx={7}
-          fill={chipColor(axis.id, chip, amp)}
-          stroke="rgba(255,255,255,0.72)"
-        />
-      ))}
-    </g>
-  )
-}
-
-function AxisPreview({ axis, amp }: { axis: Axis; amp: number }) {
-  const baseX = RIGHT_X + 735
-  const y = axis.y - 35
-  const colorW = 190
-  const grayW = 142
-  const skinW = 190
-  const gap = 8
-  const blocks = [
-    { block: PATCH_BLOCKS[0], x: baseX - colorW - grayW - skinW - gap * 2 },
-    { block: PATCH_BLOCKS[1], x: baseX - grayW - skinW - gap },
-    { block: PATCH_BLOCKS[2], x: baseX - skinW },
-  ]
-  return (
-    <g>
-      <rect
-        x={baseX - colorW - grayW - skinW - gap * 2 - 10}
-        y={y - 8}
-        width={colorW + grayW + skinW + gap * 2 + 20}
-        height={86}
-        rx={12}
-        fill="rgba(255,255,255,0.30)"
-        stroke="rgba(255,255,255,0.58)"
-      />
-      <AnimatedPatchBlock axis={axis} block={blocks[0].block} amp={amp} x={blocks[0].x} y={y} width={colorW} />
-      <AnimatedPatchBlock axis={axis} block={blocks[1].block} amp={amp} x={blocks[1].x} y={y} width={grayW} />
-      <AnimatedPatchBlock axis={axis} block={blocks[2].block} amp={amp} x={blocks[2].x} y={y} width={skinW} />
-    </g>
-  )
-}
-
-function AxisPreviewStatic({ axis }: { axis: Axis }) {
-  const baseX = RIGHT_X + 735
-  const y = axis.y
-  const tileY = y - 35
-  const colorW = 190
-  const grayW = 142
-  const skinW = 190
-  const gap = 8
-  const blocks = [
-    { block: PATCH_BLOCKS[0], x: baseX - colorW - grayW - skinW - gap * 2 },
-    { block: PATCH_BLOCKS[1], x: baseX - grayW - skinW - gap },
-    { block: PATCH_BLOCKS[2], x: baseX - skinW },
-  ]
-  return (
-    <g>
-      <rect
-        x={baseX - colorW - grayW - skinW - gap * 2 - 10}
-        y={tileY - 8}
-        width={colorW + grayW + skinW + gap * 2 + 20}
-        height={86}
-        rx={12}
-        fill="rgba(255,255,255,0.30)"
-        stroke="rgba(255,255,255,0.58)"
-      />
-      <PatchBlock axis={axis} block={blocks[0].block} x={blocks[0].x} y={tileY} width={colorW} />
-      <PatchBlock axis={axis} block={blocks[1].block} x={blocks[1].x} y={tileY} width={grayW} />
-      <PatchBlock axis={axis} block={blocks[2].block} x={blocks[2].x} y={tileY} width={skinW} />
-    </g>
-  )
-}
-
-function AxisRow({
+function AxisCard({
   axis,
   amp,
   active,
@@ -358,94 +241,83 @@ function AxisRow({
   amp: number
   active: boolean
 }) {
-  const knobX = RIGHT_X + 146 + amp * 20
+  const x = axisX(axis.id)
+  const knob = knobX(axis.id) + amp * 16
+
   return (
     <g>
       <rect
-        x={RIGHT_X + 36}
-        y={axis.y - 51}
-        width={720}
-        height={102}
+        x={x}
+        y={CARD_Y}
+        width={CARD_W}
+        height={CARD_H}
         rx={16}
-        fill={
-          active
-            ? `${axis.color.replace("rgb", "rgba").replace(")", ",0.10)")}`
-            : CARD
-        }
+        fill={active ? axis.color.replace("rgb", "rgba").replace(")", ",0.10)") : CARD}
         stroke={active ? axis.color : "rgba(255,255,255,0.62)"}
         strokeOpacity={active ? 0.72 : 0.48}
       />
-      <circle cx={RIGHT_X + 72} cy={axis.y} r={12} fill={axis.color} />
-      <text
-        x={RIGHT_X + 96}
-        y={axis.y - 6}
-        fontSize={19}
-        fontWeight={700}
-        fill={TEXT_PRIMARY}
-      >
+      <circle cx={x + 34} cy={KNOB_Y} r={12} fill={axis.color} />
+      <text x={x + 56} y={KNOB_Y - 5} fontSize={19} fontWeight={700} fill={TEXT_PRIMARY}>
         {axis.name}
       </text>
-      <text x={RIGHT_X + 96} y={axis.y + 18} fontSize={13} fill={TEXT_MUTED}>
+      <text x={x + 56} y={KNOB_Y + 18} fontSize={13} fill={TEXT_MUTED}>
         {axis.sub}
       </text>
       <line
-        x1={RIGHT_X + 126}
-        y1={axis.y}
-        x2={RIGHT_X + 184}
-        y2={axis.y}
+        x1={x + CARD_W - 112}
+        y1={KNOB_Y}
+        x2={x + CARD_W - 42}
+        y2={KNOB_Y}
         stroke="rgba(28,15,110,0.18)"
         strokeWidth={8}
         strokeLinecap="round"
       />
       <circle
-        cx={knobX}
-        cy={axis.y}
+        cx={knob}
+        cy={KNOB_Y}
         r={15}
         fill={axis.color}
         stroke="white"
         strokeWidth={3}
       />
-      <AxisPreview axis={axis} amp={amp} />
+      <TestPattern axis={axis} amp={amp} />
     </g>
   )
 }
 
 function ReducedFrame() {
+  const cardW = 350
+  const cardY = 84
   return (
     <g>
       {WORDS.map((word, i) => {
         const axis = axisById(word.axis)
-        const y = 116 + i * 86
+        const x = 52 + i * 386
+        const fromX = x + cardW
+        const fromY = cardY + 42
         return (
           <g key={word.text}>
             <rect
-              x={88}
-              y={y - 30}
-              width={410}
-              height={60}
+              x={x}
+              y={cardY}
+              width={cardW}
+              height={68}
               rx={18}
               fill="rgba(255,255,255,0.64)"
               stroke={axis.color}
               strokeOpacity={0.42}
             />
-            <text
-              x={116}
-              y={y + 8}
-              fontSize={24}
-              fontWeight={700}
-              fill={TEXT_PRIMARY}
-            >
+            <text x={x + 24} y={cardY + 42} fontSize={22} fontWeight={700} fill={TEXT_PRIMARY}>
               {word.text}
             </text>
             <path
-              d={arrowPath(510, y, axis.y, 1)}
+              d={arrowPath(fromX, fromY, knobX(word.axis), KNOB_Y - 18, 1)}
               fill="none"
               stroke={axis.color}
               strokeWidth={3.5}
               strokeLinecap="round"
               markerEnd={`url(#gld-arrow-${word.axis})`}
             />
-            <AxisPreviewStatic axis={axis} />
           </g>
         )
       })}
@@ -515,39 +387,16 @@ export default function GradingLookDecomposition({
         ))}
       </defs>
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
-      <line
-        x1={LEFT_W}
-        y1={28}
-        x2={LEFT_W}
-        y2={H - 28}
-        stroke={GRID}
-        strokeWidth={2}
-        strokeDasharray="9 12"
-      />
-
-      <text
-        x={64}
-        y={58}
-        fontSize={15}
-        fontWeight={700}
-        letterSpacing={2}
-        fill={TEXT_MUTED}
-      >
+      <line x1={40} y1={184} x2={1560} y2={184} stroke={GRID} strokeWidth={2} />
+      <text x={64} y={52} fontSize={15} fontWeight={700} letterSpacing={2} fill={TEXT_MUTED}>
         WORD STREAM
       </text>
-      <text
-        x={RIGHT_X + 48}
-        y={58}
-        fontSize={15}
-        fontWeight={700}
-        letterSpacing={2}
-        fill={TEXT_MUTED}
-      >
+      <text x={64} y={194} fontSize={15} fontWeight={700} letterSpacing={2} fill={TEXT_MUTED}>
         4 AXIS FOOTING
       </text>
 
       {AXES.map((axis) => (
-        <AxisRow
+        <AxisCard
           key={axis.id}
           axis={axis}
           active={!reducedMotion && activeAxis === axis.id && Math.abs(amp) > 0}
@@ -561,18 +410,18 @@ export default function GradingLookDecomposition({
         <g opacity={state.opacity}>
           <rect
             x={state.x}
-            y={212}
-            width={410}
-            height={76}
+            y={78}
+            width={480}
+            height={84}
             rx={22}
             fill="rgba(255,255,255,0.72)"
             stroke={axisById(activeAxis).color}
             strokeOpacity={0.6}
           />
           <text
-            x={state.x + 32}
-            y={258}
-            fontSize={29}
+            x={state.x + 34}
+            y={130}
+            fontSize={31}
             fontWeight={760}
             fill={TEXT_PRIMARY}
           >
@@ -580,7 +429,7 @@ export default function GradingLookDecomposition({
           </text>
           {arrowP > 0 ? (
             <path
-              d={arrowPath(state.x + 410, 250, targetY(activeAxis), arrowP)}
+              d={arrowPath(state.x + 480, 120, knobX(activeAxis), KNOB_Y - 18, arrowP)}
               fill="none"
               stroke={axisById(activeAxis).color}
               strokeWidth={4}

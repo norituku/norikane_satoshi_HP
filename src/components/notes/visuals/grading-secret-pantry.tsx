@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { VideoVisualProps } from "@/components/notes/note-visual"
 
-const LOOP = 9
+const LOOP = 10
 const W = 1600
 const H = 500
 
@@ -31,6 +31,16 @@ type Bottle = {
   y: number
 }
 
+type BottlePose = {
+  x: number
+  y: number
+  slideRotate: number
+  bottleRotate: number
+  capRotate: number
+  capDy: number
+  liquidLevel: number
+}
+
 const BOTTLES: Bottle[] = [
   { id: 1, label: "Gamut", color: MAGENTA, x: 138, y: 84 },
   { id: 2, label: "Lum", color: NAVY, x: 138, y: 306 },
@@ -46,49 +56,166 @@ function easeInOutCubic(v: number) {
   return v < 0.5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2
 }
 
+function easeOutCubic(v: number) {
+  return 1 - Math.pow(1 - v, 3)
+}
+
 function lerp(a: number, b: number, p: number) {
   return a + (b - a) * p
 }
 
 function axisStart(id: AxisId) {
-  return 1 + (id - 1) * 2
+  return (id - 1) * 2.5
 }
 
-function fadeOpacity(id: AxisId, t: number) {
-  const fadeStart = axisStart(id) + 0.4
+function layerOpacity(id: AxisId, t: number, reducedMotion: boolean) {
+  if (reducedMotion) return 1
+  const fadeStart = axisStart(id) + 0.7
   if (t < fadeStart) return 0
-  if (t >= fadeStart + 0.4) return 1
-  return easeInOutCubic((t - fadeStart) / 0.4)
+  const reset = t >= 9.5 ? 1 - easeInOutCubic((t - 9.5) / 0.5) : 1
+  if (t >= fadeStart + 0.8) return reset
+  return easeInOutCubic((t - fadeStart) / 0.8) * reset
 }
 
-function easeOutCubic(v: number) {
-  return 1 - Math.pow(1 - v, 3)
+function baseOpacity(t: number, reducedMotion: boolean) {
+  if (reducedMotion) return 1
+  if (t < 9.5) return 1
+  return easeInOutCubic((t - 9.5) / 0.5)
 }
 
-function shelfOpacity(t: number) {
-  if (t < 7.4) return 1
-  if (t >= 8) return 0
-  return 1 - easeOutCubic((t - 7.4) / 0.6)
-}
-
-function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean) {
-  const targetX = PREVIEW_CX - 56 + (bottle.id - 2.5) * 34
-  const targetY = PREVIEW_Y + 126
+function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePose {
   if (reducedMotion) {
-    return { x: targetX, y: targetY, rotate: 0, opacity: 0 }
+    return {
+      x: bottle.x,
+      y: bottle.y,
+      slideRotate: 0,
+      bottleRotate: 0,
+      capRotate: 0,
+      capDy: 0,
+      liquidLevel: 0,
+    }
   }
+
+  const hoverX = PREVIEW_CX - 35
+  const hoverY = PREVIEW_Y - 30
   const start = axisStart(bottle.id)
+
+  if (t >= 9.5) {
+    return {
+      x: bottle.x,
+      y: bottle.y,
+      slideRotate: 0,
+      bottleRotate: 0,
+      capRotate: 0,
+      capDy: 0,
+      liquidLevel: easeInOutCubic((t - 9.5) / 0.5),
+    }
+  }
+
   if (t < start) {
-    return { x: bottle.x, y: bottle.y, rotate: 0, opacity: 1 }
+    return {
+      x: bottle.x,
+      y: bottle.y,
+      slideRotate: 0,
+      bottleRotate: 0,
+      capRotate: 0,
+      capDy: 0,
+      liquidLevel: 1,
+    }
   }
-  const p = easeInOutCubic(clamp01((t - start) / 0.4))
-  const fadeP = easeOutCubic(clamp01((t - (start + 0.4)) / 0.4))
+
+  const localT = t - start
+
+  if (localT < 0.4) {
+    const p = easeInOutCubic(localT / 0.4)
+    return {
+      x: lerp(bottle.x, hoverX, p),
+      y: lerp(bottle.y, hoverY, p),
+      slideRotate: lerp(-8, 0, p),
+      bottleRotate: 0,
+      capRotate: 0,
+      capDy: 0,
+      liquidLevel: 1,
+    }
+  }
+
+  if (localT < 0.7) {
+    const p = easeInOutCubic((localT - 0.4) / 0.3)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: lerp(0, -22, p),
+      capRotate: lerp(0, -30, p),
+      capDy: lerp(0, -10, p),
+      liquidLevel: 1,
+    }
+  }
+
+  if (localT < 1.5) {
+    const p = clamp01((localT - 0.7) / 0.8)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: -22,
+      capRotate: -30,
+      capDy: -10,
+      liquidLevel: lerp(1, 0, p),
+    }
+  }
+
+  if (localT < 1.8) {
+    const p = easeInOutCubic((localT - 1.5) / 0.3)
+    return {
+      x: hoverX,
+      y: hoverY,
+      slideRotate: 0,
+      bottleRotate: lerp(-22, 0, p),
+      capRotate: lerp(-30, 0, p),
+      capDy: lerp(-10, 0, p),
+      liquidLevel: 0,
+    }
+  }
+
+  if (localT < 2.4) {
+    const p = easeInOutCubic((localT - 1.8) / 0.6)
+    return {
+      x: lerp(hoverX, bottle.x, p),
+      y: lerp(hoverY, bottle.y, p),
+      slideRotate: 0,
+      bottleRotate: 0,
+      capRotate: 0,
+      capDy: 0,
+      liquidLevel: 0,
+    }
+  }
+
   return {
-    x: lerp(bottle.x, targetX, p),
-    y: lerp(bottle.y, targetY, p),
-    rotate: lerp(-8, 0, p),
-    opacity: 1 - fadeP,
+    x: bottle.x,
+    y: bottle.y,
+    slideRotate: 0,
+    bottleRotate: 0,
+    capRotate: 0,
+    capDy: 0,
+    liquidLevel: 0,
   }
+}
+
+function pourOpacity(bottle: Bottle, t: number) {
+  const localT = t - axisStart(bottle.id)
+  if (localT < 0.7 || localT >= 1.5 || t >= 9.5) return 0
+  return clamp01(Math.min((localT - 0.7) / 0.1, (1.5 - localT) / 0.1))
+}
+
+function pourPath(pose: BottlePose) {
+  const x0 = pose.x + 42
+  const y0 = pose.y + 24
+  const x1 = PREVIEW_CX
+  const y1 = PREVIEW_Y + 30
+  const cx = lerp(x0, x1, 0.62)
+  const cy = Math.min(y0, y1) - 38
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)}, ${x1.toFixed(2)} ${y1.toFixed(2)}`
 }
 
 function PreviewLayers({
@@ -98,7 +225,6 @@ function PreviewLayers({
   t: number
   reducedMotion: boolean
 }) {
-  const finalFrame = reducedMotion
   return (
     <g>
       <rect
@@ -109,6 +235,7 @@ function PreviewLayers({
         height={PREVIEW_H}
         rx={20}
         fill="url(#sp-step-0-fill)"
+        opacity={baseOpacity(t, reducedMotion)}
       />
       <rect
         id="sp-step-1"
@@ -118,7 +245,7 @@ function PreviewLayers({
         height={PREVIEW_H}
         rx={20}
         fill="url(#sp-step-1-fill)"
-        opacity={finalFrame ? 1 : fadeOpacity(1, t)}
+        opacity={layerOpacity(1, t, reducedMotion)}
       />
       <rect
         id="sp-step-2"
@@ -128,7 +255,7 @@ function PreviewLayers({
         height={PREVIEW_H}
         rx={20}
         fill="url(#sp-step-2-fill)"
-        opacity={finalFrame ? 1 : fadeOpacity(2, t)}
+        opacity={layerOpacity(2, t, reducedMotion)}
       />
       <rect
         id="sp-step-3"
@@ -138,7 +265,7 @@ function PreviewLayers({
         height={PREVIEW_H}
         rx={20}
         fill="url(#sp-step-3-fill)"
-        opacity={finalFrame ? 1 : fadeOpacity(3, t)}
+        opacity={layerOpacity(3, t, reducedMotion)}
       />
       <rect
         id="sp-step-4"
@@ -148,7 +275,7 @@ function PreviewLayers({
         height={PREVIEW_H}
         rx={20}
         fill="url(#sp-step-4-fill)"
-        opacity={finalFrame ? 1 : fadeOpacity(4, t)}
+        opacity={layerOpacity(4, t, reducedMotion)}
       />
     </g>
   )
@@ -164,41 +291,47 @@ function Shelf({ side }: { side: "left" | "right" }) {
   )
 }
 
-function BottleShape({
-  bottle,
-  t,
-  reducedMotion,
-}: {
-  bottle: Bottle
-  t: number
-  reducedMotion: boolean
-}) {
-  const pose = bottlePose(bottle, t, reducedMotion)
+function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
+  const liquidTopY = lerp(140, 30, pose.liquidLevel)
   return (
     <g
-      transform={`translate(${pose.x.toFixed(2)} ${pose.y.toFixed(2)}) rotate(${pose.rotate.toFixed(2)} 42 52)`}
-      opacity={pose.opacity}
+      transform={`translate(${pose.x.toFixed(2)} ${pose.y.toFixed(2)}) rotate(${pose.slideRotate.toFixed(2)} 70 70)`}
     >
-      <path
-        d="M 28 52 C 28 36, 44 31, 54 24 L 54 9 L 86 9 L 86 24 C 96 31, 112 36, 112 52 L 112 118 C 112 132, 99 142, 70 142 C 41 142, 28 132, 28 118 Z"
-        fill="rgba(255,255,255,0.68)"
-        stroke={bottle.color}
-        strokeOpacity={0.58}
-        strokeWidth={3}
-      />
-      <rect x={48} y={0} width={44} height={18} rx={5} fill={bottle.color} />
-      <rect x={34} y={68} width={72} height={34} rx={8} fill={bottle.color} />
-      <text
-        x={70}
-        y={91}
-        textAnchor="middle"
-        fontFamily="var(--font-geist-mono), 'Notion Mono Editorial', monospace"
-        fontSize={bottle.label.length > 4 ? 18 : 21}
-        fontWeight={760}
-        fill="white"
-      >
-        {bottle.label}
-      </text>
+      <g transform={`rotate(${pose.bottleRotate.toFixed(2)} 70 18)`}>
+        <rect
+          x={32}
+          y={liquidTopY}
+          width={76}
+          height={140 - liquidTopY}
+          fill={bottle.color}
+          opacity={0.76}
+          clipPath="url(#sp-bottle-clip)"
+        />
+        <path
+          d="M 28 52 C 28 36, 44 31, 54 24 L 54 9 L 86 9 L 86 24 C 96 31, 112 36, 112 52 L 112 118 C 112 132, 99 142, 70 142 C 41 142, 28 132, 28 118 Z"
+          fill="rgba(255,255,255,0.42)"
+          stroke={bottle.color}
+          strokeOpacity={0.62}
+          strokeWidth={3}
+        />
+        <g
+          transform={`translate(0 ${pose.capDy.toFixed(2)}) rotate(${pose.capRotate.toFixed(2)} 70 18)`}
+        >
+          <rect x={48} y={0} width={44} height={18} rx={5} fill={bottle.color} />
+          <rect x={34} y={68} width={72} height={34} rx={8} fill={bottle.color} />
+          <text
+            x={70}
+            y={91}
+            textAnchor="middle"
+            fontFamily="var(--font-geist-mono), 'Notion Mono Editorial', monospace"
+            fontSize={bottle.label.length > 4 ? 18 : 21}
+            fontWeight={760}
+            fill="white"
+          >
+            {bottle.label}
+          </text>
+        </g>
+      </g>
     </g>
   )
 }
@@ -234,8 +367,12 @@ export default function GradingSecretPantry({
     }
   }, [isPlaying, reducedMotion])
 
-  const t = reducedMotion ? 8.5 : animT
-  const shelvesP = reducedMotion ? 0 : shelfOpacity(t)
+  const t = reducedMotion ? 9.25 : animT
+  const bottleStates = BOTTLES.map((bottle) => ({
+    bottle,
+    pose: bottlePose(bottle, t, reducedMotion),
+    pourOpacity: reducedMotion ? 0 : pourOpacity(bottle, t),
+  }))
 
   return (
     <svg
@@ -244,6 +381,9 @@ export default function GradingSecretPantry({
       preserveAspectRatio="xMidYMid meet"
     >
       <defs>
+        <clipPath id="sp-bottle-clip">
+          <path d="M 28 52 C 28 36, 44 31, 54 24 L 54 9 L 86 9 L 86 24 C 96 31, 112 36, 112 52 L 112 118 C 112 132, 99 142, 70 142 C 41 142, 28 132, 28 118 Z" />
+        </clipPath>
         <linearGradient id="sp-step-0-fill" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="rgb(176,182,187)" />
           <stop offset="52%" stopColor="rgb(128,136,143)" />
@@ -274,12 +414,8 @@ export default function GradingSecretPantry({
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
 
       <g>
-        {shelvesP > 0 ? (
-          <g opacity={shelvesP}>
-            <Shelf side="left" />
-            <Shelf side="right" />
-          </g>
-        ) : null}
+        <Shelf side="left" />
+        <Shelf side="right" />
         <rect
           x={PREVIEW_X - 18}
           y={PREVIEW_Y - 18}
@@ -300,16 +436,22 @@ export default function GradingSecretPantry({
           stroke="rgba(255,255,255,0.78)"
           strokeWidth={2}
         />
-        {!reducedMotion
-          ? BOTTLES.map((bottle) => (
-              <BottleShape
-                key={bottle.id}
-                bottle={bottle}
-                t={t}
-                reducedMotion={reducedMotion}
-              />
-            ))
-          : null}
+        {bottleStates.map(({ bottle, pose, pourOpacity }) =>
+          pourOpacity > 0 ? (
+            <path
+              key={`pour-${bottle.id}`}
+              d={pourPath(pose)}
+              fill="none"
+              stroke={bottle.color}
+              strokeWidth={12}
+              strokeLinecap="round"
+              opacity={pourOpacity}
+            />
+          ) : null,
+        )}
+        {bottleStates.map(({ bottle, pose }) => (
+          <BottleShape key={bottle.id} bottle={bottle} pose={pose} />
+        ))}
       </g>
     </svg>
   )
