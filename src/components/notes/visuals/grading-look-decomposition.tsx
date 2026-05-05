@@ -42,22 +42,27 @@ type Chip = {
   rgb: Rgb
 }
 
+type PatchBlock = {
+  key: ChipKind
+  chips: Chip[]
+}
+
 const AXES: Axis[] = [
   {
     id: 1,
     name: "色の広がり・転がり",
     sub: "hue / saturation",
     color: MAGENTA,
-    y: 82,
+    y: 116,
   },
-  { id: 2, name: "濃度", sub: "color density", color: NAVY, y: 190 },
-  { id: 3, name: "カーブ", sub: "tone curve", color: AMBER, y: 298 },
+  { id: 2, name: "濃度", sub: "color density", color: NAVY, y: 222 },
+  { id: 3, name: "カーブ", sub: "tone curve", color: AMBER, y: 328 },
   {
     id: 4,
     name: "RGB カラーバランス",
     sub: "gray balance",
     color: TEAL,
-    y: 406,
+    y: 434,
   },
 ]
 
@@ -81,6 +86,12 @@ const TEST_CHIPS: Chip[] = [
   { kind: "skin", label: "D2", rgb: { r: 139, g: 83, b: 58 } },
   { kind: "skin", label: "L1", rgb: { r: 204, g: 142, b: 102 } },
   { kind: "skin", label: "L2", rgb: { r: 230, g: 180, b: 136 } },
+]
+
+const PATCH_BLOCKS: PatchBlock[] = [
+  { key: "color", chips: TEST_CHIPS.filter((chip) => chip.kind === "color") },
+  { key: "gray", chips: TEST_CHIPS.filter((chip) => chip.kind === "gray").slice(0, 3) },
+  { key: "skin", chips: TEST_CHIPS.filter((chip) => chip.kind === "skin") },
 ]
 
 function gray(v: number): Rgb {
@@ -132,10 +143,14 @@ function axisById(id: AxisId) {
 }
 
 function arrowPath(fromX: number, fromY: number, toY: number, p: number) {
-  const toX = RIGHT_X + 52
+  const toX = RIGHT_X + 142
   const x1 = lerp(fromX, toX, p)
   const y1 = lerp(fromY, toY, p)
-  return `M ${fromX} ${fromY} C 520 ${fromY}, 650 ${y1}, ${x1} ${y1}`
+  const cx = lerp(fromX, toX, 0.54)
+  const cy = fromY + (toY - fromY) * 0.18
+  const cpx = lerp(fromX, cx, p)
+  const cpy = lerp(fromY, cy, p)
+  return `M ${fromX} ${fromY} Q ${cpx} ${cpy}, ${x1} ${y1}`
 }
 
 function rgbToHsl({ r, g, b }: Rgb) {
@@ -182,6 +197,8 @@ function sCurve(l: number, k: number) {
 
 function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   let rgb = chip.rgb
+  const kindAmp =
+    (axisId === 3 || axisId === 4) && chip.kind !== "gray" ? amp * 0.45 : amp
   if (axisId === 1 && chip.kind !== "gray") {
     const hsl = rgbToHsl(rgb)
     rgb = hslToRgb(hsl.h + amp * 15, clamp01(hsl.s * (1 + amp * 0.3)), hsl.l)
@@ -192,55 +209,142 @@ function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   }
   if (axisId === 3) {
     const hsl = rgbToHsl(rgb)
-    rgb = hslToRgb(hsl.h, hsl.s, sCurve(hsl.l, amp * 0.3))
+    rgb = hslToRgb(hsl.h, hsl.s, sCurve(hsl.l, kindAmp * 0.3))
   }
   if (axisId === 4) {
-    const shift = amp * 0.2 * 255
+    const shift = kindAmp * 0.2 * 255
     rgb = { r: rgb.r + shift, g: rgb.g, b: rgb.b - shift }
   }
   return `rgb(${clamp255(rgb.r)},${clamp255(rgb.g)},${clamp255(rgb.b)})`
 }
 
+function PatchBlock({
+  axis,
+  block,
+  x,
+  y,
+  width,
+}: {
+  axis: Axis
+  block: PatchBlock
+  x: number
+  y: number
+  width: number
+}) {
+  const gap = 6
+  const tileH = 70
+  const tileW = (width - gap * (block.chips.length - 1)) / block.chips.length
+  return (
+    <g>
+      {block.chips.map((chip, i) => (
+        <rect
+          key={`${axis.id}-${chip.label}`}
+          x={x + i * (tileW + gap)}
+          y={y}
+          width={tileW}
+          height={tileH}
+          rx={7}
+          fill={chipColor(axis.id, chip, 0)}
+          stroke="rgba(255,255,255,0.72)"
+        />
+      ))}
+    </g>
+  )
+}
+
+function AnimatedPatchBlock({
+  axis,
+  block,
+  amp,
+  x,
+  y,
+  width,
+}: {
+  axis: Axis
+  block: PatchBlock
+  amp: number
+  x: number
+  y: number
+  width: number
+}) {
+  const gap = 6
+  const tileH = 70
+  const tileW = (width - gap * (block.chips.length - 1)) / block.chips.length
+  return (
+    <g>
+      {block.chips.map((chip, i) => (
+        <rect
+          key={`${axis.id}-${chip.label}`}
+          x={x + i * (tileW + gap)}
+          y={y}
+          width={tileW}
+          height={tileH}
+          rx={7}
+          fill={chipColor(axis.id, chip, amp)}
+          stroke="rgba(255,255,255,0.72)"
+        />
+      ))}
+    </g>
+  )
+}
+
 function AxisPreview({ axis, amp }: { axis: Axis; amp: number }) {
-  const baseX = RIGHT_X + 484
-  const y = axis.y
+  const baseX = RIGHT_X + 735
+  const y = axis.y - 35
+  const colorW = 190
+  const grayW = 142
+  const skinW = 190
+  const gap = 8
+  const blocks = [
+    { block: PATCH_BLOCKS[0], x: baseX - colorW - grayW - skinW - gap * 2 },
+    { block: PATCH_BLOCKS[1], x: baseX - grayW - skinW - gap },
+    { block: PATCH_BLOCKS[2], x: baseX - skinW },
+  ]
   return (
     <g>
       <rect
-        x={baseX - 14}
-        y={y - 31}
-        width={302}
-        height={62}
-        rx={14}
-        fill="rgba(255,255,255,0.34)"
+        x={baseX - colorW - grayW - skinW - gap * 2 - 10}
+        y={y - 8}
+        width={colorW + grayW + skinW + gap * 2 + 20}
+        height={86}
+        rx={12}
+        fill="rgba(255,255,255,0.30)"
         stroke="rgba(255,255,255,0.58)"
       />
-      {TEST_CHIPS.map((chip, i) => (
-        <rect
-          key={`${axis.id}-${chip.label}`}
-          x={baseX + i * 23}
-          y={y - 20}
-          width={19}
-          height={40}
-          rx={5}
-          fill={chipColor(axis.id, chip, amp)}
-          stroke="rgba(255,255,255,0.76)"
-        />
-      ))}
-      <line
-        x1={baseX + 4 * 23 - 5}
-        y1={y - 24}
-        x2={baseX + 4 * 23 - 5}
-        y2={y + 24}
-        stroke="rgba(28,15,110,0.14)"
+      <AnimatedPatchBlock axis={axis} block={blocks[0].block} amp={amp} x={blocks[0].x} y={y} width={colorW} />
+      <AnimatedPatchBlock axis={axis} block={blocks[1].block} amp={amp} x={blocks[1].x} y={y} width={grayW} />
+      <AnimatedPatchBlock axis={axis} block={blocks[2].block} amp={amp} x={blocks[2].x} y={y} width={skinW} />
+    </g>
+  )
+}
+
+function AxisPreviewStatic({ axis }: { axis: Axis }) {
+  const baseX = RIGHT_X + 735
+  const y = axis.y
+  const tileY = y - 35
+  const colorW = 190
+  const grayW = 142
+  const skinW = 190
+  const gap = 8
+  const blocks = [
+    { block: PATCH_BLOCKS[0], x: baseX - colorW - grayW - skinW - gap * 2 },
+    { block: PATCH_BLOCKS[1], x: baseX - grayW - skinW - gap },
+    { block: PATCH_BLOCKS[2], x: baseX - skinW },
+  ]
+  return (
+    <g>
+      <rect
+        x={baseX - colorW - grayW - skinW - gap * 2 - 10}
+        y={tileY - 8}
+        width={colorW + grayW + skinW + gap * 2 + 20}
+        height={86}
+        rx={12}
+        fill="rgba(255,255,255,0.30)"
+        stroke="rgba(255,255,255,0.58)"
       />
-      <line
-        x1={baseX + 8 * 23 - 5}
-        y1={y - 24}
-        x2={baseX + 8 * 23 - 5}
-        y2={y + 24}
-        stroke="rgba(28,15,110,0.14)"
-      />
+      <PatchBlock axis={axis} block={blocks[0].block} x={blocks[0].x} y={tileY} width={colorW} />
+      <PatchBlock axis={axis} block={blocks[1].block} x={blocks[1].x} y={tileY} width={grayW} />
+      <PatchBlock axis={axis} block={blocks[2].block} x={blocks[2].x} y={tileY} width={skinW} />
     </g>
   )
 }
@@ -254,15 +358,15 @@ function AxisRow({
   amp: number
   active: boolean
 }) {
-  const knobX = RIGHT_X + 394 + amp * 26
+  const knobX = RIGHT_X + 146 + amp * 20
   return (
     <g>
       <rect
         x={RIGHT_X + 36}
-        y={axis.y - 44}
+        y={axis.y - 51}
         width={720}
-        height={88}
-        rx={18}
+        height={102}
+        rx={16}
         fill={
           active
             ? `${axis.color.replace("rgb", "rgba").replace(")", ",0.10)")}`
@@ -275,19 +379,19 @@ function AxisRow({
       <text
         x={RIGHT_X + 96}
         y={axis.y - 6}
-        fontSize={22}
+        fontSize={19}
         fontWeight={700}
         fill={TEXT_PRIMARY}
       >
         {axis.name}
       </text>
-      <text x={RIGHT_X + 96} y={axis.y + 20} fontSize={14} fill={TEXT_MUTED}>
+      <text x={RIGHT_X + 96} y={axis.y + 18} fontSize={13} fill={TEXT_MUTED}>
         {axis.sub}
       </text>
       <line
-        x1={RIGHT_X + 315}
+        x1={RIGHT_X + 126}
         y1={axis.y}
-        x2={RIGHT_X + 447}
+        x2={RIGHT_X + 184}
         y2={axis.y}
         stroke="rgba(28,15,110,0.18)"
         strokeWidth={8}
@@ -334,13 +438,14 @@ function ReducedFrame() {
               {word.text}
             </text>
             <path
-              d={`M 510 ${y} C 610 ${y}, 660 ${axis.y}, 842 ${axis.y}`}
+              d={arrowPath(510, y, axis.y, 1)}
               fill="none"
               stroke={axis.color}
               strokeWidth={3.5}
               strokeLinecap="round"
               markerEnd={`url(#gld-arrow-${word.axis})`}
             />
+            <AxisPreviewStatic axis={axis} />
           </g>
         )
       })}
