@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react"
 import type { VideoVisualProps } from "@/components/notes/note-visual"
 
-const LOOP = 12
+const LOOP = 18
 const W = 1600
 const H = 500
 
 const TEXT_PRIMARY = "rgba(28,15,110,0.94)"
 const TEXT_MUTED = "rgba(107,95,168,0.84)"
-const GRID = "rgba(139,127,255,0.18)"
 const CARD = "rgba(255,255,255,0.54)"
 
 const MAGENTA = "rgb(192,74,142)"
@@ -18,13 +17,19 @@ const AMBER = "rgb(200,146,58)"
 const TEAL = "rgb(46,140,132)"
 
 const CARD_X = 40
-const CARD_Y = 200
+const CARD_Y = 40
 const CARD_W = 374
-const CARD_H = 280
+const CARD_H = 300
 const CARD_GAP = 8
-const KNOB_Y = 224
-const PATTERN_Y = 256
-const PATTERN_H = 216
+const KNOB_Y = 80
+const PATTERN_Y = 112
+const PATTERN_H = 178
+const SLIDER_Y = 314
+const WORD_X = 560
+const WORD_Y = 380
+const WORD_W = 480
+const WORD_H = 84
+const WORD_PERIOD = 4.5
 
 type AxisId = 1 | 2 | 3 | 4
 type ChipKind = "color" | "gray" | "skin"
@@ -105,25 +110,21 @@ function axisX(axisId: AxisId) {
   return CARD_X + (axisId - 1) * (CARD_W + CARD_GAP)
 }
 
-function knobX(axisId: AxisId) {
-  return axisX(axisId) + CARD_W / 2
-}
-
 function axisById(id: AxisId) {
   return AXES.find((axis) => axis.id === id)!
 }
 
 function response(localT: number) {
-  const p = clamp01((localT - 2.05) / 0.95)
+  const p = clamp01((localT - 3.075) / 1.425)
   if (p <= 0 || p >= 1) return 0
   return Math.sin(Math.PI * 2 * easeInOutCubic(p))
 }
 
 function wordState(localT: number) {
-  const enter = easeOutCubic(clamp01(localT / 0.4))
-  const fadeOut = 1 - clamp01((localT - 2.6) / 0.4)
+  const enter = easeOutCubic(clamp01(localT / 0.6))
+  const fadeOut = 1 - clamp01((localT - 3.9) / 0.6)
   return {
-    x: lerp(450, 560, enter),
+    x: lerp(440, WORD_X, enter),
     opacity: Math.min(enter, fadeOut),
   }
 }
@@ -132,10 +133,22 @@ function arrowPath(fromX: number, fromY: number, toX: number, toY: number, p: nu
   const x1 = lerp(fromX, toX, p)
   const y1 = lerp(fromY, toY, p)
   const cx = lerp(fromX, toX, 0.52)
-  const cy = lerp(fromY, toY, 0.44)
+  const cy = lerp(fromY, toY, 0.4) - 18
   const cpx = lerp(fromX, cx, p)
   const cpy = lerp(fromY, cy, p)
   return `M ${fromX} ${fromY} Q ${cpx} ${cpy}, ${x1} ${y1}`
+}
+
+function sliderBounds(axisId: AxisId) {
+  const left = axisX(axisId) + 10
+  const right = axisX(axisId) + CARD_W - 10
+  const half = (right - left) / 2
+  return { left, right, half }
+}
+
+function sliderKnobX(axisId: AxisId, amp: number) {
+  const { left, half } = sliderBounds(axisId)
+  return left + half + amp * half
 }
 
 function rgbToHsl({ r, g, b }: Rgb) {
@@ -242,7 +255,8 @@ function AxisCard({
   active: boolean
 }) {
   const x = axisX(axis.id)
-  const knob = knobX(axis.id) + amp * 16
+  const rail = sliderBounds(axis.id)
+  const knob = sliderKnobX(axis.id, amp)
 
   return (
     <g>
@@ -263,38 +277,38 @@ function AxisCard({
       <text x={x + 56} y={KNOB_Y + 18} fontSize={13} fill={TEXT_MUTED}>
         {axis.sub}
       </text>
+      <TestPattern axis={axis} amp={amp} />
       <line
-        x1={x + CARD_W - 112}
-        y1={KNOB_Y}
-        x2={x + CARD_W - 42}
-        y2={KNOB_Y}
+        x1={rail.left}
+        y1={SLIDER_Y}
+        x2={rail.right}
+        y2={SLIDER_Y}
         stroke="rgba(28,15,110,0.18)"
-        strokeWidth={8}
+        strokeWidth={10}
         strokeLinecap="round"
       />
       <circle
         cx={knob}
-        cy={KNOB_Y}
-        r={15}
+        cy={SLIDER_Y}
+        r={16}
         fill={axis.color}
         stroke="white"
         strokeWidth={3}
       />
-      <TestPattern axis={axis} amp={amp} />
     </g>
   )
 }
 
 function ReducedFrame() {
   const cardW = 350
-  const cardY = 84
+  const cardY = 380
   return (
     <g>
       {WORDS.map((word, i) => {
         const axis = axisById(word.axis)
         const x = 52 + i * 386
-        const fromX = x + cardW
-        const fromY = cardY + 42
+        const fromX = x + cardW / 2
+        const fromY = cardY
         return (
           <g key={word.text}>
             <rect
@@ -311,7 +325,7 @@ function ReducedFrame() {
               {word.text}
             </text>
             <path
-              d={arrowPath(fromX, fromY, knobX(word.axis), KNOB_Y - 18, 1)}
+              d={arrowPath(fromX, fromY, sliderKnobX(word.axis, 0), SLIDER_Y, 1)}
               fill="none"
               stroke={axis.color}
               strokeWidth={3.5}
@@ -356,12 +370,12 @@ export default function GradingLookDecomposition({
     }
   }, [isPlaying, reducedMotion])
 
-  const wordIndex = Math.floor(animT / 3) % WORDS.length
-  const localT = animT % 3
+  const wordIndex = Math.floor(animT / WORD_PERIOD) % WORDS.length
+  const localT = animT % WORD_PERIOD
   const activeWord = WORDS[wordIndex]
   const activeAxis = activeWord.axis
   const state = wordState(localT)
-  const arrowP = clamp01((localT - 1.55) / 0.7)
+  const arrowP = clamp01((localT - 2.325) / 1.05)
   const amp = response(localT)
 
   return (
@@ -387,13 +401,6 @@ export default function GradingLookDecomposition({
         ))}
       </defs>
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
-      <line x1={40} y1={184} x2={1560} y2={184} stroke={GRID} strokeWidth={2} />
-      <text x={64} y={52} fontSize={15} fontWeight={700} letterSpacing={2} fill={TEXT_MUTED}>
-        WORD STREAM
-      </text>
-      <text x={64} y={194} fontSize={15} fontWeight={700} letterSpacing={2} fill={TEXT_MUTED}>
-        4 AXIS FOOTING
-      </text>
 
       {AXES.map((axis) => (
         <AxisCard
@@ -410,9 +417,9 @@ export default function GradingLookDecomposition({
         <g opacity={state.opacity}>
           <rect
             x={state.x}
-            y={78}
-            width={480}
-            height={84}
+            y={WORD_Y}
+            width={WORD_W}
+            height={WORD_H}
             rx={22}
             fill="rgba(255,255,255,0.72)"
             stroke={axisById(activeAxis).color}
@@ -420,7 +427,7 @@ export default function GradingLookDecomposition({
           />
           <text
             x={state.x + 34}
-            y={130}
+            y={WORD_Y + 52}
             fontSize={31}
             fontWeight={760}
             fill={TEXT_PRIMARY}
@@ -429,7 +436,13 @@ export default function GradingLookDecomposition({
           </text>
           {arrowP > 0 ? (
             <path
-              d={arrowPath(state.x + 480, 120, knobX(activeAxis), KNOB_Y - 18, arrowP)}
+              d={arrowPath(
+                state.x + WORD_W / 2,
+                WORD_Y,
+                sliderKnobX(activeAxis, amp),
+                SLIDER_Y,
+                arrowP,
+              )}
               fill="none"
               stroke={axisById(activeAxis).color}
               strokeWidth={4}

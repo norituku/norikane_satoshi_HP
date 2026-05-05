@@ -13,7 +13,6 @@ const PREVIEW_W = 747
 const PREVIEW_H = 420
 const PREVIEW_CX = PREVIEW_X + PREVIEW_W / 2
 
-const CARD = "rgba(255,255,255,0.50)"
 const GRID = "rgba(139,127,255,0.16)"
 
 const MAGENTA = "rgb(192,74,142)"
@@ -37,7 +36,6 @@ type BottlePose = {
   slideRotate: number
   bottleRotate: number
   capRotate: number
-  capDy: number
   liquidLevel: number
 }
 
@@ -91,7 +89,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       slideRotate: 0,
       bottleRotate: 0,
       capRotate: 0,
-      capDy: 0,
       liquidLevel: 0,
     }
   }
@@ -107,7 +104,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       slideRotate: 0,
       bottleRotate: 0,
       capRotate: 0,
-      capDy: 0,
       liquidLevel: easeInOutCubic((t - 9.5) / 0.5),
     }
   }
@@ -119,7 +115,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       slideRotate: 0,
       bottleRotate: 0,
       capRotate: 0,
-      capDy: 0,
       liquidLevel: 1,
     }
   }
@@ -134,7 +129,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       slideRotate: lerp(-8, 0, p),
       bottleRotate: 0,
       capRotate: 0,
-      capDy: 0,
       liquidLevel: 1,
     }
   }
@@ -146,8 +140,7 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       y: hoverY,
       slideRotate: 0,
       bottleRotate: lerp(0, -22, p),
-      capRotate: lerp(0, -30, p),
-      capDy: lerp(0, -10, p),
+      capRotate: lerp(0, + 60, p),
       liquidLevel: 1,
     }
   }
@@ -159,8 +152,7 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       y: hoverY,
       slideRotate: 0,
       bottleRotate: -22,
-      capRotate: -30,
-      capDy: -10,
+      capRotate: + 60,
       liquidLevel: lerp(1, 0, p),
     }
   }
@@ -172,8 +164,7 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       y: hoverY,
       slideRotate: 0,
       bottleRotate: lerp(-22, 0, p),
-      capRotate: lerp(-30, 0, p),
-      capDy: lerp(-10, 0, p),
+      capRotate: lerp(+ 60, 0, p),
       liquidLevel: 0,
     }
   }
@@ -186,7 +177,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
       slideRotate: 0,
       bottleRotate: 0,
       capRotate: 0,
-      capDy: 0,
       liquidLevel: 0,
     }
   }
@@ -197,7 +187,6 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     slideRotate: 0,
     bottleRotate: 0,
     capRotate: 0,
-    capDy: 0,
     liquidLevel: 0,
   }
 }
@@ -314,9 +303,7 @@ function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
           strokeOpacity={0.62}
           strokeWidth={3}
         />
-        <g
-          transform={`translate(0 ${pose.capDy.toFixed(2)}) rotate(${pose.capRotate.toFixed(2)} 70 18)`}
-        >
+        <g transform={`rotate(${pose.capRotate.toFixed(2)} 92 9)`}>
           <rect x={48} y={0} width={44} height={18} rx={5} fill={bottle.color} />
           <rect x={34} y={68} width={72} height={34} rx={8} fill={bottle.color} />
           <text
@@ -422,7 +409,7 @@ export default function GradingSecretPantry({
           width={PREVIEW_W + 36}
           height={PREVIEW_H + 36}
           rx={26}
-          fill={CARD}
+          fill="none"
           stroke="rgba(255,255,255,0.62)"
         />
         <PreviewLayers t={t} reducedMotion={reducedMotion} />
