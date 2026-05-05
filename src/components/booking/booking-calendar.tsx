@@ -15,7 +15,7 @@ import type {
 } from "@fullcalendar/core"
 import { format } from "date-fns"
 import { Lock } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { getHolidayName } from "@/lib/booking/holidays"
 
@@ -91,7 +91,7 @@ function toBusyEvent(slot: BusySlot, view: CalendarView): EventInput {
   }
 }
 
-async function fetchBusyEvents(arg: EventSourceFuncArg, view: CalendarView): Promise<EventInput[]> {
+async function fetchBusySlots(arg: EventSourceFuncArg): Promise<BusySlot[]> {
   const params = new URLSearchParams({
     start: arg.startStr,
     end: arg.endStr,
@@ -105,20 +105,43 @@ async function fetchBusyEvents(arg: EventSourceFuncArg, view: CalendarView): Pro
   }
 
   const data = (await response.json()) as FreeBusyResponse
-  return (data.busy ?? []).map((slot) => toBusyEvent(slot, view))
+  return data.busy ?? []
 }
 
 export function BookingCalendar() {
   const [view, setView] = useState<CalendarView>("dayGridMonth")
+  const calendarRef = useRef<FullCalendar | null>(null)
+  const selectedViewRef = useRef<CalendarView>("dayGridMonth")
+  const busySlotCacheRef = useRef<Map<string, BusySlot[]>>(new Map())
+
+  useEffect(() => {
+    selectedViewRef.current = view
+    const calendarApi = calendarRef.current?.getApi()
+    if (calendarApi && calendarApi.view.type !== view) {
+      calendarApi.changeView(view)
+      calendarApi.refetchEvents()
+    }
+  }, [view])
+
+  const fetchCachedBusyEvents = useCallback(async (arg: EventSourceFuncArg): Promise<EventInput[]> => {
+    const cacheKey = `${arg.startStr}|${arg.endStr}`
+    let slots = busySlotCacheRef.current.get(cacheKey)
+    if (!slots) {
+      slots = await fetchBusySlots(arg)
+      busySlotCacheRef.current.set(cacheKey, slots)
+    }
+
+    return slots.map((slot) => toBusyEvent(slot, selectedViewRef.current))
+  }, [])
 
   const eventSources = useMemo(
     () => [
       {
         id: "google-calendar-busy",
-        events: (arg: EventSourceFuncArg) => fetchBusyEvents(arg, view),
+        events: fetchCachedBusyEvents,
       },
     ],
-    [view],
+    [fetchCachedBusyEvents],
   )
 
   const handleDateClick = (arg: DateClickArg) => {
@@ -175,7 +198,10 @@ export function BookingCalendar() {
               type="button"
               className={`booking-calendar__tab ${isActive ? "glass-inset text-hp" : "glass-flat text-hp-muted"}`}
               aria-pressed={isActive}
-              onClick={() => setView(option.value)}
+              onClick={() => {
+                selectedViewRef.current = option.value
+                setView(option.value)
+              }}
             >
               {option.label}
             </button>
@@ -184,7 +210,7 @@ export function BookingCalendar() {
       </div>
       <div className="booking-calendar__surface glass-flat">
         <FullCalendar
-          key={view}
+          ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView={view}
           locale={jaLocale}
