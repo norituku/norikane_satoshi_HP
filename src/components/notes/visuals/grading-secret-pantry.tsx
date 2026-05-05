@@ -155,39 +155,15 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     }
   }
 
-  if (localT < 0.8) {
-    const p = easeInOutCubic((localT - 0.5) / 0.3)
-    return {
-      x: hoverX,
-      y: hoverY,
-      slideRotate: 0,
-      bottleRotate: lerp(sign * -22, sign * -50, p),
-      capRotate: sign * 60,
-      liquidLevel: lerp(1.0, 0.75, p),
-    }
-  }
-
-  if (localT < 1.1) {
-    const p = easeInOutCubic((localT - 0.8) / 0.3)
-    return {
-      x: hoverX,
-      y: hoverY,
-      slideRotate: 0,
-      bottleRotate: lerp(sign * -50, sign * -110, p),
-      capRotate: sign * 60,
-      liquidLevel: lerp(0.75, 0.35, p),
-    }
-  }
-
   if (localT < 1.4) {
-    const p = easeInOutCubic((localT - 1.1) / 0.3)
+    const p = easeInOutCubic((localT - 0.5) / 0.9)
     return {
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: lerp(sign * -110, sign * -180, p),
+      bottleRotate: lerp(sign * -22, sign * -180, p),
       capRotate: sign * 60,
-      liquidLevel: lerp(0.35, 0.0, p),
+      liquidLevel: lerp(1.0, 0.0, p),
     }
   }
 
@@ -202,25 +178,13 @@ function bottlePose(bottle: Bottle, t: number, reducedMotion: boolean): BottlePo
     }
   }
 
-  if (localT < 1.9) {
-    const p = easeInOutCubic((localT - 1.6) / 0.3)
-    return {
-      x: hoverX,
-      y: hoverY,
-      slideRotate: 0,
-      bottleRotate: lerp(sign * -180, sign * -22, p),
-      capRotate: sign * 60,
-      liquidLevel: 0,
-    }
-  }
-
   if (localT < 2.1) {
-    const p = easeInOutCubic((localT - 1.9) / 0.2)
+    const p = easeInOutCubic((localT - 1.6) / 0.5)
     return {
       x: hoverX,
       y: hoverY,
       slideRotate: 0,
-      bottleRotate: lerp(sign * -22, 0, p),
+      bottleRotate: lerp(sign * -180, 0, p),
       capRotate: lerp(sign * 60, 0, p),
       liquidLevel: 0,
     }
@@ -351,9 +315,9 @@ function BottleShape({ bottle, pose }: { bottle: Bottle; pose: BottlePose }) {
       <g transform={`rotate(${pose.bottleRotate.toFixed(2)} 70 18)`}>
         <rect
           x={32}
-          y={30}
+          y={9}
           width={76}
-          height={110 * pose.liquidLevel}
+          height={133 * pose.liquidLevel}
           fill={bottle.color}
           opacity={0.76}
           clipPath="url(#sp-bottle-clip)"
