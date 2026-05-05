@@ -115,17 +115,16 @@ function axisById(id: AxisId) {
 }
 
 function response(localT: number) {
-  const p = clamp01((localT - 2.9) / 1.6)
+  const p = clamp01((localT - 0.5) / 3.4)
   if (p <= 0 || p >= 1) return 0
   return Math.sin(Math.PI * 2 * easeInOutCubic(p))
 }
 
 function wordState(localT: number) {
-  const enter = easeOutCubic(clamp01(localT / 0.6))
   const fadeOut = 1 - clamp01((localT - 3.9) / 0.6)
   return {
     x: WORD_X,
-    opacity: Math.min(enter, fadeOut),
+    opacity: fadeOut,
   }
 }
 
@@ -382,8 +381,8 @@ export default function GradingLookDecomposition({
   const activeWord = WORDS[wordIndex]
   const activeAxis = activeWord.axis
   const state = wordState(localT)
-  const arrowP = clamp01((localT - 2.4) / 0.5)
-  const arrowOpacity = 1 - clamp01((localT - 3.4) / 1.0)
+  const arrowP = clamp01(localT / 0.5)
+  const arrowOpacity = 1 - clamp01((localT - 1.0) / 2.9)
   const amp = response(localT)
 
   return (

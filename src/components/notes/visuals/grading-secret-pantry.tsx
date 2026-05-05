@@ -200,7 +200,7 @@ function pourOpacity(bottle: Bottle, t: number) {
 }
 
 function pourPath(pose: BottlePose, mirror: boolean) {
-  const x0 = pose.x + (mirror ? 98 : 42)
+  const x0 = pose.x + (mirror ? 42 : 98)
   const y0 = pose.y + 24
   const x1 = PREVIEW_CX
   const y1 = PREVIEW_Y + 30
