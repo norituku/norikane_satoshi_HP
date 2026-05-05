@@ -1,0 +1,49 @@
+import type { BookingStep } from "@/lib/booking/form-schema"
+
+type BookingFooterProps = {
+  step: BookingStep
+  canGoNext: boolean
+  onBack: () => void
+  onNext: () => void
+  onReset: () => void
+}
+
+function nextLabel(step: BookingStep): string {
+  if (step === "confirm") return "予約を申し込む"
+  return "進む"
+}
+
+export function BookingFooter({ step, canGoNext, onBack, onNext, onReset }: BookingFooterProps) {
+  if (step === "done") {
+    return (
+      <footer className="booking-footer">
+        <button className="booking-footer__secondary glass-flat" type="button" onClick={onReset}>
+          カレンダーに戻る
+        </button>
+        <button className="booking-footer__primary glass-btn" type="button" onClick={() => undefined}>
+          マイページで予約一覧を見る
+        </button>
+      </footer>
+    )
+  }
+
+  return (
+    <footer className="booking-footer">
+      {step === "calendar" ? (
+        <span aria-hidden="true" />
+      ) : (
+        <button className="booking-footer__secondary glass-flat" type="button" onClick={onBack}>
+          戻る
+        </button>
+      )}
+      <button
+        className="booking-footer__primary glass-btn"
+        type="button"
+        disabled={!canGoNext}
+        onClick={onNext}
+      >
+        {nextLabel(step)}
+      </button>
+    </footer>
+  )
+}

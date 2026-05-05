@@ -13,17 +13,16 @@ if (!Number.isFinite(waitSeconds) || waitSeconds < 0) {
   process.exit(2)
 }
 
-const consoleMessages = []
-const pageErrors = []
-const requestFailures = []
 const browser = await chromium.launch({ headless: true })
 
 try {
   const context = await browser.newContext()
   const page = await context.newPage()
+  const scenarioResults = []
+  let activeScenario = null
 
   page.on("console", (msg) => {
-    consoleMessages.push({
+    activeScenario?.consoleMessages.push({
       type: msg.type(),
       text: msg.text(),
       location: msg.location(),
@@ -31,7 +30,7 @@ try {
   })
 
   page.on("pageerror", (error) => {
-    pageErrors.push({
+    activeScenario?.pageErrors.push({
       name: error.name,
       message: error.message,
       stack: error.stack ?? null,
@@ -39,7 +38,7 @@ try {
   })
 
   page.on("requestfailed", (request) => {
-    requestFailures.push({
+    activeScenario?.requestFailures.push({
       url: request.url(),
       method: request.method(),
       resourceType: request.resourceType(),
@@ -49,19 +48,140 @@ try {
 
   const url = new URL(targetUrl)
   await page.goto(`${url.origin}/api/dev/auth-bypass`, { waitUntil: "networkidle" })
-  await page.goto(targetUrl, { waitUntil: "networkidle" })
 
-  if (clickSelector) {
-    await page.locator(clickSelector).click()
+  async function clearBookingDrafts() {
+    await page.evaluate(() => {
+      window.sessionStorage.removeItem("booking-draft-session")
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("booking-draft-"))
+        .forEach((key) => window.localStorage.removeItem(key))
+    })
   }
 
-  await page.waitForTimeout(waitSeconds * 1000)
+  async function seedBookingDraft(step = "form") {
+    await page.evaluate((draftStep) => {
+      const start = new Date("2026-05-06T10:00:00+09:00")
+      const end = new Date("2026-05-06T11:00:00+09:00")
+      const payload = {
+        formData: {
+          bookingKind: "confirmed",
+          projectTitle: "",
+          workScopes: [],
+          otherWorkDetail: "",
+          estimatedDuration: "consult",
+          dueDate: "",
+          companyName: "",
+          contactName: "",
+          sessionEmail: "norikane.satoshi@gmail.com",
+          contactEmail: "",
+          phone: "",
+          memo: "",
+          agreed: false,
+        },
+        selectedSlot: {
+          start: start.toISOString(),
+          end: end.toISOString(),
+        },
+        step: draftStep,
+        savedAt: Date.now(),
+      }
+      window.sessionStorage.setItem("booking-draft-session", JSON.stringify(payload))
+    }, step)
+  }
 
-  const result = { consoleMessages, pageErrors, requestFailures }
+  async function runScenario(name, action) {
+    activeScenario = {
+      name,
+      consoleMessages: [],
+      pageErrors: [],
+      requestFailures: [],
+    }
+    await clearBookingDrafts()
+    await action()
+    await page.waitForTimeout(waitSeconds * 1000)
+    const consoleErrorCount = activeScenario.consoleMessages.filter((message) => message.type === "error").length
+    scenarioResults.push({
+      name,
+      consoleErrorCount,
+      pageErrorCount: activeScenario.pageErrors.length,
+      requestFailureCount: activeScenario.requestFailures.length,
+      consoleMessages: activeScenario.consoleMessages,
+      pageErrors: activeScenario.pageErrors,
+      requestFailures: activeScenario.requestFailures,
+    })
+    activeScenario = null
+  }
+
+  const isBookingSuite = url.pathname === "/booking" && !clickSelector
+
+  if (isBookingSuite) {
+    await runScenario("s1-calendar-month", async () => {
+      await page.goto(`${url.origin}/booking?step=calendar`, { waitUntil: "networkidle" })
+      await page.locator(".booking-calendar__surface").waitFor()
+    })
+
+    await runScenario("s2-calendar-week", async () => {
+      await page.goto(`${url.origin}/booking?step=calendar`, { waitUntil: "networkidle" })
+      await page.locator("[data-view=\"week\"]").click()
+      await page.locator(".fc-timeGridWeek-view").waitFor()
+    })
+
+    await runScenario("s3-calendar-day", async () => {
+      await page.goto(`${url.origin}/booking?step=calendar`, { waitUntil: "networkidle" })
+      await page.locator("[data-view=\"day\"]").click()
+      await page.locator(".fc-timeGridDay-view").waitFor()
+    })
+
+    await runScenario("s4-form-initial", async () => {
+      await page.goto(`${url.origin}/booking?step=form`, { waitUntil: "networkidle" })
+      await page.locator(".booking-form").waitFor()
+    })
+
+    await runScenario("s5-form-valid", async () => {
+      await seedBookingDraft("form")
+      await page.goto(`${url.origin}/booking?step=form`, { waitUntil: "networkidle" })
+      await page.locator("input[name=\"projectTitle\"]").fill("Console check")
+      await page.locator("input[name=\"contactName\"]").fill("Console Tester")
+      await page.locator("input[name=\"agreed\"]").check()
+      await page.locator(".booking-footer__primary").waitFor({ state: "visible" })
+      await page.waitForFunction(() => {
+        const button = document.querySelector(".booking-footer__primary")
+        return button instanceof HTMLButtonElement && !button.disabled
+      })
+    })
+
+    await runScenario("s6-confirm", async () => {
+      await seedBookingDraft("confirm")
+      await page.goto(`${url.origin}/booking?step=confirm`, { waitUntil: "networkidle" })
+      await page.locator(".booking-confirm").waitFor()
+    })
+
+    await runScenario("s7-done", async () => {
+      await seedBookingDraft("done")
+      await page.goto(`${url.origin}/booking?step=done`, { waitUntil: "networkidle" })
+      await page.locator(".booking-done").waitFor()
+    })
+  } else {
+    await runScenario("single", async () => {
+      await page.goto(targetUrl, { waitUntil: "networkidle" })
+
+      if (clickSelector) {
+        await page.locator(clickSelector).click()
+      }
+    })
+  }
+
+  const result = { scenarios: scenarioResults }
   console.log(JSON.stringify(result, null, 2))
 
-  const consoleErrorCount = consoleMessages.filter((message) => message.type === "error").length
-  if (consoleErrorCount > 0 || pageErrors.length > 0 || requestFailures.length > 0) {
+  if (
+    scenarioResults.some(
+      (scenario) =>
+        scenario.consoleErrorCount > 0 ||
+        scenario.pageErrorCount > 0 ||
+        scenario.requestFailureCount > 0,
+    )
+  ) {
     process.exitCode = 1
   }
 } finally {

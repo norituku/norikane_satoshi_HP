@@ -110,7 +110,11 @@ async function fetchBusySlots(arg: EventSourceFuncArg): Promise<BusySlot[]> {
   return data.busy ?? []
 }
 
-export function BookingCalendar() {
+type BookingCalendarProps = {
+  onSlotSelect?: (slot: { start: Date; end: Date }) => void
+}
+
+export function BookingCalendar({ onSlotSelect }: BookingCalendarProps) {
   const [view, setView] = useState<CalendarView>("dayGridMonth")
   const calendarRef = useRef<FullCalendar | null>(null)
   const selectedViewRef = useRef<CalendarView>("dayGridMonth")
@@ -150,10 +154,16 @@ export function BookingCalendar() {
   const handleDateClick = (arg: DateClickArg) => {
     if (arg.view.type === "dayGridMonth") {
       changeCalendarView("timeGridDay", arg.dateStr)
+      return
     }
+
+    const end = new Date(arg.date)
+    end.setHours(end.getHours() + 1)
+    onSlotSelect?.({ start: arg.date, end })
   }
 
   const handleSelect = (arg: DateSelectArg) => {
+    onSlotSelect?.({ start: arg.start, end: arg.end })
     console.debug("booking select", { start: arg.startStr, end: arg.endStr })
   }
 
