@@ -47,6 +47,14 @@ const BOTTLES: Bottle[] = [
   { id: 4, label: "RGB", color: TEAL, x: 1350, y: 306, mirror: false },
 ]
 
+const splashOffsets = [
+  { dx: -24, dy: -8, r: 3.5 },
+  { dx: -12, dy: -14, r: 4.5 },
+  { dx: 6, dy: -10, r: 3 },
+  { dx: 18, dy: -12, r: 4 },
+  { dx: 28, dy: -6, r: 3.5 },
+]
+
 function clamp01(v: number) {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
@@ -199,13 +207,27 @@ function pourOpacity(bottle: Bottle, t: number) {
   return clamp01(Math.min((localT - 0.7) / 0.1, (1.5 - localT) / 0.1))
 }
 
+function pourLip(pose: BottlePose, mirror: boolean) {
+  const lipLocalX = mirror ? 42 : 98
+  const lipLocalY = 0
+  const cx = 70
+  const cy = 18
+  const angle = (pose.bottleRotate * Math.PI) / 180
+  const dx = lipLocalX - cx
+  const dy = lipLocalY - cy
+  const rotX = dx * Math.cos(angle) - dy * Math.sin(angle)
+  const rotY = dx * Math.sin(angle) + dy * Math.cos(angle)
+  return { x: pose.x + cx + rotX, y: pose.y + cy + rotY }
+}
+
 function pourPath(pose: BottlePose, mirror: boolean) {
-  const x0 = pose.x + (mirror ? 42 : 98)
-  const y0 = pose.y + 24
+  const lip = pourLip(pose, mirror)
+  const x0 = lip.x
+  const y0 = lip.y
   const x1 = PREVIEW_CX
-  const y1 = PREVIEW_Y + 30
-  const cx = lerp(x0, x1, 0.62)
-  const cy = Math.min(y0, y1) - 38
+  const y1 = PREVIEW_Y + 60
+  const cx = lerp(x0, x1, 0.55)
+  const cy = Math.max(y0, y1) + 60
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)}, ${x1.toFixed(2)} ${y1.toFixed(2)}`
 }
 
@@ -399,6 +421,22 @@ export default function GradingSecretPantry({
           <stop offset="45%" stopColor="rgb(132,92,126)" />
           <stop offset="100%" stopColor="rgb(52,63,106)" />
         </linearGradient>
+        <linearGradient id="sp-pour-1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={MAGENTA} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={MAGENTA} stopOpacity="1.0" />
+        </linearGradient>
+        <linearGradient id="sp-pour-2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={NAVY} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={NAVY} stopOpacity="1.0" />
+        </linearGradient>
+        <linearGradient id="sp-pour-3" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={AMBER} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={AMBER} stopOpacity="1.0" />
+        </linearGradient>
+        <linearGradient id="sp-pour-4" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={TEAL} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={TEAL} stopOpacity="1.0" />
+        </linearGradient>
       </defs>
 
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
@@ -426,19 +464,57 @@ export default function GradingSecretPantry({
           stroke="rgba(255,255,255,0.78)"
           strokeWidth={2}
         />
-        {bottleStates.map(({ bottle, pose, pourOpacity }) =>
-          pourOpacity > 0 ? (
-            <path
-              key={`pour-${bottle.id}`}
-              d={pourPath(pose, bottle.mirror)}
-              fill="none"
-              stroke={bottle.color}
-              strokeWidth={12}
-              strokeLinecap="round"
-              opacity={pourOpacity}
-            />
-          ) : null,
-        )}
+        {bottleStates.map(({ bottle, pose, pourOpacity }) => {
+          const path = pourPath(pose, bottle.mirror)
+          const splashX = PREVIEW_CX
+          const splashY = PREVIEW_Y + 60
+          return pourOpacity > 0 ? (
+            <g key={`pour-${bottle.id}`} opacity={pourOpacity}>
+              <path
+                d={path}
+                fill="none"
+                stroke={`url(#sp-pour-${bottle.id})`}
+                strokeWidth={20}
+                strokeLinecap="round"
+                opacity={0.35}
+              />
+              <path
+                d={path}
+                fill="none"
+                stroke={`url(#sp-pour-${bottle.id})`}
+                strokeWidth={14}
+                strokeLinecap="round"
+                opacity={0.7}
+              />
+              <path
+                d={path}
+                fill="none"
+                stroke={`url(#sp-pour-${bottle.id})`}
+                strokeWidth={6}
+                strokeLinecap="round"
+                opacity={1.0}
+              />
+              <ellipse
+                cx={splashX}
+                cy={splashY}
+                rx={32}
+                ry={8}
+                fill={bottle.color}
+                opacity={0.55}
+              />
+              {splashOffsets.map(({ dx, dy, r }) => (
+                <circle
+                  key={`${bottle.id}-${dx}-${dy}`}
+                  cx={splashX + dx}
+                  cy={splashY + dy}
+                  r={r}
+                  fill={bottle.color}
+                  opacity={0.7}
+                />
+              ))}
+            </g>
+          ) : null
+        })}
         {bottleStates.map(({ bottle, pose }) => (
           <BottleShape key={bottle.id} bottle={bottle} pose={pose} />
         ))}

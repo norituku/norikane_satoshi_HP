@@ -128,16 +128,6 @@ function wordState(localT: number) {
   }
 }
 
-function arrowPath(fromX: number, fromY: number, toX: number, toY: number, p: number) {
-  const x1 = lerp(fromX, toX, p)
-  const y1 = lerp(fromY, toY, p)
-  const cx = lerp(fromX, toX, 0.52)
-  const cy = lerp(fromY, toY, 0.4) - 18
-  const cpx = lerp(fromX, cx, p)
-  const cpy = lerp(fromY, cy, p)
-  return `M ${fromX} ${fromY} Q ${cpx} ${cpy}, ${x1} ${y1}`
-}
-
 function sliderBounds(axisId: AxisId) {
   const left = axisX(axisId) + 10
   const right = axisX(axisId) + CARD_W - 10
@@ -194,8 +184,7 @@ function sCurve(l: number, k: number) {
 
 function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   let rgb = chip.rgb
-  const kindAmp =
-    (axisId === 3 || axisId === 4) && chip.kind !== "gray" ? amp * 0.45 : amp
+  const kindAmp = axisId === 4 && chip.kind !== "gray" ? amp * 0.45 : amp
   if (axisId === 1 && chip.kind !== "gray") {
     const hsl = rgbToHsl(rgb)
     rgb = hslToRgb(hsl.h + amp * 15, clamp01(hsl.s * (1 + amp * 0.3)), hsl.l)
@@ -206,7 +195,7 @@ function chipColor(axisId: AxisId, chip: Chip, amp: number) {
   }
   if (axisId === 3) {
     const hsl = rgbToHsl(rgb)
-    rgb = hslToRgb(hsl.h, hsl.s, sCurve(hsl.l, kindAmp * 0.3))
+    rgb = hslToRgb(hsl.h, hsl.s, sCurve(hsl.l, amp * 0.3))
   }
   if (axisId === 4) {
     const shift = kindAmp * 0.2 * 255
@@ -306,8 +295,6 @@ function ReducedFrame() {
       {WORDS.map((word, i) => {
         const axis = axisById(word.axis)
         const x = 52 + i * 386
-        const fromX = x + cardW / 2
-        const fromY = cardY
         return (
           <g key={word.text}>
             <rect
@@ -330,14 +317,6 @@ function ReducedFrame() {
             >
               {word.text}
             </text>
-            <path
-              d={arrowPath(fromX, fromY, sliderKnobX(word.axis, 0), SLIDER_Y, 1)}
-              fill="none"
-              stroke={axis.color}
-              strokeWidth={3.5}
-              strokeLinecap="round"
-              markerEnd={`url(#gld-arrow-${word.axis})`}
-            />
           </g>
         )
       })}
@@ -381,8 +360,6 @@ export default function GradingLookDecomposition({
   const activeWord = WORDS[wordIndex]
   const activeAxis = activeWord.axis
   const state = wordState(localT)
-  const arrowP = clamp01(localT / 0.5)
-  const arrowOpacity = 1 - clamp01((localT - 1.0) / 2.9)
   const amp = response(localT)
 
   return (
@@ -391,22 +368,6 @@ export default function GradingLookDecomposition({
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
     >
-      <defs>
-        {AXES.map((axis) => (
-          <marker
-            key={axis.id}
-            id={`gld-arrow-${axis.id}`}
-            viewBox="0 0 10 10"
-            refX="8"
-            refY="5"
-            markerWidth="7"
-            markerHeight="7"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={axis.color} />
-          </marker>
-        ))}
-      </defs>
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
 
       {AXES.map((axis) => (
@@ -442,23 +403,6 @@ export default function GradingLookDecomposition({
           >
             {activeWord.text}
           </text>
-          {arrowOpacity > 0 ? (
-            <path
-              d={arrowPath(
-                state.x + WORD_W / 2,
-                WORD_Y,
-                sliderKnobX(activeAxis, 0),
-                SLIDER_Y,
-                arrowP,
-              )}
-              fill="none"
-              stroke={axisById(activeAxis).color}
-              strokeWidth={4}
-              strokeLinecap="round"
-              opacity={arrowOpacity}
-              markerEnd={`url(#gld-arrow-${activeAxis})`}
-            />
-          ) : null}
         </g>
       )}
     </svg>
