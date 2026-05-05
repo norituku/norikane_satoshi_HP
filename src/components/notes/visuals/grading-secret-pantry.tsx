@@ -47,14 +47,6 @@ const BOTTLES: Bottle[] = [
   { id: 4, label: "RGB", color: TEAL, x: 1350, y: 306, mirror: false },
 ]
 
-const splashOffsets = [
-  { dx: -24, dy: -8, r: 3.5 },
-  { dx: -12, dy: -14, r: 4.5 },
-  { dx: 6, dy: -10, r: 3 },
-  { dx: 18, dy: -12, r: 4 },
-  { dx: 28, dy: -6, r: 3.5 },
-]
-
 function clamp01(v: number) {
   return v < 0 ? 0 : v > 1 ? 1 : v
 }
@@ -468,8 +460,6 @@ export default function GradingSecretPantry({
         {bottleStates.map(({ bottle, pose, pourOpacity }) => {
           const path = pourPath(pose, bottle.mirror)
           const tiltScale = clamp01(Math.abs(pose.bottleRotate) / 90)
-          const splashX = PREVIEW_CX
-          const splashY = PREVIEW_Y + 60
           return pourOpacity > 0 ? (
             <g key={`pour-${bottle.id}`} opacity={pourOpacity}>
               <path
@@ -496,24 +486,6 @@ export default function GradingSecretPantry({
                 strokeLinecap="round"
                 opacity={1.0}
               />
-              <ellipse
-                cx={splashX}
-                cy={splashY}
-                rx={32}
-                ry={8}
-                fill={bottle.color}
-                opacity={0.55}
-              />
-              {splashOffsets.map(({ dx, dy, r }) => (
-                <circle
-                  key={`${bottle.id}-${dx}-${dy}`}
-                  cx={splashX + dx}
-                  cy={splashY + dy}
-                  r={r}
-                  fill={bottle.color}
-                  opacity={0.7}
-                />
-              ))}
             </g>
           ) : null
         })}
