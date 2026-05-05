@@ -8,18 +8,18 @@ import jaLocale from "@fullcalendar/core/locales/ja"
 import type {
   DateSelectArg,
   DayCellContentArg,
+  DayCellMountArg,
   EventClickArg,
-  EventContentArg,
+  EventMountArg,
   EventInput,
   EventSourceFuncArg,
 } from "@fullcalendar/core"
 import { format } from "date-fns"
-import { Lock } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 
 import { getHolidayName } from "@/lib/booking/holidays"
 
-type CalendarView = "dayGridMonth" | "timeGridWeek"
+type CalendarView = "dayGridMonth" | "timeGridWeek" | "timeGridDay"
 
 type BusySlot = {
   start: string
@@ -38,6 +38,7 @@ type BusyEventProps = {
 const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
   { label: "月", value: "dayGridMonth" },
   { label: "週", value: "timeGridWeek" },
+  { label: "日", value: "timeGridDay" },
 ]
 
 function toDateKey(date: Date): string {
@@ -80,6 +81,7 @@ function toBusyEvent(slot: BusySlot, view: CalendarView): EventInput {
 
   return {
     id: `busy-${slot.start}-${slot.end}`,
+    title: isMonthView ? `${label} 予約済み` : "予約済み",
     start: slot.start,
     end: slot.end,
     allDay,
@@ -114,14 +116,15 @@ export function BookingCalendar() {
   const selectedViewRef = useRef<CalendarView>("dayGridMonth")
   const busySlotCacheRef = useRef<Map<string, BusySlot[]>>(new Map())
 
-  useEffect(() => {
-    selectedViewRef.current = view
+  const changeCalendarView = useCallback((nextView: CalendarView, dateStr?: string) => {
+    selectedViewRef.current = nextView
+    setView(nextView)
     const calendarApi = calendarRef.current?.getApi()
-    if (calendarApi && calendarApi.view.type !== view) {
-      calendarApi.changeView(view)
+    if (calendarApi) {
+      calendarApi.changeView(nextView, dateStr)
       calendarApi.refetchEvents()
     }
-  }, [view])
+  }, [])
 
   const fetchCachedBusyEvents = useCallback(async (arg: EventSourceFuncArg): Promise<EventInput[]> => {
     const cacheKey = `${arg.startStr}|${arg.endStr}`
@@ -145,7 +148,9 @@ export function BookingCalendar() {
   )
 
   const handleDateClick = (arg: DateClickArg) => {
-    console.debug("booking dateClick", arg.dateStr)
+    if (arg.view.type === "dayGridMonth") {
+      changeCalendarView("timeGridDay", arg.dateStr)
+    }
   }
 
   const handleSelect = (arg: DateSelectArg) => {
@@ -164,27 +169,66 @@ export function BookingCalendar() {
     return classes
   }
 
-  const dayCellContent = (arg: DayCellContentArg) => {
+  const handleDayCellDidMount = (arg: DayCellMountArg) => {
+    if (arg.view.type !== "dayGridMonth") return
+
     const holidayName = getHolidayName(arg.date)
-    return (
-      <div className="booking-calendar__day-cell">
-        <span className="booking-calendar__day-number">{arg.dayNumberText}</span>
-        {holidayName ? <span className="booking-calendar__holiday-label">{holidayName}</span> : null}
-      </div>
-    )
+    const cellTop = arg.el.querySelector<HTMLElement>(".fc-daygrid-day-top")
+    const dayNumber = arg.el.querySelector<HTMLElement>(".fc-daygrid-day-number")
+
+    cellTop?.classList.add("booking-calendar__day-cell")
+    dayNumber?.classList.add("booking-calendar__day-number")
+
+    if (holidayName && cellTop && !cellTop.querySelector(".booking-calendar__holiday-label")) {
+      const holidayLabel = document.createElement("span")
+      holidayLabel.className = "booking-calendar__holiday-label"
+      holidayLabel.textContent = holidayName
+      cellTop.appendChild(holidayLabel)
+    }
   }
 
-  const eventContent = (arg: EventContentArg) => {
+  const handleEventDidMount = (arg: EventMountArg) => {
     const props = arg.event.extendedProps as Partial<BusyEventProps>
-    if (props.kind !== "busy" || arg.view.type !== "dayGridMonth") return undefined
+    if (props.kind !== "busy" || arg.view.type !== "dayGridMonth") return
 
-    return (
-      <span className="booking-calendar__busy-pill-content">
-        <Lock aria-hidden="true" size={16} strokeWidth={2.4} />
-        <span>{props.label}</span>
-        <span>予約済み</span>
-      </span>
-    )
+    const eventMain = arg.el.querySelector<HTMLElement>(".fc-event-main")
+    if (!eventMain) return
+
+    eventMain.textContent = ""
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    icon.setAttribute("aria-hidden", "true")
+    icon.setAttribute("width", "16")
+    icon.setAttribute("height", "16")
+    icon.setAttribute("viewBox", "0 0 24 24")
+    icon.setAttribute("fill", "none")
+    icon.setAttribute("stroke", "currentColor")
+    icon.setAttribute("stroke-width", "2.4")
+    icon.setAttribute("stroke-linecap", "round")
+    icon.setAttribute("stroke-linejoin", "round")
+
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+    rect.setAttribute("width", "18")
+    rect.setAttribute("height", "11")
+    rect.setAttribute("x", "3")
+    rect.setAttribute("y", "11")
+    rect.setAttribute("rx", "2")
+    rect.setAttribute("ry", "2")
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    path.setAttribute("d", "M7 11V7a5 5 0 0 1 10 0v4")
+
+    icon.append(rect, path)
+
+    const label = document.createElement("span")
+    label.textContent = props.label ?? ""
+
+    const status = document.createElement("span")
+    status.textContent = "予約済み"
+
+    const content = document.createElement("span")
+    content.className = "booking-calendar__busy-pill-content"
+    content.append(icon, label, status)
+    eventMain.appendChild(content)
   }
 
   return (
@@ -196,12 +240,10 @@ export function BookingCalendar() {
             <button
               key={option.value}
               type="button"
+              data-view={option.value === "dayGridMonth" ? "month" : option.value === "timeGridWeek" ? "week" : "day"}
               className={`booking-calendar__tab ${isActive ? "glass-inset text-hp" : "glass-flat text-hp-muted"}`}
               aria-pressed={isActive}
-              onClick={() => {
-                selectedViewRef.current = option.value
-                setView(option.value)
-              }}
+              onClick={() => changeCalendarView(option.value)}
             >
               {option.label}
             </button>
@@ -212,7 +254,7 @@ export function BookingCalendar() {
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView={view}
+          initialView="dayGridMonth"
           locale={jaLocale}
           firstDay={0}
           headerToolbar={{
@@ -231,10 +273,12 @@ export function BookingCalendar() {
           slotMaxTime="20:00:00"
           slotDuration="00:30:00"
           allDaySlot={false}
+          navLinks
+          navLinkDayClick={(date) => changeCalendarView("timeGridDay", toDateKey(date))}
           eventSources={eventSources}
-          eventContent={eventContent}
+          eventDidMount={handleEventDidMount}
           dayCellClassNames={dayCellClassNames}
-          dayCellContent={dayCellContent}
+          dayCellDidMount={handleDayCellDidMount}
           dateClick={handleDateClick}
           select={handleSelect}
           eventClick={handleEventClick}
