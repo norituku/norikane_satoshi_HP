@@ -9,7 +9,7 @@
  * layout は 5 種類:
  *   - "chaos-vs-structured": 左右対比 (correction-factor-map / filmlook-density-mixture)
  *   - "centered-axes":       中心ルック + 4方向軸 (grading-look-decomposition)
- *   - "horizontal-flow":     左→右 4 列ステップ (grading-words-to-knobs)
+ *   - "horizontal-flow":     左→右 4 列ステップ
  *   - "horizontal-flow-8":   8 段ステップ (filmlook-physics-flow)。desktop は md:grid-cols-4 で 4×2、mobile は 1 列。
  *   - "keypoint-row":        2〜5 項目の番号付きキーポイント (5秒で腹落ち用)
  *   - "photo-strip":         実写 5 枚の横一列ストリップ (correction-exposure-bracket)。AI ヒーロー画像を持たず、写真自体がヒーロー。
@@ -300,36 +300,6 @@ export const DIAGRAM_REGISTRY: Record<string, DiagramConfig> = {
       },
     ],
     takeaway: "粒度を取り違えると、迷宮に戻る。",
-  },
-  "grading-words-to-knobs": {
-    slug: "grading-words-to-knobs",
-    layout: "horizontal-flow",
-    title: "言葉 → 軸 → 操作",
-    caption:
-      "立ち会いで投げられる抽象的な一言を、4軸のどれに落とすかで返す。言葉 → 軸 → 操作の 3 段ホップで、抽象を具体に変換する。",
-    alt: "「もう少し暖かく」「もう少し抜けを」「青を深く」「映画っぽく」の4つの言葉を、それぞれ対応する軸と操作にマッピングする横フロー図解",
-    aspect: { width: 1536, height: 1024 },
-    intro: "左 → 右で読む。監督の一言が、4 軸のどこに落ちるかを掴む。",
-    flowHeading: "言葉 → 軸 → 操作",
-    steps: [
-      {
-        label: "「もう少し暖かく」",
-        sublabel: "色相弧の方向に振る",
-      },
-      {
-        label: "「もう少し抜けを」",
-        sublabel: "濃度バーで暗部を整理する",
-      },
-      {
-        label: "「青を深く」",
-        sublabel: "RGB 3 ビームで青のバランスを下げる",
-      },
-      {
-        label: "「映画っぽく」",
-        sublabel: "S 曲線の肩を作る",
-      },
-    ],
-    takeaway: "監督の言葉は、4 軸のどこかに落ちる。",
   },
   "correction-exposure-bracket": {
     slug: "correction-exposure-bracket",

@@ -63,8 +63,8 @@ const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
     () => import("@/components/notes/visuals/grading-look-decomposition"),
     { loading: () => <VisualSkeleton /> }
   ),
-  "grading-words-to-knobs": dynamic(
-    () => import("@/components/notes/visuals/grading-words-to-knobs"),
+  "grading-secret-pantry": dynamic(
+    () => import("@/components/notes/visuals/grading-secret-pantry"),
     { loading: () => <VisualSkeleton /> }
   ),
 }

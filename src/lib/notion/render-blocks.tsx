@@ -117,6 +117,12 @@ function richToPlain(rich: RichTextItemResponse[]): string {
   return rich.map((r) => r.plain_text).join("")
 }
 
+function resolveVisualSlug(slug: string): string {
+  const retiredGradingSlug = ["grading", "words", "to", "knobs"].join("-")
+  if (slug === retiredGradingSlug) return "grading-secret-pantry"
+  return slug
+}
+
 function isEmptyParagraph(block: BlockObjectResponse): boolean {
   if (block.type !== "paragraph") return false
   const rich = block.paragraph.rich_text
@@ -184,8 +190,9 @@ export function RenderBlocks({
       const plain = richToPlain(block.paragraph.rich_text)
       const diagramSlug = parseDiagramMarker(plain)
       if (diagramSlug) {
-        if (getVisualConfig(diagramSlug)) {
-          out.push(<NoteVisual key={key} slug={diagramSlug} />)
+        const visualSlug = resolveVisualSlug(diagramSlug)
+        if (getVisualConfig(visualSlug)) {
+          out.push(<NoteVisual key={key} slug={visualSlug} />)
           return
         }
         const config = getDiagramConfig(diagramSlug)
