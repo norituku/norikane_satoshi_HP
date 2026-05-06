@@ -118,7 +118,7 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
     caption:
       "ナチュラル軸とノーマル軸を分け、時代の感覚と整合しながら規格通りではない狭い帯を示す。",
     alt: "縦軸をナチュラル軸、横軸をノーマル軸として、ナチュラルだけどノーマルじゃない狭い帯を強調した四象限図",
-    aspect: { width: 16, height: 5 },
+    aspect: { width: 16, height: 9 },
     intro: "普通でも変でもない、狭い場所を探す。",
   },
 }

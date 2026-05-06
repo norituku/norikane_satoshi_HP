@@ -1,7 +1,7 @@
 "use client"
 
 const W = 1600
-const H = 500
+const H = 900
 
 const TEXT = "rgba(34,34,38,0.90)"
 const MUTED = "rgba(92,92,99,0.78)"
@@ -14,10 +14,10 @@ const MAGENTA = "rgb(192,74,142)"
 const TEAL = "rgb(46,140,132)"
 
 const PLOT = {
-  x: 78,
-  y: 36,
-  w: 1444,
-  h: 384,
+  x: 150,
+  y: 72,
+  w: 1370,
+  h: 682,
 }
 const MID_X = PLOT.x + PLOT.w / 2
 const MID_Y = PLOT.y + PLOT.h / 2
@@ -56,7 +56,7 @@ export default function GradingNaturalVsNormal() {
           x={20}
           y={18}
           width={1560}
-          height={462}
+          height={842}
           rx={20}
           fill={PANEL}
           stroke={PANEL_STROKE}
@@ -113,44 +113,44 @@ export default function GradingNaturalVsNormal() {
           markerEnd="url(#gnvn-arrow)"
         />
 
-        <text x={MID_X} y={464} textAnchor="middle" fill={TEAL} fontSize={26} fontWeight={800}>
-          ノーマル軸
+        <text x={MID_X} y={828} textAnchor="middle" fill={TEAL} fontSize={32} fontWeight={850}>
+          X / ノーマル軸
         </text>
-        <text x={PLOT.x + 10} y={454} textAnchor="start" fill={MUTED} fontSize={20} fontWeight={700}>
-          ノーマル度 低い (規格から外れる)
+        <text x={PLOT.x + 10} y={792} textAnchor="start" fill={MUTED} fontSize={24} fontWeight={780}>
+          低
         </text>
-        <text x={PLOT.x + PLOT.w - 10} y={454} textAnchor="end" fill={TEAL} fontSize={20} fontWeight={800}>
-          ノーマル度 高い (規格通り)
+        <text x={PLOT.x + PLOT.w - 10} y={792} textAnchor="end" fill={TEAL} fontSize={24} fontWeight={850}>
+          高
         </text>
-        <text x={MID_X} y={454} textAnchor="middle" fill={AXIS} fontSize={22} fontWeight={700}>
+        <text x={MID_X} y={792} textAnchor="middle" fill={AXIS} fontSize={24} fontWeight={760}>
           低 ←→ 高
         </text>
 
         <text
-          x={48}
+          x={66}
           y={MID_Y}
           textAnchor="middle"
           fill={TEAL}
-          fontSize={26}
-          fontWeight={800}
-          transform={`rotate(-90 48 ${MID_Y})`}
+          fontSize={32}
+          fontWeight={850}
+          transform={`rotate(-90 66 ${MID_Y})`}
         >
-          ナチュラル軸
+          Y / ナチュラル軸
         </text>
-        <text x={MID_X + 18} y={70} textAnchor="start" fill={TEAL} fontSize={20} fontWeight={800}>
-          ナチュラル度 高い (時代と整合)
+        <text x={MID_X + 18} y={112} textAnchor="start" fill={TEAL} fontSize={24} fontWeight={850}>
+          高
         </text>
-        <text x={MID_X + 18} y={405} textAnchor="start" fill={MUTED} fontSize={20} fontWeight={700}>
-          ナチュラル度 低い (時代から外れる)
+        <text x={MID_X + 18} y={732} textAnchor="start" fill={MUTED} fontSize={24} fontWeight={780}>
+          低
         </text>
         <text
-          x={MID_X - 24}
+          x={MID_X - 34}
           y={MID_Y}
           textAnchor="middle"
           fill={AXIS}
-          fontSize={22}
-          fontWeight={700}
-          transform={`rotate(-90 ${MID_X - 24} ${MID_Y})`}
+          fontSize={24}
+          fontWeight={760}
+          transform={`rotate(-90 ${MID_X - 34} ${MID_Y})`}
         >
           低 ←→ 高
         </text>
@@ -158,51 +158,48 @@ export default function GradingNaturalVsNormal() {
 
       <g>
         <rect
-          x={520}
-          y={88}
+          x={462}
+          y={146}
           width={312}
-          height={68}
-          rx={18}
+          height={50}
+          rx={16}
           fill={MAGENTA}
           opacity={0.24}
           stroke={MAGENTA}
           strokeWidth={4}
         />
-        <text x={676} y={116} textAnchor="middle" fill={TEXT} fontSize={22} fontWeight={850}>
-          ここを目指す
-        </text>
-        <text x={676} y={144} textAnchor="middle" fill={MAGENTA} fontSize={20} fontWeight={850}>
-          狭い帯
+        <text x={618} y={180} textAnchor="middle" fill={MAGENTA} fontSize={24} fontWeight={850}>
+          目指す狭い帯
         </text>
       </g>
 
       <g>
         <QuadrantLabel
-          x={168}
-          y={108}
-          title="ナチュラルだけど"
+          x={210}
+          y={156}
+          title="ナチュラル ×"
           sub="ノーマルじゃない"
           accent={MAGENTA}
           strong
         />
         <QuadrantLabel
-          x={1054}
-          y={120}
-          title="規格通りの絵"
-          sub="ナチュラル高 × ノーマル高"
+          x={1068}
+          y={156}
+          title="規格通り"
+          sub="高 × 高"
           accent={TEAL}
         />
         <QuadrantLabel
-          x={166}
-          y={322}
-          title="あざとい絵"
-          sub="ナチュラル低 × ノーマル低"
+          x={210}
+          y={540}
+          title="あざとい"
+          sub="低 × 低"
         />
         <QuadrantLabel
-          x={1054}
-          y={322}
-          title="時代から外れた絵"
-          sub="ナチュラル低 × ノーマル高"
+          x={1068}
+          y={540}
+          title="時代外れ"
+          sub="低 × 高"
         />
       </g>
     </svg>
