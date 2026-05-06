@@ -20,6 +20,7 @@ const ACCENT = "#8B7FFF"
 const TEXT_PRIMARY = "#1C0F6E"
 const GLASS_FILL = "rgba(255,255,255,0.65)"
 const GLASS_STROKE = "rgba(255,255,255,0.78)"
+const AXIS_STROKE = "rgba(139,127,255,0.4)"
 
 const QUADRANTS = [
   {
@@ -227,6 +228,27 @@ export default function GradingNaturalVsNormal() {
           />
         </g>
       ))}
+
+      <line
+        x1={CROSS_X}
+        y1={PAD + 8}
+        x2={CROSS_X}
+        y2={H - PAD - 8}
+        stroke={AXIS_STROKE}
+        strokeWidth={1.5}
+        strokeDasharray="6 8"
+        strokeLinecap="round"
+      />
+      <line
+        x1={PAD + 8}
+        y1={CROSS_Y}
+        x2={W - PAD - 8}
+        y2={CROSS_Y}
+        stroke={AXIS_STROKE}
+        strokeWidth={1.5}
+        strokeDasharray="6 8"
+        strokeLinecap="round"
+      />
 
       <AxisLabels />
 
