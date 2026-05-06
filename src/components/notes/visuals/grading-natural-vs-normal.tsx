@@ -1,7 +1,7 @@
 const W = 1600
 const H = 900
 
-const PAD = 24
+const PAD = 60
 const GAP = 56
 const CELL_W = (W - PAD * 2 - GAP) / 2
 const CELL_H = (H - PAD * 2 - GAP) / 2
@@ -29,7 +29,6 @@ const QUADRANTS = [
     x: COL_L_X,
     y: ROW_T_Y,
     label: "狙う狭い場所",
-    labelAnchor: "top" as const,
   },
   {
     role: "support" as const,
@@ -37,7 +36,6 @@ const QUADRANTS = [
     x: COL_R_X,
     y: ROW_T_Y,
     label: "設計上の中立",
-    labelAnchor: "top" as const,
   },
   {
     role: "support" as const,
@@ -45,7 +43,6 @@ const QUADRANTS = [
     x: COL_R_X,
     y: ROW_B_Y,
     label: "現在の感覚とずれる",
-    labelAnchor: "bottom" as const,
   },
   {
     role: "support" as const,
@@ -53,7 +50,6 @@ const QUADRANTS = [
     x: COL_L_X,
     y: ROW_B_Y,
     label: "あざとい",
-    labelAnchor: "bottom" as const,
   },
 ]
 
@@ -66,8 +62,6 @@ function pillWidth(label: string) {
   if (label === "現在の感覚とずれる") return 320
   if (label === "設計上の中立") return 238
   if (label === "狙う狭い場所") return 236
-  if (label === "ナチュラル") return 164
-  if (label === "ノーマル") return 142
   return 170
 }
 
@@ -75,8 +69,8 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
   const isHero = q.role === "hero"
   const inset = 22
   const labelW = pillWidth(q.label)
-  const labelX = q.labelAnchor === "top" ? q.x + inset : q.x + CELL_W - inset - labelW
-  const labelY = q.labelAnchor === "top" ? q.y + inset : q.y + CELL_H - inset - LABEL_H
+  const labelX = q.x + CELL_W - inset - labelW
+  const labelY = q.y + CELL_H - inset - LABEL_H
   return (
     <g>
       <rect
@@ -105,76 +99,76 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
 }
 
 function AxisGuides() {
-  const verticalW = pillWidth("ナチュラル")
-  const horizontalW = pillWidth("ノーマル")
+  const AXIS_W_TOP = 200
+  const AXIS_W_RIGHT = 182
+  const AXIS_H = 44
+  const AXIS_FONT = 26
+  const topCx = CROSS_X
+  const topCy = PAD / 2
+  const rightCx = W - AXIS_W_RIGHT / 2 - 12
+  const rightCy = CROSS_Y
   return (
     <g>
       <line
         x1={CROSS_X}
         y1={H - PAD - 4}
         x2={CROSS_X}
-        y2={PAD + 26}
+        y2={topCy + AXIS_H / 2 + 12}
         stroke={AXIS_STROKE}
         strokeWidth={2}
         strokeLinecap="round"
       />
-      <path d={`M ${CROSS_X - 9} ${PAD + 36} L ${CROSS_X} ${PAD + 18} L ${CROSS_X + 9} ${PAD + 36}`} fill="none" stroke={AXIS_STROKE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       <line
         x1={PAD}
         y1={CROSS_Y}
-        x2={W - PAD - 26}
+        x2={rightCx - AXIS_W_RIGHT / 2 - 12}
         y2={CROSS_Y}
         stroke={AXIS_STROKE}
         strokeWidth={2}
         strokeLinecap="round"
       />
-      <path d={`M ${W - PAD - 36} ${CROSS_Y - 9} L ${W - PAD - 18} ${CROSS_Y} L ${W - PAD - 36} ${CROSS_Y + 9}`} fill="none" stroke={AXIS_STROKE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-      <g transform={`translate(${CROSS_X - 18} ${CROSS_Y - 120}) rotate(-90)`}>
-        <rect
-          x={-verticalW / 2}
-          y={-22}
-          width={verticalW}
-          height={44}
-          rx={22}
-          fill={GLASS_FILL}
-          stroke={GLASS_STROKE}
-          strokeWidth={1}
-          filter="url(#gnvn-badge-shadow)"
-        />
-        <text
-          x={0}
-          y={9}
-          textAnchor="middle"
-          fill={ACCENT}
-          fontSize={24}
-          fontWeight={600}
-        >
-          ナチュラル
-        </text>
-      </g>
-      <g transform={`translate(${W - PAD - 82} ${CROSS_Y - 24})`}>
-        <rect
-          x={-horizontalW / 2}
-          y={-22}
-          width={horizontalW}
-          height={44}
-          rx={22}
-          fill={GLASS_FILL}
-          stroke={GLASS_STROKE}
-          strokeWidth={1}
-          filter="url(#gnvn-badge-shadow)"
-        />
-        <text
-          x={0}
-          y={9}
-          textAnchor="middle"
-          fill={ACCENT}
-          fontSize={24}
-          fontWeight={600}
-        >
-          ノーマル
-        </text>
-      </g>
+      <rect
+        x={topCx - AXIS_W_TOP / 2}
+        y={topCy - AXIS_H / 2}
+        width={AXIS_W_TOP}
+        height={AXIS_H}
+        rx={AXIS_H / 2}
+        fill={GLASS_FILL}
+        stroke={GLASS_STROKE}
+        strokeWidth={1}
+        filter="url(#gnvn-badge-shadow)"
+      />
+      <text
+        x={topCx}
+        y={topCy + 9}
+        textAnchor="middle"
+        fill={ACCENT}
+        fontSize={AXIS_FONT}
+        fontWeight={600}
+      >
+        ↑ ナチュラル
+      </text>
+      <rect
+        x={rightCx - AXIS_W_RIGHT / 2}
+        y={rightCy - AXIS_H / 2}
+        width={AXIS_W_RIGHT}
+        height={AXIS_H}
+        rx={AXIS_H / 2}
+        fill={GLASS_FILL}
+        stroke={GLASS_STROKE}
+        strokeWidth={1}
+        filter="url(#gnvn-badge-shadow)"
+      />
+      <text
+        x={rightCx}
+        y={rightCy + 9}
+        textAnchor="middle"
+        fill={ACCENT}
+        fontSize={AXIS_FONT}
+        fontWeight={600}
+      >
+        ノーマル →
+      </text>
     </g>
   )
 }
@@ -187,7 +181,7 @@ export default function GradingNaturalVsNormal() {
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label="ナチュラル軸 (上が高い) とノーマル軸 (右が高い) の二軸を 4 象限独立画像で対比し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。"
+      aria-label="ナチュラル軸 (上が高い) とノーマル軸 (右が高い) の二軸を 4 象限独立画像で対比し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。軸ラベルは外周帯に横書きで配置し、4 象限ラベルはすべて CELL 右下に統一する。"
       fontFamily="var(--font-noto-sans-jp), sans-serif"
     >
       <defs>
