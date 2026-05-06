@@ -138,13 +138,15 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
     goToStep("calendar")
   }
 
-  const handleSlotSelect = (slot: { start: Date; end: Date }) => {
-    setSubmitError(null)
-    setSelectedSlot({
-      start: slot.start.toISOString(),
-      end: slot.end.toISOString(),
-    })
-  }
+  const handleCommitSlot = useCallback(
+    (slot: { start: string; end: string }, kind: "confirmed" | "tentative") => {
+      setSubmitError(null)
+      setSelectedSlot({ start: slot.start, end: slot.end })
+      setFormData((current) => ({ ...current, bookingKind: kind }))
+      goToStep("form")
+    },
+    [goToStep],
+  )
 
   const handleReset = () => {
     clearDraft(userId)
@@ -197,7 +199,7 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   const body = (
     <>
       <div className={step === "calendar" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingCalendar onSlotSelect={handleSlotSelect} />
+        <BookingCalendar initialSlot={selectedSlot} onCommit={handleCommitSlot} />
       </div>
       <div className={step === "form" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingForm

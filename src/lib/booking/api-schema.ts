@@ -24,6 +24,32 @@ export const bookingApiSchema = bookingFormSchema
 
 export type BookingApiInput = z.infer<typeof bookingApiSchema>
 
+export const bookingConflictsRequestSchema = z
+  .object({
+    bookingKind: z.enum(["confirmed", "tentative"]),
+    start: z.string().datetime(),
+    end: z.string().datetime(),
+    excludeBookingId: z.string().optional(),
+  })
+  .superRefine((value, context) => {
+    const start = new Date(value.start)
+    const end = new Date(value.end)
+    if (start >= end) {
+      context.addIssue({
+        code: "custom",
+        message: "終了時刻は開始時刻より後にしてください",
+        path: ["end"],
+      })
+    }
+  })
+
+export type BookingConflictsRequest = z.infer<typeof bookingConflictsRequestSchema>
+
+export type BookingConflictsResponse =
+  | { verdict: "ok" }
+  | { verdict: "block"; reason: "slot_taken" | "slot_pending"; message: string }
+  | { verdict: "warn"; message: string }
+
 export type BookingApiErrorCode =
   | "slot_taken"
   | "slot_pending"

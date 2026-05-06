@@ -48,8 +48,43 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const busy = await getFreeBusy(calendarId, timeMin, timeMax, refreshed.accessToken)
-    return NextResponse.json({ busy })
+    const startDate = new Date(timeMin)
+    const endDate = new Date(timeMax)
+
+    const [busy, dbBookings] = await Promise.all([
+      getFreeBusy(calendarId, timeMin, timeMax, refreshed.accessToken),
+      prisma.booking.findMany({
+        where: {
+          startTime: { lt: endDate },
+          endTime: { gt: startDate },
+          status: { in: ["CONFIRMED", "TENTATIVE", "PENDING_CONFIRMATION"] },
+        },
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          title: true,
+          status: true,
+        },
+      }),
+    ])
+
+    const bookings = dbBookings.map((booking) => ({
+      id: booking.id,
+      start: booking.startTime.toISOString(),
+      end: booking.endTime.toISOString(),
+      title: booking.title,
+      status: booking.status,
+    }))
+
+    const bookingTimePairs = new Set(
+      bookings.map((booking) => `${booking.start}|${booking.end}`),
+    )
+    const busyDeduped = busy.filter(
+      (slot) => !bookingTimePairs.has(`${slot.start}|${slot.end}`),
+    )
+
+    return NextResponse.json({ busy: busyDeduped, bookings })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch Google Calendar Free/Busy" },

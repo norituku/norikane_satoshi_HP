@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { auth } from "@/auth"
 import { bookingApiSchema, type BookingApiInput } from "@/lib/booking/api-schema"
 import {
+  findConflictingBookings,
+  resolveConflictForFinalSubmit,
+} from "@/lib/booking/conflicts"
+import {
   sendBookingConfirmedEmail,
   sendBookingOverwriteNoticeEmail,
   sendBookingTentativeEmail,
@@ -20,40 +24,9 @@ import { prisma } from "@/lib/prisma"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-type ConflictBooking = Awaited<ReturnType<typeof findConflictingBookings>>[number]
-
 function nullable(value: string): string | null {
   const trimmed = value.trim()
   return trimmed === "" ? null : trimmed
-}
-
-async function findConflictingBookings(start: Date, end: Date) {
-  return prisma.booking.findMany({
-    where: {
-      startTime: { lt: end },
-      endTime: { gt: start },
-      status: { in: ["CONFIRMED", "TENTATIVE", "PENDING_CONFIRMATION"] },
-    },
-    include: {
-      customer: {
-        select: {
-          displayName: true,
-          user: {
-            select: {
-              email: true,
-            },
-          },
-        },
-      },
-    },
-  })
-}
-
-function resolveConflict(conflicts: ConflictBooking[], bookingKind: BookingApiInput["bookingKind"]) {
-  if (conflicts.some((booking) => booking.status === "CONFIRMED")) return "slot_taken"
-  if (conflicts.some((booking) => booking.status === "PENDING_CONFIRMATION")) return "slot_pending"
-  if (conflicts.length > 0 && bookingKind === "tentative") return "tentative_exists"
-  return null
 }
 
 function createDescription(input: BookingApiInput): string {
@@ -182,7 +155,7 @@ export async function POST(request: NextRequest) {
     })
 
     const conflicts = await findConflictingBookings(start, end)
-    const conflict = resolveConflict(conflicts, input.bookingKind)
+    const conflict = resolveConflictForFinalSubmit(conflicts, input.bookingKind)
     if (conflict) return responseForConflict(conflict)
 
     const tentativeConflicts = conflicts.filter((booking) => booking.status === "TENTATIVE")
