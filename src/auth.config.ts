@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth"
 import Google from "next-auth/providers/google"
+import Line from "next-auth/providers/line"
 import Twitter from "next-auth/providers/twitter"
 
 export default {
@@ -11,6 +12,11 @@ export default {
     Twitter({
       clientId: process.env.AUTH_TWITTER_ID!,
       clientSecret: process.env.AUTH_TWITTER_SECRET!,
+    }),
+    Line({
+      clientId: process.env.AUTH_LINE_ID!,
+      clientSecret: process.env.AUTH_LINE_SECRET!,
+      authorization: { params: { scope: "profile openid" } },
     }),
   ],
   callbacks: {
