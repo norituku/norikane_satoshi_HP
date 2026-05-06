@@ -3,8 +3,7 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { HeroSection } from "@/components/hp/hero-section"
 import { ContactForm } from "@/components/hp/contact-form"
-import { PasswordGate } from "@/components/hp/password-gate"
-import { CalendarEmbed } from "@/components/hp/calendar-embed"
+import { HomeScheduleSection } from "@/components/hp/home-schedule-section"
 import { ProfilePhoto } from "@/components/hp/profile-photo"
 import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site-brand"
 import { listPublishedNotes } from "@/lib/notion/fetch-note"
@@ -290,14 +289,7 @@ export default async function HomePage() {
 
       </section>
 
-      {/* Schedule */}
-      <section className="mx-auto w-full max-w-[1440px] px-6 md:px-10 xl:px-14">
-        <PasswordGate>
-          <div className="glass-card p-6 md:p-10 xl:p-12">
-            <CalendarEmbed />
-          </div>
-        </PasswordGate>
-      </section>
+      <HomeScheduleSection />
     </div>
   )
 }
