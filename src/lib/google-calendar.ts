@@ -1,5 +1,7 @@
 import { google } from "googleapis"
 
+import { prisma } from "@/lib/prisma"
+
 const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.freebusy",
   "https://www.googleapis.com/auth/calendar.events",
@@ -142,6 +144,17 @@ function createCalendarWriteClient(accessToken: string) {
   return google.calendar({ version: "v3", auth: oauth2Client })
 }
 
+function getGoogleErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null
+  const maybeError = error as {
+    code?: unknown
+    status?: unknown
+    response?: { status?: unknown }
+  }
+  const status = maybeError.response?.status ?? maybeError.status ?? maybeError.code
+  return typeof status === "number" ? status : null
+}
+
 export async function createCalendarEvent(input: CalendarEventWriteInput): Promise<{ id: string }> {
   const calendar = createCalendarWriteClient(input.accessToken)
   const response = await calendar.events.insert({
@@ -189,4 +202,45 @@ export async function updateCalendarEvent(input: CalendarEventUpdateInput): Prom
   }
 
   return { id: response.data.id }
+}
+
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
+  if (!calendarId) {
+    console.warn(`[gcal delete skipped] eventId=${eventId} reason=missing_calendar_id`)
+    return
+  }
+
+  const storedToken = await prisma.calendarToken.findUnique({
+    where: { userId: CALENDAR_TOKEN_USER_ID },
+  })
+  if (!storedToken) {
+    console.warn(`[gcal delete skipped] eventId=${eventId} reason=missing_calendar_token`)
+    return
+  }
+
+  const refreshed = await refreshCalendarAccessToken(storedToken.refreshToken)
+  await prisma.calendarToken.update({
+    where: { userId: CALENDAR_TOKEN_USER_ID },
+    data: {
+      accessToken: refreshed.accessToken,
+      expiresAt: refreshed.expiresAt,
+      scope: refreshed.scope,
+    },
+  })
+
+  const calendar = createCalendarWriteClient(refreshed.accessToken)
+  try {
+    await calendar.events.delete({
+      calendarId,
+      eventId,
+    })
+  } catch (error) {
+    const status = getGoogleErrorStatus(error)
+    if (status === 404 || status === 410) {
+      console.warn(`[gcal delete skipped] eventId=${eventId} status=${status}`)
+      return
+    }
+    throw error
+  }
 }
