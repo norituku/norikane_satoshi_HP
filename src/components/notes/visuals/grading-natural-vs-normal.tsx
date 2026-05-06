@@ -15,8 +15,9 @@ const CROSS_X = W / 2
 const CROSS_Y = H / 2
 
 const CORNER_R = 18
-const ACCENT = "#8B7FFF"
-const SCRIM_FILL = "rgba(8, 6, 32, 0.62)"
+const ACCENT = "#E8FF6A"
+const INK = "#11131A"
+const PAPER = "#F6F1E6"
 
 const QUADRANTS = [
   {
@@ -24,71 +25,46 @@ const QUADRANTS = [
     href: "/notes-assets/grading/natural-vs-normal/quadrant-natural-not-normal.png",
     x: COL_L_X,
     y: ROW_T_Y,
-    label: "ナチュラルだけど",
-    label2: "ノーマルじゃない",
-    sub: "狙う狭い場所",
-    badgeAnchor: "tl" as const,
+    label: "狙う狭い場所",
+    sub: "ナチュラルだけどノーマルじゃない",
+    labelAnchor: "top" as const,
   },
   {
-    role: "ng" as const,
+    role: "support" as const,
     href: "/notes-assets/grading/natural-vs-normal/quadrant-normal.png",
     x: COL_R_X,
     y: ROW_T_Y,
-    label: "規格通り",
-    sub: "面白みが出ない",
-    badgeAnchor: "tr" as const,
+    label: "設計上の中立",
+    labelAnchor: "top" as const,
   },
   {
-    role: "ng" as const,
+    role: "support" as const,
     href: "/notes-assets/grading/natural-vs-normal/quadrant-outdated.png",
     x: COL_R_X,
     y: ROW_B_Y,
-    label: "時代外れ",
-    sub: "古びて見える",
-    badgeAnchor: "br" as const,
+    label: "現在の感覚とずれる",
+    labelAnchor: "bottom" as const,
   },
   {
-    role: "ng" as const,
+    role: "support" as const,
     href: "/notes-assets/grading/natural-vs-normal/quadrant-aza.png",
     x: COL_L_X,
     y: ROW_B_Y,
     label: "あざとい",
-    sub: "やりすぎて浮く",
-    badgeAnchor: "bl" as const,
+    labelAnchor: "bottom" as const,
   },
 ]
 
 type Quadrant = (typeof QUADRANTS)[number]
 
-const BADGE_PAD = 18
-const BADGE_INNER_X = 22
-const BADGE_INNER_Y_TOP = 36
-const LABEL_FONT_SIZE = 32
-const LABEL_LINE_GAP = 40
-const SUB_FONT_SIZE = 22
-const SUB_GAP = 30
-
-function badgeRectFor(q: Quadrant) {
-  const isHero = q.role === "hero"
-  const lines = isHero ? 2 : 1
-  const w = isHero ? 360 : 300
-  const h = BADGE_INNER_Y_TOP + lines * LABEL_LINE_GAP + SUB_GAP + BADGE_PAD - 14
-  switch (q.badgeAnchor) {
-    case "tl":
-      return { x: q.x + BADGE_PAD, y: q.y + BADGE_PAD, w, h }
-    case "tr":
-      return { x: q.x + CELL_W - BADGE_PAD - w, y: q.y + BADGE_PAD, w, h }
-    case "bl":
-      return { x: q.x + BADGE_PAD, y: q.y + CELL_H - BADGE_PAD - h, w, h }
-    case "br":
-      return { x: q.x + CELL_W - BADGE_PAD - w, y: q.y + CELL_H - BADGE_PAD - h, w, h }
-  }
-}
+const LABEL_BAR_H = 64
+const LABEL_FONT_SIZE = 30
+const HERO_SUB_FONT_SIZE = 22
 
 function HeroCornerMarks({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
-  const armLen = 38
-  const armW = 5
-  const inset = 12
+  const armLen = 32
+  const armW = 4
+  const inset = 14
   const x0 = x + inset
   const y0 = y + inset
   const x1 = x + w - inset
@@ -103,117 +79,102 @@ function HeroCornerMarks({ x, y, w, h }: { x: number; y: number; w: number; h: n
   )
 }
 
-function QuadrantBadge({ q }: { q: Quadrant }) {
-  const r = badgeRectFor(q)
+function QuadrantLabel({ q }: { q: Quadrant }) {
   const isHero = q.role === "hero"
-  const textX = r.x + BADGE_INNER_X
-  const subColor = isHero ? "#E0D9FF" : "#F4EDFF"
-  const subOpacity = isHero ? 1 : 0.86
-  const subY = r.y + BADGE_INNER_Y_TOP
-  const labelStartY = subY + SUB_GAP + 2
+  const inset = 16
+  const barY = q.labelAnchor === "top" ? q.y + inset : q.y + CELL_H - inset - LABEL_BAR_H
+  const barX = q.x + inset
+  const barW = CELL_W - inset * 2
+  const labelY = barY + 42
+  const subY = q.y + CELL_H - inset - 16
   return (
     <g>
       <rect
-        x={r.x}
-        y={r.y}
-        width={r.w}
-        height={r.h}
-        rx={20}
-        fill={SCRIM_FILL}
-        stroke={isHero ? ACCENT : "rgba(255,255,255,0.18)"}
-        strokeWidth={isHero ? 2 : 1}
+        x={barX}
+        y={barY}
+        width={barW}
+        height={LABEL_BAR_H}
+        rx={12}
+        fill={PAPER}
+        opacity={isHero ? 0.98 : 0.92}
       />
+      {isHero ? <rect x={barX} y={barY} width={9} height={LABEL_BAR_H} rx={4.5} fill={ACCENT} /> : null}
       <text
-        x={textX}
-        y={subY}
-        fill={subColor}
-        opacity={subOpacity}
-        fontSize={SUB_FONT_SIZE}
-        fontWeight={600}
-        letterSpacing="0.04em"
-      >
-        {q.sub}
-      </text>
-      <text
-        x={textX}
-        y={labelStartY}
-        fill="#FFFFFF"
+        x={barX + (isHero ? 28 : 22)}
+        y={labelY}
+        fill={INK}
         fontSize={LABEL_FONT_SIZE}
         fontWeight={800}
       >
         {q.label}
       </text>
-      {q.label2 ? (
+      {isHero ? (
         <text
-          x={textX}
-          y={labelStartY + LABEL_LINE_GAP}
+          x={q.x + CELL_W - inset}
+          y={subY}
+          textAnchor="end"
           fill="#FFFFFF"
-          fontSize={LABEL_FONT_SIZE}
-          fontWeight={800}
+          fontSize={HERO_SUB_FONT_SIZE}
+          fontWeight={700}
+          paintOrder="stroke"
+          stroke="rgba(5,5,8,0.72)"
+          strokeWidth={5}
         >
-          {q.label2}
+          {q.sub}
         </text>
       ) : null}
     </g>
   )
 }
 
-function AxisCrossBadge() {
-  const w = 360
-  const h = 132
-  const x = CROSS_X - w / 2
-  const y = CROSS_Y - h / 2
+function AxisGuides() {
+  const axisStroke = "rgba(246,241,230,0.74)"
   return (
     <g>
       <line
         x1={CROSS_X}
-        y1={PAD}
+        y1={H - PAD - 4}
         x2={CROSS_X}
-        y2={H - PAD}
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth={1}
-        strokeDasharray="6 8"
+        y2={PAD + 26}
+        stroke={axisStroke}
+        strokeWidth={2}
       />
+      <path d={`M ${CROSS_X - 9} ${PAD + 36} L ${CROSS_X} ${PAD + 18} L ${CROSS_X + 9} ${PAD + 36}`} fill="none" stroke={axisStroke} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       <line
         x1={PAD}
         y1={CROSS_Y}
-        x2={W - PAD}
+        x2={W - PAD - 26}
         y2={CROSS_Y}
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth={1}
-        strokeDasharray="6 8"
+        stroke={axisStroke}
+        strokeWidth={2}
       />
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx={22}
-        fill="rgba(8, 6, 32, 0.78)"
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth={1}
-      />
+      <path d={`M ${W - PAD - 36} ${CROSS_Y - 9} L ${W - PAD - 18} ${CROSS_Y} L ${W - PAD - 36} ${CROSS_Y + 9}`} fill="none" stroke={axisStroke} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       <text
-        x={CROSS_X}
-        y={CROSS_Y - 14}
+        x={CROSS_X - 18}
+        y={CROSS_Y - 120}
         textAnchor="middle"
         fill="#FFFFFF"
-        fontSize={36}
+        fontSize={28}
         fontWeight={800}
-        letterSpacing="0.04em"
+        paintOrder="stroke"
+        stroke="#0d0b1f"
+        strokeWidth={4}
+        transform={`rotate(-90 ${CROSS_X - 18} ${CROSS_Y - 120})`}
       >
-        ナチュラル ↑
+        ナチュラル
       </text>
       <text
-        x={CROSS_X}
-        y={CROSS_Y + 36}
+        x={W - PAD - 70}
+        y={CROSS_Y - 18}
         textAnchor="middle"
         fill="#FFFFFF"
-        fontSize={36}
+        fontSize={28}
         fontWeight={800}
-        letterSpacing="0.04em"
+        paintOrder="stroke"
+        stroke="#0d0b1f"
+        strokeWidth={4}
       >
-        ノーマル →
+        ノーマル
       </text>
     </g>
   )
@@ -259,11 +220,11 @@ export default function GradingNaturalVsNormal() {
         </g>
       ))}
 
-      {QUADRANTS.map((q) => (
-        <QuadrantBadge key={q.href + ":badge"} q={q} />
-      ))}
+      <AxisGuides />
 
-      <AxisCrossBadge />
+      {QUADRANTS.map((q) => (
+        <QuadrantLabel key={q.href + ":label"} q={q} />
+      ))}
     </svg>
   )
 }
