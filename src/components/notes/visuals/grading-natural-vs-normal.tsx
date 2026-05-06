@@ -3,21 +3,19 @@
 const W = 1600
 const H = 900
 
-const TEXT = "rgba(34,34,38,0.90)"
-const MUTED = "rgba(92,92,99,0.78)"
-const GRID = "rgba(90,90,96,0.18)"
-const AXIS = "rgba(46,46,52,0.70)"
+const TEXT = "#1a1a1a"
+const MUTED = "#888888"
+const GUIDE = "#dddddd"
 const PANEL = "rgba(255,255,255,0.55)"
 const PANEL_STROKE = "rgba(70,70,78,0.18)"
 
 const MAGENTA = "rgb(192,74,142)"
-const TEAL = "rgb(46,140,132)"
 
 const PLOT = {
-  x: 150,
-  y: 72,
-  w: 1370,
-  h: 682,
+  x: 260,
+  y: 150,
+  w: 1080,
+  h: 590,
 }
 const MID_X = PLOT.x + PLOT.w / 2
 const MID_Y = PLOT.y + PLOT.h / 2
@@ -36,16 +34,8 @@ export default function GradingNaturalVsNormal() {
         <filter id="gnvn-soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="12" stdDeviation="18" floodOpacity="0.12" />
         </filter>
-        <marker
-          id="gnvn-arrow"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="5"
-          orient="auto"
-          markerUnits="strokeWidth"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 Z" fill={AXIS} />
+        <marker id="gnvn-here-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+          <path d="M 0 0 L 12 6 L 0 12 Z" fill={MAGENTA} />
         </marker>
       </defs>
 
@@ -64,142 +54,81 @@ export default function GradingNaturalVsNormal() {
         />
       </g>
 
-      <g aria-hidden="true">
-        {[1, 2, 3].map((i) => (
-          <line
-            key={`v-${i}`}
-            x1={PLOT.x + (PLOT.w / 4) * i}
-            y1={PLOT.y}
-            x2={PLOT.x + (PLOT.w / 4) * i}
-            y2={PLOT.y + PLOT.h}
-            stroke={GRID}
-            strokeWidth={1}
-            strokeDasharray="8 10"
-          />
-        ))}
-        {[1, 2, 3].map((i) => (
-          <line
-            key={`h-${i}`}
-            x1={PLOT.x}
-            y1={PLOT.y + (PLOT.h / 4) * i}
-            x2={PLOT.x + PLOT.w}
-            y2={PLOT.y + (PLOT.h / 4) * i}
-            stroke={GRID}
-            strokeWidth={1}
-            strokeDasharray="8 10"
-          />
-        ))}
-      </g>
-
       <g>
         <line
           x1={PLOT.x}
           y1={MID_Y}
           x2={PLOT.x + PLOT.w}
           y2={MID_Y}
-          stroke={AXIS}
-          strokeWidth={3}
+          stroke={GUIDE}
+          strokeWidth={2}
           strokeLinecap="round"
-          markerEnd="url(#gnvn-arrow)"
         />
         <line
           x1={MID_X}
           y1={PLOT.y + PLOT.h}
           x2={MID_X}
           y2={PLOT.y}
-          stroke={AXIS}
-          strokeWidth={3}
+          stroke={GUIDE}
+          strokeWidth={2}
           strokeLinecap="round"
-          markerEnd="url(#gnvn-arrow)"
         />
 
-        <text x={MID_X} y={828} textAnchor="middle" fill={TEAL} fontSize={32} fontWeight={850}>
-          X / ノーマル軸
+        <text x={MID_X} y={PLOT.y - 36} textAnchor="middle" fill={TEXT} fontSize={44} fontWeight={850}>
+          ナチュラル ↑
         </text>
-        <text x={PLOT.x + 10} y={792} textAnchor="start" fill={MUTED} fontSize={24} fontWeight={780}>
-          低
+        <text x={MID_X} y={PLOT.y + PLOT.h + 62} textAnchor="middle" fill={MUTED} fontSize={44} fontWeight={760}>
+          ↓
         </text>
-        <text x={PLOT.x + PLOT.w - 10} y={792} textAnchor="end" fill={TEAL} fontSize={24} fontWeight={850}>
-          高
+        <text x={PLOT.x + PLOT.w} y={MID_Y - 18} textAnchor="end" fill={TEXT} fontSize={44} fontWeight={850}>
+          ノーマル →
         </text>
-        <text x={MID_X} y={792} textAnchor="middle" fill={AXIS} fontSize={24} fontWeight={760}>
-          低 ←→ 高
-        </text>
-
-        <text
-          x={66}
-          y={MID_Y}
-          textAnchor="middle"
-          fill={TEAL}
-          fontSize={32}
-          fontWeight={850}
-          transform={`rotate(-90 66 ${MID_Y})`}
-        >
-          Y / ナチュラル軸
-        </text>
-        <text x={MID_X + 18} y={112} textAnchor="start" fill={TEAL} fontSize={24} fontWeight={850}>
-          高
-        </text>
-        <text x={MID_X + 18} y={732} textAnchor="start" fill={MUTED} fontSize={24} fontWeight={780}>
-          低
-        </text>
-        <text
-          x={MID_X - 34}
-          y={MID_Y}
-          textAnchor="middle"
-          fill={AXIS}
-          fontSize={24}
-          fontWeight={760}
-          transform={`rotate(-90 ${MID_X - 34} ${MID_Y})`}
-        >
-          低 ←→ 高
+        <text x={PLOT.x - 36} y={MID_Y + 14} textAnchor="end" fill={MUTED} fontSize={44} fontWeight={760}>
+          ←
         </text>
       </g>
 
       <g>
         <rect
-          x={462}
-          y={146}
-          width={312}
-          height={50}
-          rx={16}
+          x={502}
+          y={224}
+          width={92}
+          height={232}
+          rx={46}
           fill={MAGENTA}
-          opacity={0.24}
-          stroke={MAGENTA}
-          strokeWidth={4}
+          opacity={0.95}
         />
-        <text x={618} y={180} textAnchor="middle" fill={MAGENTA} fontSize={24} fontWeight={850}>
-          目指す狭い帯
+        <path
+          d="M 666 310 C 638 310 620 310 594 310"
+          fill="none"
+          stroke={MAGENTA}
+          strokeWidth={5}
+          strokeLinecap="round"
+          markerEnd="url(#gnvn-here-arrow)"
+        />
+        <text x={624} y={282} fill={MAGENTA} fontSize={30} fontWeight={850}>
+          ここ
+        </text>
+        <text x={700} y={330} fill={TEXT} fontSize={46} fontWeight={860}>
+          ナチュラルだけどノーマルじゃない
         </text>
       </g>
 
       <g>
         <QuadrantLabel
-          x={210}
-          y={156}
-          title="ナチュラル ×"
-          sub="ノーマルじゃない"
-          accent={MAGENTA}
-          strong
-        />
-        <QuadrantLabel
-          x={1068}
-          y={156}
+          x={1080}
+          y={262}
           title="規格通り"
-          sub="高 × 高"
-          accent={TEAL}
         />
         <QuadrantLabel
-          x={210}
-          y={540}
-          title="あざとい"
-          sub="低 × 低"
-        />
-        <QuadrantLabel
-          x={1068}
-          y={540}
+          x={1060}
+          y={604}
           title="時代外れ"
-          sub="低 × 高"
+        />
+        <QuadrantLabel
+          x={412}
+          y={604}
+          title="あざとい"
         />
       </g>
     </svg>
@@ -210,31 +139,15 @@ function QuadrantLabel({
   x,
   y,
   title,
-  sub,
-  accent = "rgba(86,86,94,0.70)",
-  strong = false,
 }: {
   x: number
   y: number
   title: string
-  sub: string
-  accent?: string
-  strong?: boolean
 }) {
   return (
     <g>
-      <circle cx={x - 28} cy={y - 9} r={strong ? 8 : 6} fill={accent} />
-      <text
-        x={x}
-        y={y}
-        fill={strong ? TEXT : "rgba(45,45,52,0.82)"}
-        fontSize={strong ? 28 : 24}
-        fontWeight={strong ? 850 : 760}
-      >
+      <text x={x} y={y} fill={MUTED} fontSize={30} fontWeight={650}>
         {title}
-      </text>
-      <text x={x} y={y + 32} fill={strong ? MAGENTA : MUTED} fontSize={18} fontWeight={strong ? 800 : 560}>
-        {sub}
       </text>
     </g>
   )
