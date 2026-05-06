@@ -15,9 +15,13 @@ const CROSS_X = W / 2
 const CROSS_Y = H / 2
 
 const CORNER_R = 18
-const ACCENT = "#E8FF6A"
-const INK = "#11131A"
-const PAPER = "#F6F1E6"
+const BG_BASE = "#F8F6FF"
+const ACCENT = "#8B7FFF"
+const TEXT_PRIMARY = "#1C0F6E"
+const GLASS_FILL = "rgba(255,255,255,0.65)"
+const GLASS_FILL_SOFT = "rgba(255,255,255,0.55)"
+const GLASS_STROKE = "rgba(255,255,255,0.78)"
+const AXIS_STROKE = "rgba(139,127,255,0.4)"
 
 const QUADRANTS = [
   {
@@ -57,78 +61,85 @@ const QUADRANTS = [
 
 type Quadrant = (typeof QUADRANTS)[number]
 
-const LABEL_BAR_H = 64
-const LABEL_FONT_SIZE = 30
-const HERO_SUB_FONT_SIZE = 22
+const LABEL_H = 48
+const LABEL_FONT_SIZE = 26
+const HERO_SUB_H = 36
+const HERO_SUB_FONT_SIZE = 19
 
-function HeroCornerMarks({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
-  const armLen = 32
-  const armW = 4
-  const inset = 14
-  const x0 = x + inset
-  const y0 = y + inset
-  const x1 = x + w - inset
-  const y1 = y + h - inset
-  return (
-    <g stroke={ACCENT} strokeWidth={armW} strokeLinecap="square" fill="none">
-      <path d={`M ${x0} ${y0 + armLen} L ${x0} ${y0} L ${x0 + armLen} ${y0}`} />
-      <path d={`M ${x1 - armLen} ${y0} L ${x1} ${y0} L ${x1} ${y0 + armLen}`} />
-      <path d={`M ${x0} ${y1 - armLen} L ${x0} ${y1} L ${x0 + armLen} ${y1}`} />
-      <path d={`M ${x1 - armLen} ${y1} L ${x1} ${y1} L ${x1} ${y1 - armLen}`} />
-    </g>
-  )
+function pillWidth(label: string) {
+  if (label === "現在の感覚とずれる") return 320
+  if (label === "ナチュラルだけどノーマルじゃない") return 382
+  if (label === "設計上の中立") return 238
+  if (label === "狙う狭い場所") return 236
+  if (label === "ナチュラル") return 164
+  if (label === "ノーマル") return 142
+  return 170
 }
 
 function QuadrantLabel({ q }: { q: Quadrant }) {
   const isHero = q.role === "hero"
-  const inset = 16
-  const barY = q.labelAnchor === "top" ? q.y + inset : q.y + CELL_H - inset - LABEL_BAR_H
-  const barX = q.x + inset
-  const barW = CELL_W - inset * 2
-  const labelY = barY + 42
-  const subY = q.y + CELL_H - inset - 16
+  const inset = 22
+  const labelW = pillWidth(q.label)
+  const labelX = q.labelAnchor === "top" ? q.x + inset : q.x + CELL_W - inset - labelW
+  const labelY = q.labelAnchor === "top" ? q.y + inset : q.y + CELL_H - inset - LABEL_H
+  const subW = q.sub ? pillWidth(q.sub) : 0
+  const subX = q.x + inset
+  const subY = labelY + LABEL_H + 10
   return (
     <g>
       <rect
-        x={barX}
-        y={barY}
-        width={barW}
-        height={LABEL_BAR_H}
-        rx={12}
-        fill={PAPER}
-        opacity={isHero ? 0.98 : 0.92}
-      />
-      {isHero ? <rect x={barX} y={barY} width={9} height={LABEL_BAR_H} rx={4.5} fill={ACCENT} /> : null}
-      <text
-        x={barX + (isHero ? 28 : 22)}
+        x={labelX}
         y={labelY}
-        fill={INK}
+        width={labelW}
+        height={LABEL_H}
+        rx={LABEL_H / 2}
+        fill={GLASS_FILL}
+        stroke={GLASS_STROKE}
+        strokeWidth={1}
+        filter="url(#gnvn-badge-shadow)"
+      />
+      <text
+        x={labelX + labelW / 2}
+        y={labelY + 32}
+        textAnchor="middle"
+        fill={isHero ? ACCENT : TEXT_PRIMARY}
         fontSize={LABEL_FONT_SIZE}
-        fontWeight={800}
+        fontWeight={600}
       >
         {q.label}
       </text>
       {isHero ? (
-        <text
-          x={q.x + CELL_W - inset}
-          y={subY}
-          textAnchor="end"
-          fill="#FFFFFF"
-          fontSize={HERO_SUB_FONT_SIZE}
-          fontWeight={700}
-          paintOrder="stroke"
-          stroke="rgba(5,5,8,0.72)"
-          strokeWidth={5}
-        >
-          {q.sub}
-        </text>
+        <g>
+          <rect
+            x={subX}
+            y={subY}
+            width={subW}
+            height={HERO_SUB_H}
+            rx={HERO_SUB_H / 2}
+            fill={GLASS_FILL_SOFT}
+            stroke={GLASS_STROKE}
+            strokeWidth={1}
+            filter="url(#gnvn-badge-shadow)"
+          />
+          <text
+            x={subX + subW / 2}
+            y={subY + 25}
+            textAnchor="middle"
+            fill={ACCENT}
+            fontSize={HERO_SUB_FONT_SIZE}
+            fontWeight={500}
+          >
+            {q.sub}
+          </text>
+        </g>
       ) : null}
     </g>
   )
 }
 
 function AxisGuides() {
-  const axisStroke = "rgba(246,241,230,0.74)"
+  const verticalW = pillWidth("ナチュラル")
+  const horizontalW = pillWidth("ノーマル")
   return (
     <g>
       <line
@@ -136,46 +147,67 @@ function AxisGuides() {
         y1={H - PAD - 4}
         x2={CROSS_X}
         y2={PAD + 26}
-        stroke={axisStroke}
+        stroke={AXIS_STROKE}
         strokeWidth={2}
+        strokeLinecap="round"
       />
-      <path d={`M ${CROSS_X - 9} ${PAD + 36} L ${CROSS_X} ${PAD + 18} L ${CROSS_X + 9} ${PAD + 36}`} fill="none" stroke={axisStroke} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={`M ${CROSS_X - 9} ${PAD + 36} L ${CROSS_X} ${PAD + 18} L ${CROSS_X + 9} ${PAD + 36}`} fill="none" stroke={AXIS_STROKE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       <line
         x1={PAD}
         y1={CROSS_Y}
         x2={W - PAD - 26}
         y2={CROSS_Y}
-        stroke={axisStroke}
+        stroke={AXIS_STROKE}
         strokeWidth={2}
+        strokeLinecap="round"
       />
-      <path d={`M ${W - PAD - 36} ${CROSS_Y - 9} L ${W - PAD - 18} ${CROSS_Y} L ${W - PAD - 36} ${CROSS_Y + 9}`} fill="none" stroke={axisStroke} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-      <text
-        x={CROSS_X - 18}
-        y={CROSS_Y - 120}
-        textAnchor="middle"
-        fill="#FFFFFF"
-        fontSize={28}
-        fontWeight={800}
-        paintOrder="stroke"
-        stroke="#0d0b1f"
-        strokeWidth={4}
-        transform={`rotate(-90 ${CROSS_X - 18} ${CROSS_Y - 120})`}
-      >
-        ナチュラル
-      </text>
-      <text
-        x={W - PAD - 70}
-        y={CROSS_Y - 18}
-        textAnchor="middle"
-        fill="#FFFFFF"
-        fontSize={28}
-        fontWeight={800}
-        paintOrder="stroke"
-        stroke="#0d0b1f"
-        strokeWidth={4}
-      >
-        ノーマル
-      </text>
+      <path d={`M ${W - PAD - 36} ${CROSS_Y - 9} L ${W - PAD - 18} ${CROSS_Y} L ${W - PAD - 36} ${CROSS_Y + 9}`} fill="none" stroke={AXIS_STROKE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+      <g transform={`translate(${CROSS_X - 18} ${CROSS_Y - 120}) rotate(-90)`}>
+        <rect
+          x={-verticalW / 2}
+          y={-22}
+          width={verticalW}
+          height={44}
+          rx={22}
+          fill={GLASS_FILL}
+          stroke={GLASS_STROKE}
+          strokeWidth={1}
+          filter="url(#gnvn-badge-shadow)"
+        />
+        <text
+          x={0}
+          y={9}
+          textAnchor="middle"
+          fill={ACCENT}
+          fontSize={24}
+          fontWeight={600}
+        >
+          ナチュラル
+        </text>
+      </g>
+      <g transform={`translate(${W - PAD - 82} ${CROSS_Y - 24})`}>
+        <rect
+          x={-horizontalW / 2}
+          y={-22}
+          width={horizontalW}
+          height={44}
+          rx={22}
+          fill={GLASS_FILL}
+          stroke={GLASS_STROKE}
+          strokeWidth={1}
+          filter="url(#gnvn-badge-shadow)"
+        />
+        <text
+          x={0}
+          y={9}
+          textAnchor="middle"
+          fill={ACCENT}
+          fontSize={24}
+          fontWeight={600}
+        >
+          ノーマル
+        </text>
+      </g>
     </g>
   )
 }
@@ -192,17 +224,53 @@ export default function GradingNaturalVsNormal() {
       fontFamily="var(--font-noto-sans-jp), sans-serif"
     >
       <defs>
+        <radialGradient id="gnvn-aurora-purple" cx="16%" cy="12%" r="48%">
+          <stop offset="0%" stopColor="#8B7FFF" stopOpacity={0.18} />
+          <stop offset="72%" stopColor="#8B7FFF" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id="gnvn-aurora-pink" cx="86%" cy="8%" r="42%">
+          <stop offset="0%" stopColor="#FF8FAB" stopOpacity={0.12} />
+          <stop offset="72%" stopColor="#FF8FAB" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id="gnvn-aurora-sky" cx="55%" cy="96%" r="46%">
+          <stop offset="0%" stopColor="#7DD3FC" stopOpacity={0.12} />
+          <stop offset="72%" stopColor="#7DD3FC" stopOpacity={0} />
+        </radialGradient>
+        <filter id="gnvn-card-shadow" x="-8%" y="-8%" width="116%" height="122%">
+          <feDropShadow dx={0} dy={8} stdDeviation={16} floodColor="#8B7FFF" floodOpacity={0.15} />
+        </filter>
+        <filter id="gnvn-badge-shadow" x="-12%" y="-40%" width="124%" height="190%">
+          <feDropShadow dx={0} dy={4} stdDeviation={10} floodColor="#8B7FFF" floodOpacity={0.12} />
+        </filter>
         <clipPath id="gnvn-cell-clip">
           <rect x={0} y={0} width={CELL_W} height={CELL_H} rx={CORNER_R} />
         </clipPath>
       </defs>
 
-      <rect x={0} y={0} width={W} height={H} fill="#0d0b1f" />
+      <rect x={0} y={0} width={W} height={H} fill={BG_BASE} />
+      <rect x={0} y={0} width={W} height={H} fill="url(#gnvn-aurora-purple)" />
+      <rect x={0} y={0} width={W} height={H} fill="url(#gnvn-aurora-pink)" />
+      <rect x={0} y={0} width={W} height={H} fill="url(#gnvn-aurora-sky)" />
+      <rect x={0} y={0} width={W} height={H} fill="rgba(28,15,110,0.025)" />
 
       {QUADRANTS.map((q) => (
         <g key={q.href} transform={`translate(${q.x} ${q.y})`}>
+          {q.role === "hero" ? (
+            <rect
+              x={0}
+              y={0}
+              width={CELL_W}
+              height={CELL_H}
+              rx={CORNER_R}
+              fill="rgba(255,255,255,0.45)"
+              stroke="rgba(255,255,255,0.62)"
+              strokeWidth={1}
+              filter="url(#gnvn-card-shadow)"
+            />
+          ) : null}
           <g clipPath="url(#gnvn-cell-clip)">
             <image href={q.href} x={0} y={0} width={CELL_W} height={CELL_H} preserveAspectRatio="xMidYMid slice" />
+            <rect x={0} y={0} width={CELL_W} height={CELL_H} fill={q.role === "hero" ? "rgba(139,127,255,0.04)" : "rgba(28,15,110,0.04)"} />
           </g>
           <rect
             x={0}
@@ -211,12 +279,10 @@ export default function GradingNaturalVsNormal() {
             height={CELL_H}
             rx={CORNER_R}
             fill="none"
-            stroke={q.role === "hero" ? ACCENT : "rgba(255,255,255,0.32)"}
-            strokeWidth={q.role === "hero" ? 4 : 1.5}
+            stroke={q.role === "hero" ? ACCENT : "rgba(255,255,255,0.72)"}
+            strokeWidth={q.role === "hero" ? 3 : 1}
+            filter={q.role === "hero" ? "url(#gnvn-card-shadow)" : undefined}
           />
-          {q.role === "hero" ? (
-            <HeroCornerMarks x={0} y={0} w={CELL_W} h={CELL_H} />
-          ) : null}
         </g>
       ))}
 
