@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "db:migrate:turso": "tsx scripts/turso-migrate-deploy.ts"
+    "db:migrate:turso": "tsx scripts/turso-migrate-deploy.ts",
+    "e2e:resend:real-send": "tsx scripts/e2e-resend-real-send.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
