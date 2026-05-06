@@ -69,7 +69,12 @@ const VIDEO_MODULES: Record<string, ComponentType<VideoVisualProps>> = {
   ),
 }
 
-const STATIC_MODULES: Record<string, ComponentType<unknown>> = {}
+const STATIC_MODULES: Record<string, ComponentType<unknown>> = {
+  "grading-natural-vs-normal": dynamic(
+    () => import("@/components/notes/visuals/grading-natural-vs-normal"),
+    { loading: () => <VisualSkeleton /> }
+  ),
+}
 
 export function NoteVisual({ slug }: { slug: string }) {
   const config = getVisualConfig(slug)
@@ -91,7 +96,6 @@ export function NoteVisual({ slug }: { slug: string }) {
   }
   return (
     <figure
-      data-diagram-slug={config.slug}
       data-diagram-kind={config.kind}
       className="mx-auto my-12 max-w-[58rem] overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-16"
     >

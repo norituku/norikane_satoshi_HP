@@ -111,6 +111,16 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
     intro: "蓄積した因数別パーツを、新しい作品の上に一つずつ重ねる。",
     loopSec: 9,
   },
+  "grading-natural-vs-normal": {
+    slug: "grading-natural-vs-normal",
+    kind: "static",
+    title: "ナチュラルとノーマルは違う",
+    caption:
+      "ナチュラル軸とノーマル軸を分け、時代の感覚と整合しながら規格通りではない狭い帯を示す。",
+    alt: "横軸をナチュラル軸、縦軸をノーマル軸として、ナチュラルだけどノーマルじゃない狭い帯を強調した四象限図",
+    aspect: { width: 16, height: 5 },
+    intro: "普通でも変でもない、狭い場所を探す。",
+  },
 }
 
 export function getVisualConfig(slug: string): VisualConfig | null {
