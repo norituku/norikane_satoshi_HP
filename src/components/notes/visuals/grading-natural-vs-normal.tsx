@@ -20,7 +20,6 @@ const ACCENT = "#8B7FFF"
 const TEXT_PRIMARY = "#1C0F6E"
 const GLASS_FILL = "rgba(255,255,255,0.65)"
 const GLASS_STROKE = "rgba(255,255,255,0.78)"
-const AXIS_STROKE = "rgba(139,127,255,0.4)"
 
 const QUADRANTS = [
   {
@@ -98,7 +97,7 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
   )
 }
 
-function AxisGuides() {
+function AxisLabels() {
   const AXIS_W_TOP = 200
   const AXIS_W_RIGHT = 182
   const AXIS_H = 44
@@ -109,24 +108,6 @@ function AxisGuides() {
   const rightCy = CROSS_Y
   return (
     <g>
-      <line
-        x1={CROSS_X}
-        y1={H - PAD - 4}
-        x2={CROSS_X}
-        y2={topCy + AXIS_H / 2 + 12}
-        stroke={AXIS_STROKE}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-      <line
-        x1={PAD}
-        y1={CROSS_Y}
-        x2={rightCx - AXIS_W_RIGHT / 2 - 12}
-        y2={CROSS_Y}
-        stroke={AXIS_STROKE}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
       <rect
         x={topCx - AXIS_W_TOP / 2}
         y={topCy - AXIS_H / 2}
@@ -247,7 +228,7 @@ export default function GradingNaturalVsNormal() {
         </g>
       ))}
 
-      <AxisGuides />
+      <AxisLabels />
 
       {QUADRANTS.map((q) => (
         <QuadrantLabel key={q.href + ":label"} q={q} />
