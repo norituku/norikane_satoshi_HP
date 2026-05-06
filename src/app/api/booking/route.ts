@@ -2,6 +2,12 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
 import { bookingApiSchema, type BookingApiInput } from "@/lib/booking/api-schema"
+import {
+  sendBookingConfirmedEmail,
+  sendBookingOverwriteNoticeEmail,
+  sendBookingTentativeEmail,
+  type BookingEmailArgs,
+} from "@/lib/booking/email"
 import { getDurationLabel } from "@/lib/booking/form-schema"
 import {
   CALENDAR_TOKEN_USER_ID,
@@ -32,6 +38,11 @@ async function findConflictingBookings(start: Date, end: Date) {
       customer: {
         select: {
           displayName: true,
+          user: {
+            select: {
+              email: true,
+            },
+          },
         },
       },
     },
@@ -68,6 +79,27 @@ function createSummary(input: BookingApiInput): string {
   return `${prefix}${input.projectTitle} / ${input.contactName}`
 }
 
+function createBookingEmailArgs(input: BookingApiInput, to: string): BookingEmailArgs {
+  return {
+    to,
+    projectTitle: input.projectTitle,
+    start: input.selectedSlot.start,
+    end: input.selectedSlot.end,
+    workScopes: input.workScopes,
+    otherWorkDetail: input.otherWorkDetail,
+    estimatedDuration: input.estimatedDuration,
+  }
+}
+
+async function warnOnEmailFailure(task: Promise<unknown>, tag: string, to: string) {
+  try {
+    await task
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "email send failed"
+    console.warn(`[email failed] tag=${tag} to=${to}`, message)
+  }
+}
+
 async function refreshStoredCalendarToken() {
   const storedToken = await prisma.calendarToken.findUnique({
     where: { userId: CALENDAR_TOKEN_USER_ID },
@@ -93,6 +125,14 @@ function responseForConflict(error: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await auth()
+  const userId = session?.user?.id
+  const userEmail = session?.user?.email
+
+  if (!userId || !userEmail) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  }
+
   let raw: unknown
   try {
     raw = await request.json()
@@ -111,12 +151,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const session = await auth()
-  const userId = session?.user?.id
-  const userEmail = session?.user?.email
   const input = parsed.data
 
-  if (!userId || !userEmail || userEmail !== input.sessionEmail) {
+  if (userEmail !== input.sessionEmail) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
@@ -173,6 +210,39 @@ export async function POST(request: NextRequest) {
         status: bookingStatus,
       },
     })
+
+    const bookingEmailArgs = createBookingEmailArgs(input, userEmail)
+    const emailTasks: Promise<unknown>[] = []
+    if (bookingStatus === "TENTATIVE") {
+      emailTasks.push(warnOnEmailFailure(sendBookingTentativeEmail(bookingEmailArgs), "tentative", userEmail))
+    } else {
+      emailTasks.push(warnOnEmailFailure(sendBookingConfirmedEmail(bookingEmailArgs), "confirmed", userEmail))
+    }
+
+    for (const tentativeConflict of tentativeConflicts) {
+      const conflictEmail = tentativeConflict.customer.user.email
+      if (!conflictEmail) {
+        console.warn(`[email skipped] tag=overwrite to=missing bookingId=${tentativeConflict.id}`)
+        continue
+      }
+      emailTasks.push(
+        warnOnEmailFailure(
+          sendBookingOverwriteNoticeEmail({
+            to: conflictEmail,
+            projectTitle: tentativeConflict.title,
+            start: tentativeConflict.startTime,
+            end: tentativeConflict.endTime,
+            workScopes: input.workScopes,
+            otherWorkDetail: tentativeConflict.memo ?? "",
+            estimatedDuration: input.estimatedDuration,
+            deadline: tentativeDeadline,
+          }),
+          "overwrite",
+          conflictEmail,
+        ),
+      )
+    }
+    await Promise.all(emailTasks)
 
     if (!calendarId) {
       console.warn("Booking created without Google Calendar event: GOOGLE_CALENDAR_BUSY_SOURCE_ID is not set")
