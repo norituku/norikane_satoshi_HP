@@ -19,7 +19,6 @@ const BG_BASE = "#F8F6FF"
 const ACCENT = "#8B7FFF"
 const TEXT_PRIMARY = "#1C0F6E"
 const GLASS_FILL = "rgba(255,255,255,0.65)"
-const GLASS_FILL_SOFT = "rgba(255,255,255,0.55)"
 const GLASS_STROKE = "rgba(255,255,255,0.78)"
 const AXIS_STROKE = "rgba(139,127,255,0.4)"
 
@@ -30,7 +29,6 @@ const QUADRANTS = [
     x: COL_L_X,
     y: ROW_T_Y,
     label: "狙う狭い場所",
-    sub: "ナチュラルだけどノーマルじゃない",
     labelAnchor: "top" as const,
   },
   {
@@ -63,12 +61,9 @@ type Quadrant = (typeof QUADRANTS)[number]
 
 const LABEL_H = 48
 const LABEL_FONT_SIZE = 26
-const HERO_SUB_H = 36
-const HERO_SUB_FONT_SIZE = 19
 
 function pillWidth(label: string) {
   if (label === "現在の感覚とずれる") return 320
-  if (label === "ナチュラルだけどノーマルじゃない") return 382
   if (label === "設計上の中立") return 238
   if (label === "狙う狭い場所") return 236
   if (label === "ナチュラル") return 164
@@ -82,9 +77,6 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
   const labelW = pillWidth(q.label)
   const labelX = q.labelAnchor === "top" ? q.x + inset : q.x + CELL_W - inset - labelW
   const labelY = q.labelAnchor === "top" ? q.y + inset : q.y + CELL_H - inset - LABEL_H
-  const subW = q.sub ? pillWidth(q.sub) : 0
-  const subX = q.x + inset
-  const subY = labelY + LABEL_H + 10
   return (
     <g>
       <rect
@@ -108,31 +100,6 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
       >
         {q.label}
       </text>
-      {isHero ? (
-        <g>
-          <rect
-            x={subX}
-            y={subY}
-            width={subW}
-            height={HERO_SUB_H}
-            rx={HERO_SUB_H / 2}
-            fill={GLASS_FILL_SOFT}
-            stroke={GLASS_STROKE}
-            strokeWidth={1}
-            filter="url(#gnvn-badge-shadow)"
-          />
-          <text
-            x={subX + subW / 2}
-            y={subY + 25}
-            textAnchor="middle"
-            fill={ACCENT}
-            fontSize={HERO_SUB_FONT_SIZE}
-            fontWeight={500}
-          >
-            {q.sub}
-          </text>
-        </g>
-      ) : null}
     </g>
   )
 }
