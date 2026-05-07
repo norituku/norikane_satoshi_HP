@@ -150,7 +150,7 @@ export default function GradingNaturalVsNormal() {
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label="ナチュラル軸（上=ナチュラル高 / 下=ナチュラル低）とノーマル軸（右=ノーマル高 / 左=ノーマル低）の二軸を 4 象限独立画像で対比し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。中央十字の交点に accent point を置き、4 象限ラベルはすべて CELL 右下に統一する。"
+      aria-label="ナチュラル軸（上=ナチュラル高 / 下=ナチュラル低）とノーマル軸（右=ノーマル高 / 左=ノーマル低）の二軸を 4 象限独立画像で対比し、軸線の両端に矢印を置いて方向を示し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。中央十字の交点に accent point を置き、4 象限ラベルはすべて CELL 右下に統一する。"
       fontFamily="var(--font-noto-sans-jp), sans-serif"
     >
       <defs>
@@ -175,6 +175,17 @@ export default function GradingNaturalVsNormal() {
         <clipPath id="gnvn-cell-clip">
           <rect x={0} y={0} width={CELL_W} height={CELL_H} rx={CORNER_R} />
         </clipPath>
+        <marker
+          id="gnvn-axis-arrow"
+          viewBox="0 0 10 10"
+          refX={8}
+          refY={5}
+          markerWidth={8}
+          markerHeight={8}
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={AXIS_STROKE} />
+        </marker>
       </defs>
 
       <rect x={0} y={0} width={W} height={H} fill={BG_BASE} />
@@ -225,6 +236,8 @@ export default function GradingNaturalVsNormal() {
         strokeWidth={1.5}
         strokeDasharray="6 8"
         strokeLinecap="round"
+        markerStart="url(#gnvn-axis-arrow)"
+        markerEnd="url(#gnvn-axis-arrow)"
       />
       <line
         x1={AXIS_W / 2 + AXIS_INSET_X + AXIS_W / 2 + AXIS_LINE_GAP}
@@ -235,6 +248,8 @@ export default function GradingNaturalVsNormal() {
         strokeWidth={1.5}
         strokeDasharray="6 8"
         strokeLinecap="round"
+        markerStart="url(#gnvn-axis-arrow)"
+        markerEnd="url(#gnvn-axis-arrow)"
       />
       <g filter="url(#gnvn-badge-shadow)">
         <circle cx={CROSS_X} cy={CROSS_Y} r={14} fill={ACCENT} />
