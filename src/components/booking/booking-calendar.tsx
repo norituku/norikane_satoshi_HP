@@ -9,9 +9,11 @@ import interactionPlugin, {
 import timeGridPlugin from "@fullcalendar/timegrid"
 import jaLocale from "@fullcalendar/core/locales/ja"
 import type {
+  AllowFunc,
   DateSelectArg,
   DayCellContentArg,
   DayCellMountArg,
+  EventContentArg,
   EventClickArg,
   EventDropArg,
   EventInput,
@@ -95,6 +97,8 @@ const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
   { label: "週", value: "timeGridWeek" },
   { label: "日", value: "timeGridDay" },
 ]
+
+const MIN_SELECTION_MS = 30 * 60 * 1000
 
 function toDateKey(date: Date): string {
   const year = date.getFullYear()
@@ -243,6 +247,14 @@ function formatRange(start: string, end: string): string {
   })}`
 }
 
+function isSelectableView(viewType: string): boolean {
+  return viewType === "timeGridWeek"
+}
+
+function hasMinimumSelectionDuration(start: Date, end: Date): boolean {
+  return end.getTime() - start.getTime() >= MIN_SELECTION_MS
+}
+
 type BookingCalendarProps = {
   initialSlots?: { start: string; end: string }[]
   projectTitle?: string
@@ -353,6 +365,10 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
     calendarRef.current?.getApi().getEventSourceById("remote-events")?.refetch()
   }, [])
 
+  useEffect(() => {
+    calendarRef.current?.getApi().getEventSourceById("draft-events")?.refetch()
+  }, [draftEventInputs])
+
   const upsertDraft = useCallback((draft: DraftEvent, makeActive = true) => {
     setDrafts((prev) => {
       const existing = prev.findIndex((item) => item.id === draft.id)
@@ -368,8 +384,12 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
   }, [])
 
   const removeDraft = useCallback((draftId: string) => {
+    calendarRef.current?.getApi().getEventById(draftId)?.remove()
     setDrafts((prev) => prev.filter((draft) => draft.id !== draftId))
     setActiveDraftId((current) => (current === draftId ? null : current))
+    setActionPanelPosition(null)
+    setWarningModal(null)
+    setActionError(null)
   }, [])
 
   useEffect(() => {
@@ -379,8 +399,13 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
   const cancelActiveDraft = useCallback(() => {
     if (!activeDraftId) return
     removeDraft(activeDraftId)
-    setActionError(null)
   }, [activeDraftId, removeDraft])
+
+  useEffect(() => {
+    if (!activeDraftId || view !== "timeGridWeek") {
+      setActionPanelPosition(null)
+    }
+  }, [activeDraftId, view])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -415,8 +440,10 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
   }, [view])
 
   const handleSelect = useCallback((arg: DateSelectArg) => {
-    if (arg.view.type !== "timeGridWeek" && arg.view.type !== "timeGridDay") {
-      calendarRef.current?.getApi().unselect()
+    const calendarApi = calendarRef.current?.getApi()
+    if (!isSelectableView(arg.view.type) || !hasMinimumSelectionDuration(arg.start, arg.end)) {
+      calendarApi?.unselect()
+      setActionPanelPosition(null)
       return
     }
     const draft: DraftEvent = {
@@ -425,9 +452,12 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
       end: arg.end.toISOString(),
     }
     upsertDraft(draft, true)
-    const calendarApi = calendarRef.current?.getApi()
     calendarApi?.unselect()
   }, [upsertDraft])
+
+  const handleSelectAllow = useCallback<AllowFunc>((span) => {
+    return isSelectableView(selectedViewRef.current) && hasMinimumSelectionDuration(span.start, span.end)
+  }, [])
 
   const handleDateClick = useCallback(
     (arg: DateClickArg) => {
@@ -435,17 +465,9 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
         changeCalendarView("timeGridWeek", arg.dateStr)
         return
       }
-      const start = new Date(arg.date)
-      const end = new Date(start)
-      end.setHours(end.getHours() + 1)
-      const draft: DraftEvent = {
-        id: makeDraftId(),
-        start: start.toISOString(),
-        end: end.toISOString(),
-      }
-      upsertDraft(draft, true)
+      setActionPanelPosition(null)
     },
-    [changeCalendarView, upsertDraft],
+    [changeCalendarView],
   )
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
@@ -569,18 +591,8 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
   const handleEventDidMount = (arg: EventMountArg) => {
     const props = arg.event.extendedProps as AnyEventProps
     if (props.kind === "draft") {
-      const eventMain = arg.el.querySelector<HTMLElement>(".fc-event-main")
-      if (eventMain) {
-        eventMain.textContent = ""
-        const label = document.createElement("span")
-        label.className = "booking-calendar__draft-range"
-        label.textContent =
-          arg.event.start && arg.event.end
-            ? `${format(arg.event.start, "HH:mm")} - ${format(arg.event.end, "HH:mm")}`
-            : ""
-        eventMain.appendChild(label)
-      }
-      if (props.draftId === activeDraftId) {
+      arg.el.setAttribute("data-active-draft", props.draftId === activeDraftId ? "true" : "false")
+      if (props.draftId === activeDraftId && arg.view.type === "timeGridWeek") {
         window.requestAnimationFrame(() => {
           const rootRect = rootRef.current?.getBoundingClientRect()
           const eventRect = arg.el.getBoundingClientRect()
@@ -620,51 +632,30 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
       })
       arg.el.appendChild(removeButton)
     }
-    if (arg.view.type !== "dayGridMonth") return
+  }
 
-    const eventMain = arg.el.querySelector<HTMLElement>(".fc-event-main")
-    if (!eventMain) return
-
-    eventMain.textContent = ""
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-    icon.setAttribute("aria-hidden", "true")
-    icon.setAttribute("width", "16")
-    icon.setAttribute("height", "16")
-    icon.setAttribute("viewBox", "0 0 24 24")
-    icon.setAttribute("fill", "none")
-    icon.setAttribute("stroke", "currentColor")
-    icon.setAttribute("stroke-width", "2.4")
-    icon.setAttribute("stroke-linecap", "round")
-    icon.setAttribute("stroke-linejoin", "round")
-
-    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect")
-    rect.setAttribute("width", "18")
-    rect.setAttribute("height", "11")
-    rect.setAttribute("x", "3")
-    rect.setAttribute("y", "11")
-    rect.setAttribute("rx", "2")
-    rect.setAttribute("ry", "2")
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
-    path.setAttribute("d", "M7 11V7a5 5 0 0 1 10 0v4")
-
-    icon.append(rect, path)
-
-    const label = document.createElement("span")
-    label.textContent = props.label ?? ""
-
-    const content = document.createElement("span")
-    content.className = "booking-calendar__busy-pill-content"
-    content.append(icon, label)
-
-    if (props.status === "TENTATIVE") {
-      const tentativeBadge = document.createElement("span")
-      tentativeBadge.className = "booking-calendar__busy-pill-tag"
-      tentativeBadge.textContent = "仮"
-      content.appendChild(tentativeBadge)
+  const renderEventContent = (arg: EventContentArg) => {
+    const props = arg.event.extendedProps as AnyEventProps
+    if (props.kind === "draft") {
+      return (
+        <span className="booking-calendar__draft-range">
+          {arg.event.start && arg.event.end ? `${format(arg.event.start, "HH:mm")} - ${format(arg.event.end, "HH:mm")}` : ""}
+        </span>
+      )
     }
-
-    eventMain.appendChild(content)
+    if (props.kind === "busy" && arg.view.type === "dayGridMonth") {
+      return (
+        <span className="booking-calendar__busy-pill-content">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span>{props.label ?? ""}</span>
+          {props.status === "TENTATIVE" ? <span className="booking-calendar__busy-pill-tag">仮</span> : null}
+        </span>
+      )
+    }
+    return undefined
   }
 
   const runPreflight = useCallback(
@@ -778,11 +769,11 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
           {(adjustingTitle ?? projectTitle)?.trim() ? `${(adjustingTitle ?? projectTitle)!.trim()}案件の日時調整中` : "日時調整中"}
         </div>
       ) : null}
-      {activeDraft ? (
+      {activeDraft && view === "timeGridWeek" && actionPanelPosition ? (
         <div
           className="booking-calendar__action-panel glass-flat"
           data-testid="booking-action-panel"
-          style={actionPanelPosition ? { top: actionPanelPosition.top, left: actionPanelPosition.left } : undefined}
+          style={{ top: actionPanelPosition.top, left: actionPanelPosition.left }}
         >
           <div className="booking-calendar__action-panel-info">
             <span className="booking-calendar__action-panel-range">
@@ -846,7 +837,9 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
             today: "今日",
           }}
           height="auto"
-          selectable={view !== "dayGridMonth"}
+          selectable={view === "timeGridWeek"}
+          selectAllow={handleSelectAllow}
+          selectMinDistance={16}
           selectMirror
           unselectAuto={false}
           editable={false}
@@ -860,6 +853,7 @@ export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequest
           navLinks
           navLinkDayClick={(date) => changeCalendarView("timeGridDay", toDateKey(date))}
           eventSources={eventSources}
+          eventContent={renderEventContent}
           eventDidMount={handleEventDidMount}
           dayCellClassNames={dayCellClassNames}
           dayCellDidMount={handleDayCellDidMount}

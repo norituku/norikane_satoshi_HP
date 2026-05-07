@@ -165,6 +165,13 @@
   box-shadow: var(--glass-shadow);
 }
 
+.booking-calendar .fc-event[data-active-draft="true"],
+.booking-calendar .booking-calendar__draft[data-active-draft="true"] {
+  border: 2px solid color-mix(in srgb, var(--accent-primary) 82%, #6b2dff);
+  background: color-mix(in srgb, var(--accent-primary) 42%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent), var(--glass-shadow);
+}
+
 .booking-calendar .booking-calendar__draft .fc-event-main,
 .booking-calendar .booking-calendar__draft .fc-event-title {
   color: var(--text-primary);
