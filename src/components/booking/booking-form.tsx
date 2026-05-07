@@ -6,15 +6,16 @@ import { useForm } from "react-hook-form"
 
 import {
   bookingFormSchema,
-  durationOptions,
+  formatDurationMinutes,
+  getTotalDurationMinutes,
   type BookingFormData,
   type BookingSlot,
-  workScopeOptions,
 } from "@/lib/booking/form-schema"
 
 type BookingFormProps = {
   formData: BookingFormData
   selectedSlot: BookingSlot | null
+  selectedSlots: BookingSlot[]
   onChange: (data: BookingFormData) => void
   onValidityChange: (isValid: boolean) => void
   onReselectDate: () => void
@@ -36,9 +37,15 @@ function formatSlot(slot: BookingSlot | null): string {
   })}`
 }
 
+function formatSlots(slots: BookingSlot[]): string {
+  if (slots.length === 0) return "日時未選択"
+  return slots.map((slot) => formatSlot(slot)).join(" / ")
+}
+
 export function BookingForm({
   formData,
   selectedSlot,
+  selectedSlots,
   onChange,
   onValidityChange,
   onReselectDate,
@@ -55,7 +62,6 @@ export function BookingForm({
   })
 
   const bookingKind = watch("bookingKind")
-  const workScopes = watch("workScopes")
 
   useEffect(() => {
     const subscription = watch((value) => onChange(value as BookingFormData))
@@ -69,10 +75,14 @@ export function BookingForm({
   return (
     <div className="booking-form">
       <div className="booking-form__slot-row">
-        <span className="glass-badge booking-form__slot-pill">{formatSlot(selectedSlot)}</span>
+        <span className="glass-badge booking-form__slot-pill">{formatSlots(selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : [])}</span>
         <button className="booking-form__text-link" type="button" onClick={onReselectDate}>
-          日時を選び直す
+          選択日時
         </button>
+      </div>
+      <div className="booking-form__duration-total glass-inset">
+        <span className="booking-form__label">想定作業時間合計</span>
+        <strong>{formatDurationMinutes(getTotalDurationMinutes(selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : []))}</strong>
       </div>
 
       <fieldset className="booking-form__group">
@@ -96,32 +106,6 @@ export function BookingForm({
         <span className="booking-form__label">案件名</span>
         <input className="glass-input booking-form__control" maxLength={100} {...register("projectTitle")} />
         {errors.projectTitle ? <span className="booking-form__error">{errors.projectTitle.message}</span> : null}
-      </label>
-
-      <fieldset className="booking-form__group">
-        <legend className="booking-form__label">作業内容</legend>
-        <div className="booking-form__checkbox-grid">
-          {workScopeOptions.map((option) => (
-            <label className="booking-choice glass-flat" key={option}>
-              <input type="checkbox" value={option} {...register("workScopes")} />
-              <span>{option}</span>
-            </label>
-          ))}
-        </div>
-        {workScopes?.includes("その他") ? (
-          <textarea className="glass-input booking-form__control" rows={3} {...register("otherWorkDetail")} />
-        ) : null}
-      </fieldset>
-
-      <label className="booking-form__group">
-        <span className="booking-form__label">想定作業時間</span>
-        <select className="glass-input booking-form__control" {...register("estimatedDuration")}>
-          {durationOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
       </label>
 
       <div className="booking-form__grid">

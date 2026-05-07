@@ -176,6 +176,21 @@
   padding: 8px 12px;
 }
 
+.booking-form__duration-total {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 10px;
+  border-radius: var(--hp-radius-sm);
+  padding: 10px 12px;
+}
+
+.booking-form__duration-total strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
 .booking-form__group {
   display: grid;
   min-width: 0;

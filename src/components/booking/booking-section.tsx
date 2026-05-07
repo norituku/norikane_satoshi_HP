@@ -45,13 +45,12 @@ function getPreviousStep(step: BookingStep): BookingStep {
   return "calendar"
 }
 
-function hasDraftContent(formData: BookingFormData, selectedSlot: BookingSlot | null, step: BookingStep): boolean {
+function hasDraftContent(formData: BookingFormData, selectedSlots: BookingSlot[], step: BookingStep): boolean {
   return (
     step !== "calendar" ||
-    selectedSlot !== null ||
+    selectedSlots.length > 0 ||
     formData.projectTitle.trim() !== "" ||
     formData.contactName.trim() !== "" ||
-    formData.workScopes.length > 0 ||
     formData.memo.trim() !== ""
   )
 }
@@ -66,12 +65,13 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   const defaultFormData = useMemo(() => createDefaultBookingFormData(userEmail), [userEmail])
   const [step, setStep] = useState<BookingStep>("calendar")
   const [formData, setFormData] = useState<BookingFormData>(defaultFormData)
-  const [selectedSlot, setSelectedSlot] = useState<BookingSlot | null>(null)
+  const [selectedSlots, setSelectedSlots] = useState<BookingSlot[]>([])
   const [formValid, setFormValid] = useState(false)
   const [localDraftAvailable, setLocalDraftAvailable] = useState(false)
   const [draftHydrated, setDraftHydrated] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [adjustRequestKey, setAdjustRequestKey] = useState(0)
 
   const applyDraft = useCallback(
     (draft: ReturnType<typeof loadDraft>, restoreStep = false) => {
@@ -81,7 +81,7 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
         ...draft.formData,
         sessionEmail: userEmail,
       })
-      setSelectedSlot(draft.selectedSlot)
+      setSelectedSlots(draft.selectedSlots ?? (draft.selectedSlot ? [draft.selectedSlot] : []))
       if (restoreStep && draft.step !== "done") setStep(draft.step)
     },
     [defaultFormData, userEmail],
@@ -110,14 +110,14 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
       return
     }
 
-    if (!hasDraftContent(formData, selectedSlot, step)) return
+    if (!hasDraftContent(formData, selectedSlots, step)) return
 
     const timeout = window.setTimeout(() => {
-      saveDraft(userId, { formData, selectedSlot, step })
+      saveDraft(userId, { formData, selectedSlot: selectedSlots[0] ?? null, selectedSlots, step })
     }, 500)
 
     return () => window.clearTimeout(timeout)
-  }, [draftHydrated, formData, selectedSlot, step, userId])
+  }, [draftHydrated, formData, selectedSlots, step, userId])
 
   const goToStep = useCallback((nextStep: BookingStep) => {
     setSubmitError(null)
@@ -133,30 +133,37 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   const handleDiscardDraft = () => {
     clearDraft(userId)
     setFormData(defaultFormData)
-    setSelectedSlot(null)
+      setSelectedSlots([])
     setLocalDraftAvailable(false)
     goToStep("calendar")
   }
 
-  const handleSlotSelect = (slot: { start: Date; end: Date }) => {
-    setSubmitError(null)
-    setSelectedSlot({
-      start: slot.start.toISOString(),
-      end: slot.end.toISOString(),
-    })
-  }
+  const handleCommitSlot = useCallback(
+    (slots: { start: string; end: string }[], kind: "confirmed" | "tentative") => {
+      setSubmitError(null)
+      setSelectedSlots(slots.map((slot) => ({ start: slot.start, end: slot.end })))
+      setFormData((current) => ({ ...current, bookingKind: kind }))
+      goToStep("form")
+    },
+    [goToStep],
+  )
+
+  const handleReselectDate = useCallback(() => {
+    setAdjustRequestKey((value) => value + 1)
+    goToStep("calendar")
+  }, [goToStep])
 
   const handleReset = () => {
     clearDraft(userId)
     setFormData(defaultFormData)
-    setSelectedSlot(null)
+    setSelectedSlots([])
     setFormValid(false)
     setSubmitError(null)
     goToStep("calendar")
   }
 
   const handleSubmitBooking = async () => {
-    if (!selectedSlot || submitting) return
+    if (selectedSlots.length === 0 || submitting) return
 
     setSubmitting(true)
     setSubmitError(null)
@@ -169,7 +176,8 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
         },
         body: JSON.stringify({
           ...formData,
-          selectedSlot,
+          selectedSlot: selectedSlots[0],
+          selectedSlots,
         }),
       })
       const payload = (await response.json().catch(() => ({}))) as { error?: string }
@@ -190,35 +198,42 @@ export function BookingSection({ userId, userEmail }: BookingSectionProps) {
   }
 
   const canGoNext =
-    (step === "calendar" && selectedSlot !== null) ||
-    (step === "form" && selectedSlot !== null && formValid) ||
+    (step === "calendar" && selectedSlots.length > 0) ||
+    (step === "form" && selectedSlots.length > 0 && formValid) ||
     step === "confirm"
 
   const body = (
     <>
       <div className={step === "calendar" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingCalendar onSlotSelect={handleSlotSelect} />
+        <BookingCalendar
+          initialSlots={selectedSlots}
+          projectTitle={formData.projectTitle}
+          adjustRequestKey={adjustRequestKey}
+          onCommit={handleCommitSlot}
+        />
       </div>
       <div className={step === "form" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingForm
           formData={formData}
-          selectedSlot={selectedSlot}
+          selectedSlot={selectedSlots[0] ?? null}
+          selectedSlots={selectedSlots}
           onChange={setFormData}
           onValidityChange={setFormValid}
-          onReselectDate={() => goToStep("calendar")}
+          onReselectDate={handleReselectDate}
         />
       </div>
       <div className={step === "confirm" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingConfirm
           formData={formData}
-          selectedSlot={selectedSlot}
+          selectedSlot={selectedSlots[0] ?? null}
+          selectedSlots={selectedSlots}
           submitError={submitError}
           onDismissSubmitError={() => setSubmitError(null)}
-          onReselectDate={() => goToStep("calendar")}
+          onReselectDate={handleReselectDate}
         />
       </div>
       <div className={step === "done" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingDone selectedSlot={selectedSlot} />
+        <BookingDone selectedSlot={selectedSlots[0] ?? null} />
       </div>
     </>
   )
