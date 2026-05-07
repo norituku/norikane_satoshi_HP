@@ -21,9 +21,7 @@ type BookingFormProps = {
   onReselectDate: () => void
 }
 
-function formatSlot(slot: BookingSlot | null): string {
-  if (!slot) return "日時未選択"
-
+function formatSlot(slot: BookingSlot): string {
   const start = new Date(slot.start)
   const end = new Date(slot.end)
   return `${start.toLocaleString("ja-JP", {
@@ -35,11 +33,6 @@ function formatSlot(slot: BookingSlot | null): string {
     hour: "2-digit",
     minute: "2-digit",
   })}`
-}
-
-function formatSlots(slots: BookingSlot[]): string {
-  if (slots.length === 0) return "日時未選択"
-  return slots.map((slot) => formatSlot(slot)).join(" / ")
 }
 
 export function BookingForm({
@@ -62,6 +55,7 @@ export function BookingForm({
   })
 
   const bookingKind = watch("bookingKind")
+  const displaySlots = selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : []
 
   useEffect(() => {
     const subscription = watch((value) => onChange(value as BookingFormData))
@@ -75,7 +69,20 @@ export function BookingForm({
   return (
     <div className="booking-form">
       <div className="booking-form__slot-row">
-        <span className="glass-badge booking-form__slot-pill">{formatSlots(selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : [])}</span>
+        <div className="booking-form__slot-list">
+          {displaySlots.length === 0 ? (
+            <span className="glass-badge booking-form__slot-pill">日時未選択</span>
+          ) : (
+            displaySlots.map((slot, index) => (
+              <span
+                key={`${slot.start}-${slot.end}-${index}`}
+                className="glass-badge booking-form__slot-pill"
+              >
+                {formatSlot(slot)}
+              </span>
+            ))
+          )}
+        </div>
         <button className="booking-form__text-link" type="button" onClick={onReselectDate}>
           選択日時
         </button>
@@ -138,7 +145,10 @@ export function BookingForm({
           {errors.contactEmail ? <span className="booking-form__error">{errors.contactEmail.message}</span> : null}
         </label>
         <label className="booking-form__group">
-          <span className="booking-form__label">電話番号</span>
+          <span className="booking-form__label">
+            電話番号
+            <span className="booking-form__label-optional">(任意)</span>
+          </span>
           <input className="glass-input booking-form__control" type="tel" {...register("phone")} />
         </label>
       </div>

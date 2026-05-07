@@ -176,6 +176,13 @@
   padding: 8px 12px;
 }
 
+.booking-form__slot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .booking-form__duration-total {
   display: flex;
   width: fit-content;
@@ -203,6 +210,13 @@
   color: var(--text-muted);
   font-size: 0.8125rem;
   font-weight: 700;
+}
+
+.booking-form__label-optional {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
 }
 
 .booking-form__control {

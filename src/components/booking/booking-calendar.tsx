@@ -368,7 +368,37 @@ export function BookingCalendar({
     const bookingEvents = (data.bookings ?? []).map((booking) =>
       toBookingEvent(booking, modeKind === "adjust" && booking.bookingGroupId === adjustingGroupId),
     )
-    return [...busyEvents, ...bookingEvents]
+    const bufferEvents: EventInput[] = []
+    for (const booking of data.bookings ?? []) {
+      if (booking.status !== "CONFIRMED") continue
+      const startMs = new Date(booking.start).getTime()
+      const endMs = new Date(booking.end).getTime()
+      bufferEvents.push({
+        id: `buffer-before-${booking.id}`,
+        title: "本予約前後 2 時間は保護領域",
+        start: new Date(startMs - 7200000).toISOString(),
+        end: booking.start,
+        display: "background",
+        classNames: ["booking-calendar__confirmed-buffer"],
+        editable: false,
+        startEditable: false,
+        durationEditable: false,
+        extendedProps: { kind: "buffer" },
+      })
+      bufferEvents.push({
+        id: `buffer-after-${booking.id}`,
+        title: "本予約前後 2 時間は保護領域",
+        start: booking.end,
+        end: new Date(endMs + 7200000).toISOString(),
+        display: "background",
+        classNames: ["booking-calendar__confirmed-buffer"],
+        editable: false,
+        startEditable: false,
+        durationEditable: false,
+        extendedProps: { kind: "buffer" },
+      })
+    }
+    return [...busyEvents, ...bookingEvents, ...bufferEvents]
   }, [adjustingGroupId, modeKind])
 
   const draftEventInputs = useMemo<EventInput[]>(
@@ -480,6 +510,19 @@ export function BookingCalendar({
     return false
   }, [])
 
+  const overlapsConfirmedBufferZone = useCallback((start: Date, end: Date, excludeBookingId?: string): boolean => {
+    for (const data of fetchedRef.current.values()) {
+      for (const booking of data.bookings ?? []) {
+        if (booking.id === excludeBookingId) continue
+        if (booking.status !== "CONFIRMED") continue
+        const bufferStart = new Date(new Date(booking.start).getTime() - 7200000).toISOString()
+        const bufferEnd = new Date(new Date(booking.end).getTime() + 7200000).toISOString()
+        if (rangesOverlap(start, end, bufferStart, bufferEnd)) return true
+      }
+    }
+    return false
+  }, [])
+
   useEffect(() => {
     refetchRemoteEvents()
   }, [adjustingGroupId, modeKind, refetchRemoteEvents])
@@ -562,15 +605,22 @@ export function BookingCalendar({
 
   useEffect(() => {
     function expandTimeRange(event: MouseEvent) {
-      if (view === "dayGridMonth" || event.buttons !== 1) return
+      if (view === "dayGridMonth") return
+      if (event.buttons !== 1 && !interactionInProgressRef.current) return
 
-      if (event.clientY <= 30) {
+      const scrollEl =
+        rootRef.current?.querySelector<HTMLElement>(".fc-timegrid-body") ??
+        rootRef.current?.querySelector<HTMLElement>(".fc-scroller-liquid-absolute")
+      if (!scrollEl) return
+      const rect = scrollEl.getBoundingClientRect()
+
+      if (event.clientY - rect.top <= 30) {
         setSlotMinTime((current) => {
           const hour = Math.max(0, Number(current.slice(0, 2)) - 1)
           return `${String(hour).padStart(2, "0")}:00:00`
         })
       }
-      if (window.innerHeight - event.clientY <= 30) {
+      if (rect.bottom - event.clientY <= 30) {
         setSlotMaxTime((current) => {
           const hour = Math.min(24, Number(current.slice(0, 2)) + 1)
           return `${String(hour).padStart(2, "0")}:00:00`
@@ -587,7 +637,8 @@ export function BookingCalendar({
     if (
       !isSelectableView(arg.view.type) ||
       !hasMinimumSelectionDuration(arg.start, arg.end) ||
-      overlapsBlockedEvent(arg.start, arg.end)
+      overlapsBlockedEvent(arg.start, arg.end) ||
+      overlapsConfirmedBufferZone(arg.start, arg.end)
     ) {
       calendarApi?.unselect()
       return
@@ -599,20 +650,23 @@ export function BookingCalendar({
     }
     upsertDraft(draft, true)
     calendarApi?.unselect()
-  }, [overlapsBlockedEvent, upsertDraft])
+  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone, upsertDraft])
 
   const handleSelectAllow = useCallback<AllowFunc>((span) => {
     return (
       isSelectableView(selectedViewRef.current) &&
       hasMinimumSelectionDuration(span.start, span.end) &&
-      !overlapsBlockedEvent(span.start, span.end)
+      !overlapsBlockedEvent(span.start, span.end) &&
+      !overlapsConfirmedBufferZone(span.start, span.end)
     )
-  }, [overlapsBlockedEvent])
+  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone])
 
   const handleEventAllow = useCallback<AllowFunc>((span, movingEvent) => {
     const props = movingEvent?.extendedProps as AnyEventProps | undefined
     if (props?.status === "CONFIRMED") return false
-    const allowed = !overlapsBlockedEvent(span.start, span.end, props?.bookingId)
+    const allowed =
+      !overlapsBlockedEvent(span.start, span.end, props?.bookingId) &&
+      !overlapsConfirmedBufferZone(span.start, span.end, props?.bookingId)
     if (allowed && props?.kind === "draft" && props.draftId) {
       setDraftPreviewValue({
         id: props.draftId,
@@ -623,7 +677,7 @@ export function BookingCalendar({
       setActiveDraftId(props.draftId)
     }
     return allowed
-  }, [overlapsBlockedEvent, setDraftPreviewValue])
+  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue])
 
   const handleDateClick = useCallback(
     (arg: DateClickArg) => {
@@ -658,7 +712,10 @@ export function BookingCalendar({
         arg.revert()
         return
       }
-      if (overlapsBlockedEvent(newStart, newEnd, props.bookingId)) {
+      if (
+        overlapsBlockedEvent(newStart, newEnd, props.bookingId) ||
+        overlapsConfirmedBufferZone(newStart, newEnd, props.bookingId)
+      ) {
         arg.revert()
         return
       }
@@ -684,7 +741,7 @@ export function BookingCalendar({
 
       arg.revert()
     },
-    [adjustingGroupId, modeKind, overlapsBlockedEvent, setDraftPreviewValue, updateDraftRange],
+    [adjustingGroupId, modeKind, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange],
   )
 
   const handleEventResize = useCallback((arg: EventResizeDoneArg) => {
@@ -695,7 +752,10 @@ export function BookingCalendar({
       arg.revert()
       return
     }
-    if (overlapsBlockedEvent(newStart, newEnd, props.bookingId)) {
+    if (
+      overlapsBlockedEvent(newStart, newEnd, props.bookingId) ||
+      overlapsConfirmedBufferZone(newStart, newEnd, props.bookingId)
+    ) {
       arg.revert()
       return
     }
@@ -705,7 +765,7 @@ export function BookingCalendar({
       return
     }
     arg.revert()
-  }, [overlapsBlockedEvent, setDraftPreviewValue, updateDraftRange])
+  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange])
 
   const dayCellClassNames = (arg: DayCellContentArg): string[] => {
     const classes: string[] = []
