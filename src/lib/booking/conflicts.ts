@@ -4,6 +4,7 @@ export type ConflictBookingStatus = "CONFIRMED" | "PENDING_CONFIRMATION" | "TENT
 
 export type ConflictBooking = {
   id: string
+  bookingGroupId: string
   startTime: Date
   endTime: Date
   title: string
@@ -23,7 +24,7 @@ export async function findConflictingBookings(
   end: Date,
   options: { excludeBookingId?: string } = {},
 ): Promise<ConflictBooking[]> {
-  return prisma.booking.findMany({
+  const slots = await prisma.bookingTimeSlot.findMany({
     where: {
       ...(options.excludeBookingId ? { id: { not: options.excludeBookingId } } : {}),
       startTime: { lt: end },
@@ -31,18 +32,36 @@ export async function findConflictingBookings(
       status: { in: ["CONFIRMED", "TENTATIVE", "PENDING_CONFIRMATION"] },
     },
     include: {
-      customer: {
-        select: {
-          displayName: true,
-          user: {
+      bookingGroup: {
+        include: {
+          customer: {
             select: {
-              email: true,
+              displayName: true,
+              user: {
+                select: {
+                  email: true,
+                },
+              },
             },
           },
         },
       },
     },
   })
+
+  return slots
+    .filter((slot) => ["CONFIRMED", "TENTATIVE", "PENDING_CONFIRMATION"].includes(slot.bookingGroup.status))
+    .map((slot) => ({
+      id: slot.id,
+      bookingGroupId: slot.bookingGroupId,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      title: slot.bookingGroup.projectTitle,
+      status: slot.bookingGroup.status,
+      memo: slot.bookingGroup.memo,
+      gcalEventId: slot.bookingGroup.gcalEventId,
+      customer: slot.bookingGroup.customer,
+    }))
 }
 
 export type PreflightVerdict =

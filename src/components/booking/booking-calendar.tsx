@@ -33,6 +33,7 @@ type BusySlot = {
 
 type BookingFromApi = {
   id: string
+  bookingGroupId: string
   start: string
   end: string
   title: string
@@ -51,6 +52,8 @@ type BusyEventProps = {
   label: string
   status?: "CONFIRMED" | "TENTATIVE" | "PENDING_CONFIRMATION"
   bookingId?: string
+  bookingGroupId?: string
+  projectTitle?: string
 }
 
 type DraftEventProps = {
@@ -64,6 +67,8 @@ type AnyEventProps = {
   label?: string
   status?: "CONFIRMED" | "TENTATIVE" | "PENDING_CONFIRMATION"
   bookingId?: string
+  bookingGroupId?: string
+  projectTitle?: string
   draftId?: string
   sourceKind?: BookingKind
 }
@@ -74,6 +79,16 @@ type DraftEvent = {
   end: string
   sourceKind?: BookingKind
 }
+
+type ModeKind = "normal" | "adjust"
+
+type MoveCopyPopupState = {
+  bookingId: string
+  start: string
+  end: string
+  x: number
+  y: number
+} | null
 
 const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
   { label: "月", value: "dayGridMonth" },
@@ -139,6 +154,7 @@ function toBusyEvent(slot: BusySlot, view: CalendarView): EventInput {
 function toBookingEvent(
   booking: BookingFromApi,
   view: CalendarView,
+  editable: boolean,
 ): EventInput {
   const isMonthView = view === "dayGridMonth"
   const label = `${format(new Date(booking.start), "HH:mm")}-${format(new Date(booking.end), "HH:mm")}`
@@ -148,6 +164,8 @@ function toBookingEvent(
     label,
     status,
     bookingId: booking.id,
+    bookingGroupId: booking.bookingGroupId,
+    projectTitle: booking.title,
   }
   return {
     id: `booking-${booking.id}`,
@@ -159,8 +177,8 @@ function toBookingEvent(
     classNames: isMonthView
       ? ["booking-calendar__busy-pill"]
       : ["booking-calendar__busy"],
-    editable: true,
-    startEditable: true,
+    editable,
+    startEditable: editable,
     durationEditable: false,
     extendedProps,
   }
@@ -179,7 +197,7 @@ function toDraftEventInput(
   if (isActive) classes.push("booking-calendar__draft--active")
   return {
     id: draft.id,
-    title: "選択中",
+    title: "",
     start: draft.start,
     end: draft.end,
     allDay: false,
@@ -226,22 +244,31 @@ function formatRange(start: string, end: string): string {
 }
 
 type BookingCalendarProps = {
-  initialSlot?: { start: string; end: string } | null
-  onCommit: (slot: { start: string; end: string }, kind: BookingKind) => void
+  initialSlots?: { start: string; end: string }[]
+  projectTitle?: string
+  adjustRequestKey?: number
+  onCommit: (slots: { start: string; end: string }[], kind: BookingKind) => void
 }
 
-export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps) {
+export function BookingCalendar({ initialSlots = [], projectTitle, adjustRequestKey = 0, onCommit }: BookingCalendarProps) {
   const [view, setView] = useState<CalendarView>("dayGridMonth")
+  const [modeKind, setModeKind] = useState<ModeKind>("normal")
+  const [adjustingGroupId, setAdjustingGroupId] = useState<string | null>(null)
+  const [adjustingTitle, setAdjustingTitle] = useState<string | null>(null)
+  const [slotMinTime, setSlotMinTime] = useState("10:00:00")
+  const [slotMaxTime, setSlotMaxTime] = useState("19:00:00")
+  const [moveCopyPopup, setMoveCopyPopup] = useState<MoveCopyPopupState>(null)
+  const [actionPanelPosition, setActionPanelPosition] = useState<{ top: number; left: number } | null>(null)
   const calendarRef = useRef<FullCalendar | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const selectedViewRef = useRef<CalendarView>("dayGridMonth")
 
-  const initialDraft = useMemo<DraftEvent | null>(() => {
-    if (!initialSlot) return null
-    return { id: makeDraftId(), start: initialSlot.start, end: initialSlot.end }
+  const initialDrafts = useMemo<DraftEvent[]>(() => {
+    return initialSlots.map((slot) => ({ id: makeDraftId(), start: slot.start, end: slot.end }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const [drafts, setDrafts] = useState<DraftEvent[]>(initialDraft ? [initialDraft] : [])
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(initialDraft?.id ?? null)
+  const [drafts, setDrafts] = useState<DraftEvent[]>(initialDrafts)
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(initialDrafts[0]?.id ?? null)
 
   const [warningModal, setWarningModal] = useState<
     { kind: BookingKind; message: string; slot: { start: string; end: string } } | null
@@ -254,6 +281,14 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     [drafts, activeDraftId],
   )
 
+  useEffect(() => {
+    if (initialSlots.length === 0 || drafts.length > 0) return
+    const restored = initialSlots.map((slot) => ({ id: makeDraftId(), start: slot.start, end: slot.end }))
+    setDrafts(restored)
+    setActiveDraftId(restored[0]?.id ?? null)
+    setModeKind("adjust")
+  }, [drafts.length, initialSlots])
+
   const changeCalendarView = useCallback((nextView: CalendarView, dateStr?: string) => {
     selectedViewRef.current = nextView
     setView(nextView)
@@ -263,6 +298,18 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
       calendarApi.refetchEvents()
     }
   }, [])
+
+  useEffect(() => {
+    if (adjustRequestKey === 0) return
+    setModeKind("adjust")
+    setAdjustingGroupId(null)
+    const firstSlot = drafts[0] ?? initialSlots[0]
+    if (firstSlot) {
+      changeCalendarView("timeGridWeek", firstSlot.start)
+    } else {
+      changeCalendarView("timeGridWeek")
+    }
+  }, [adjustRequestKey, changeCalendarView, drafts, initialSlots])
 
   const fetchedRef = useRef<Map<string, FreeBusyResponse>>(new Map())
   const fetchEvents = useCallback(async (arg: EventSourceFuncArg): Promise<EventInput[]> => {
@@ -275,10 +322,10 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     const currentView = selectedViewRef.current
     const busyEvents = (data.busy ?? []).map((slot) => toBusyEvent(slot, currentView))
     const bookingEvents = (data.bookings ?? []).map((booking) =>
-      toBookingEvent(booking, currentView),
+      toBookingEvent(booking, currentView, modeKind === "adjust" && booking.bookingGroupId === adjustingGroupId),
     )
     return [...busyEvents, ...bookingEvents]
-  }, [])
+  }, [adjustingGroupId, modeKind])
 
   const draftEventInputs = useMemo<EventInput[]>(
     () => drafts.map((draft) => toDraftEventInput(draft, draft.id === activeDraftId)),
@@ -291,9 +338,20 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
         id: "remote-events",
         events: fetchEvents,
       },
+      {
+        id: "draft-events",
+        events: (_arg: EventSourceFuncArg, success: (events: EventInput[]) => void) => {
+          success(draftEventInputs)
+        },
+      },
     ],
-    [fetchEvents],
+    [draftEventInputs, fetchEvents],
   )
+
+  const refetchRemoteEvents = useCallback(() => {
+    fetchedRef.current.clear()
+    calendarRef.current?.getApi().getEventSourceById("remote-events")?.refetch()
+  }, [])
 
   const upsertDraft = useCallback((draft: DraftEvent, makeActive = true) => {
     setDrafts((prev) => {
@@ -314,6 +372,10 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     setActiveDraftId((current) => (current === draftId ? null : current))
   }, [])
 
+  useEffect(() => {
+    refetchRemoteEvents()
+  }, [adjustingGroupId, modeKind, refetchRemoteEvents])
+
   const cancelActiveDraft = useCallback(() => {
     if (!activeDraftId) return
     removeDraft(activeDraftId)
@@ -330,7 +392,33 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     return () => window.removeEventListener("keydown", onKey)
   }, [activeDraftId, cancelActiveDraft])
 
+  useEffect(() => {
+    function expandTimeRange(event: MouseEvent) {
+      if (view === "dayGridMonth" || event.buttons !== 1) return
+
+      if (event.clientY <= 30) {
+        setSlotMinTime((current) => {
+          const hour = Math.max(0, Number(current.slice(0, 2)) - 1)
+          return `${String(hour).padStart(2, "0")}:00:00`
+        })
+      }
+      if (window.innerHeight - event.clientY <= 30) {
+        setSlotMaxTime((current) => {
+          const hour = Math.min(24, Number(current.slice(0, 2)) + 1)
+          return `${String(hour).padStart(2, "0")}:00:00`
+        })
+      }
+    }
+
+    window.addEventListener("mousemove", expandTimeRange)
+    return () => window.removeEventListener("mousemove", expandTimeRange)
+  }, [view])
+
   const handleSelect = useCallback((arg: DateSelectArg) => {
+    if (arg.view.type !== "timeGridWeek" && arg.view.type !== "timeGridDay") {
+      calendarRef.current?.getApi().unselect()
+      return
+    }
     const draft: DraftEvent = {
       id: makeDraftId(),
       start: arg.start.toISOString(),
@@ -344,7 +432,7 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
   const handleDateClick = useCallback(
     (arg: DateClickArg) => {
       if (arg.view.type === "dayGridMonth") {
-        changeCalendarView("timeGridDay", arg.dateStr)
+        changeCalendarView("timeGridWeek", arg.dateStr)
         return
       }
       const start = new Date(arg.date)
@@ -365,13 +453,19 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     if (props.kind === "draft" && props.draftId) {
       setActiveDraftId(props.draftId)
       setActionError(null)
+      return
     }
-  }, [])
+    if (props.kind === "busy" && props.bookingGroupId) {
+      setModeKind("adjust")
+      setAdjustingGroupId(props.bookingGroupId)
+      setAdjustingTitle(props.projectTitle ?? null)
+      refetchRemoteEvents()
+    }
+  }, [refetchRemoteEvents])
 
   const handleEventDrop = useCallback(
     (arg: EventDropArg) => {
       const props = arg.event.extendedProps as AnyEventProps
-      const isCopy = arg.jsEvent.altKey
       const newStart = arg.event.start
       const newEnd = arg.event.end
       if (!newStart || !newEnd) {
@@ -380,17 +474,6 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
       }
 
       if (props.kind === "draft" && props.draftId) {
-        if (isCopy) {
-          arg.revert()
-          const newDraft: DraftEvent = {
-            id: makeDraftId(),
-            start: newStart.toISOString(),
-            end: newEnd.toISOString(),
-            sourceKind: props.sourceKind,
-          }
-          upsertDraft(newDraft, true)
-          return
-        }
         setDrafts((prev) =>
           prev.map((draft) =>
             draft.id === props.draftId
@@ -405,22 +488,20 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
 
       if (props.kind === "busy" && props.bookingId) {
         arg.revert()
-        if (!isCopy) return
-        const inferredKind: BookingKind | undefined =
-          props.status === "TENTATIVE" ? "tentative" : "confirmed"
-        const newDraft: DraftEvent = {
-          id: makeDraftId(),
+        if (modeKind !== "adjust" || props.bookingGroupId !== adjustingGroupId) return
+        setMoveCopyPopup({
+          bookingId: props.bookingId,
           start: newStart.toISOString(),
           end: newEnd.toISOString(),
-          sourceKind: inferredKind,
-        }
-        upsertDraft(newDraft, true)
+          x: arg.jsEvent.clientX,
+          y: arg.jsEvent.clientY,
+        })
         return
       }
 
       arg.revert()
     },
-    [upsertDraft],
+    [adjustingGroupId, modeKind],
   )
 
   const handleEventResize = useCallback((arg: EventResizeDoneArg) => {
@@ -445,11 +526,6 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     }
     arg.revert()
   }, [])
-
-  useEffect(() => {
-    const calendarApi = calendarRef.current?.getApi()
-    if (calendarApi) calendarApi.refetchEvents()
-  }, [draftEventInputs])
 
   const dayCellClassNames = (arg: DayCellContentArg): string[] => {
     const classes: string[] = []
@@ -477,9 +553,73 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
     }
   }
 
+  const removeExistingSlot = useCallback(
+    async (bookingId: string) => {
+      const response = await fetch(`/api/booking/${bookingId}`, { method: "DELETE" })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+        return
+      }
+      refetchRemoteEvents()
+    },
+    [refetchRemoteEvents],
+  )
+
   const handleEventDidMount = (arg: EventMountArg) => {
     const props = arg.event.extendedProps as AnyEventProps
+    if (props.kind === "draft") {
+      const eventMain = arg.el.querySelector<HTMLElement>(".fc-event-main")
+      if (eventMain) {
+        eventMain.textContent = ""
+        const label = document.createElement("span")
+        label.className = "booking-calendar__draft-range"
+        label.textContent =
+          arg.event.start && arg.event.end
+            ? `${format(arg.event.start, "HH:mm")} - ${format(arg.event.end, "HH:mm")}`
+            : ""
+        eventMain.appendChild(label)
+      }
+      if (props.draftId === activeDraftId) {
+        window.requestAnimationFrame(() => {
+          const rootRect = rootRef.current?.getBoundingClientRect()
+          const eventRect = arg.el.getBoundingClientRect()
+          if (!rootRect) return
+          setActionPanelPosition({
+            top: eventRect.bottom - rootRect.top + 8,
+            left: Math.max(12, eventRect.left - rootRect.left),
+          })
+        })
+      }
+      if (modeKind === "adjust" && props.draftId) {
+        const removeButton = document.createElement("button")
+        removeButton.type = "button"
+        removeButton.className = "booking-calendar__slot-remove"
+        removeButton.setAttribute("aria-label", "日時を削除")
+        removeButton.textContent = "×"
+        removeButton.addEventListener("click", (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          removeDraft(props.draftId!)
+        })
+        arg.el.appendChild(removeButton)
+      }
+      return
+    }
     if (props.kind !== "busy") return
+    if (modeKind === "adjust" && props.bookingId && props.bookingGroupId === adjustingGroupId) {
+      const removeButton = document.createElement("button")
+      removeButton.type = "button"
+      removeButton.className = "booking-calendar__slot-remove"
+      removeButton.setAttribute("aria-label", "日時を削除")
+      removeButton.textContent = "×"
+      removeButton.addEventListener("click", (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        void removeExistingSlot(props.bookingId!)
+      })
+      arg.el.appendChild(removeButton)
+    }
     if (arg.view.type !== "dayGridMonth") return
 
     const eventMain = arg.el.querySelector<HTMLElement>(".fc-event-main")
@@ -550,6 +690,7 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
   const startCommit = useCallback(
     async (kind: BookingKind) => {
       if (!activeDraft || preflighting) return
+      const slots = drafts.length > 0 ? drafts.map((draft) => ({ start: draft.start, end: draft.end })) : [{ start: activeDraft.start, end: activeDraft.end }]
       const slot = { start: activeDraft.start, end: activeDraft.end }
       setPreflighting(true)
       setActionError(null)
@@ -563,7 +704,7 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
           setWarningModal({ kind, message: verdict.message, slot })
           return
         }
-        onCommit(slot, kind)
+        onCommit(slots, kind)
       } catch (error) {
         const message = error instanceof Error ? error.message : "予約の重なり確認に失敗しました"
         setActionError(message)
@@ -571,17 +712,50 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
         setPreflighting(false)
       }
     },
-    [activeDraft, onCommit, preflighting, runPreflight],
+    [activeDraft, drafts, onCommit, preflighting, runPreflight],
   )
 
   const confirmAfterWarning = useCallback(() => {
     if (!warningModal) return
-    onCommit(warningModal.slot, warningModal.kind)
+    const slots = drafts.length > 0 ? drafts.map((draft) => ({ start: draft.start, end: draft.end })) : [warningModal.slot]
+    onCommit(slots, warningModal.kind)
     setWarningModal(null)
-  }, [onCommit, warningModal])
+  }, [drafts, onCommit, warningModal])
+
+  const startAddAnotherDate = useCallback(() => {
+    if (!activeDraft) return
+    setModeKind("adjust")
+    setAdjustingGroupId(null)
+    setAdjustingTitle(projectTitle?.trim() || null)
+    changeCalendarView("dayGridMonth")
+    setActionError(null)
+  }, [activeDraft, changeCalendarView, projectTitle])
+
+  const executeMoveCopy = useCallback(
+    async (action: "move" | "copy") => {
+      if (!moveCopyPopup) return
+      const response = await fetch(`/api/booking/${moveCopyPopup.bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          start: moveCopyPopup.start,
+          end: moveCopyPopup.end,
+        }),
+      })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+        return
+      }
+      setMoveCopyPopup(null)
+      refetchRemoteEvents()
+    },
+    [moveCopyPopup, refetchRemoteEvents],
+  )
 
   return (
-    <div className="booking-calendar">
+    <div className="booking-calendar" ref={rootRef}>
       <div className="booking-calendar__tabs" aria-label="カレンダー表示切替">
         {VIEW_OPTIONS.map((option) => {
           const isActive = view === option.value
@@ -599,10 +773,18 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
           )
         })}
       </div>
+      {modeKind === "adjust" ? (
+        <div className="booking-calendar__adjust-badge glass-inset">
+          {(adjustingTitle ?? projectTitle)?.trim() ? `${(adjustingTitle ?? projectTitle)!.trim()}案件の日時調整中` : "日時調整中"}
+        </div>
+      ) : null}
       {activeDraft ? (
-        <div className="booking-calendar__action-panel glass-flat" data-testid="booking-action-panel">
+        <div
+          className="booking-calendar__action-panel glass-flat"
+          data-testid="booking-action-panel"
+          style={actionPanelPosition ? { top: actionPanelPosition.top, left: actionPanelPosition.left } : undefined}
+        >
           <div className="booking-calendar__action-panel-info">
-            <span className="booking-calendar__action-panel-label">選択中</span>
             <span className="booking-calendar__action-panel-range">
               {formatRange(activeDraft.start, activeDraft.end)}
             </span>
@@ -614,7 +796,15 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
               onClick={() => startCommit("confirmed")}
               disabled={preflighting}
             >
-              {preflighting ? "確認中…" : "確定"}
+              {preflighting ? "確認中…" : "本予約"}
+            </button>
+            <button
+              type="button"
+              className="booking-calendar__action-button"
+              onClick={startAddAnotherDate}
+              disabled={preflighting}
+            >
+              他の日時を追加
             </button>
             <button
               type="button"
@@ -656,21 +846,20 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
             today: "今日",
           }}
           height="auto"
-          selectable
+          selectable={view !== "dayGridMonth"}
           selectMirror
           unselectAuto={false}
           editable={false}
           eventStartEditable
           eventDurationEditable
           nowIndicator
-          slotMinTime="08:00:00"
-          slotMaxTime="20:00:00"
+          slotMinTime={slotMinTime}
+          slotMaxTime={slotMaxTime}
           slotDuration="00:30:00"
           allDaySlot={false}
           navLinks
           navLinkDayClick={(date) => changeCalendarView("timeGridDay", toDateKey(date))}
           eventSources={eventSources}
-          events={draftEventInputs}
           eventDidMount={handleEventDidMount}
           dayCellClassNames={dayCellClassNames}
           dayCellDidMount={handleDayCellDidMount}
@@ -681,6 +870,24 @@ export function BookingCalendar({ initialSlot, onCommit }: BookingCalendarProps)
           eventResize={handleEventResize}
         />
       </div>
+      {moveCopyPopup ? (
+        <div
+          className="booking-calendar__move-copy-popup glass-flat"
+          role="dialog"
+          aria-modal="false"
+          style={{ left: moveCopyPopup.x, top: moveCopyPopup.y }}
+        >
+          <button type="button" className="booking-calendar__action-button" onClick={() => void executeMoveCopy("move")}>
+            Move
+          </button>
+          <button type="button" className="booking-calendar__action-button" onClick={() => void executeMoveCopy("copy")}>
+            Copy
+          </button>
+          <button type="button" className="booking-calendar__action-button booking-calendar__action-button--ghost" onClick={() => setMoveCopyPopup(null)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
       {warningModal ? (
         <div
           className="booking-calendar__modal-backdrop"

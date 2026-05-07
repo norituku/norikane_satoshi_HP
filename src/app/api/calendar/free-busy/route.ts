@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const [busy, dbBookings] = await Promise.all([
       getFreeBusy(calendarId, timeMin, timeMax, refreshed.accessToken),
-      prisma.booking.findMany({
+      prisma.bookingTimeSlot.findMany({
         where: {
           startTime: { lt: endDate },
           endTime: { gt: startDate },
@@ -61,20 +61,27 @@ export async function GET(request: NextRequest) {
         },
         select: {
           id: true,
+          bookingGroupId: true,
           startTime: true,
           endTime: true,
-          title: true,
           status: true,
+          bookingGroup: {
+            select: {
+              projectTitle: true,
+              status: true,
+            },
+          },
         },
       }),
     ])
 
     const bookings = dbBookings.map((booking) => ({
       id: booking.id,
+      bookingGroupId: booking.bookingGroupId,
       start: booking.startTime.toISOString(),
       end: booking.endTime.toISOString(),
-      title: booking.title,
-      status: booking.status,
+      title: booking.bookingGroup.projectTitle,
+      status: booking.bookingGroup.status,
     }))
 
     const bookingTimePairs = new Set(
