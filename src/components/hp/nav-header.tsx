@@ -24,7 +24,7 @@ export function NavHeader() {
       <nav className="glass-bar flex w-full items-center justify-between px-6 py-3 md:px-10 md:py-4 xl:px-14">
         <Link href="/" className="flex items-center gap-3 md:gap-4">
           <div
-            className="relative shrink-0 overflow-hidden rounded-full"
+            className="relative shrink-0 overflow-hidden rounded-2xl bg-white"
             style={{
               width: 48,
               height: 48,
@@ -33,11 +33,11 @@ export function NavHeader() {
             }}
           >
             <Image
-              src="/profile-hero.jpg"
-              alt={SITE_OWNER_NAME}
+              src="/nori_logo.svg"
+              alt={SITE_BRAND_NAME}
               fill
               sizes="48px"
-              className="object-cover"
+              className="object-contain p-1.5"
               style={{ objectPosition: "center 30%" }}
               priority
             />
@@ -47,7 +47,7 @@ export function NavHeader() {
               {SITE_BRAND_NAME.toUpperCase()}
             </p>
             <p className="mt-1 text-[11px] tracking-wide text-neutral-500 md:text-xs">
-              Norikane Colour Studio Grading
+              Norikane Film Design Office
             </p>
           </div>
         </Link>

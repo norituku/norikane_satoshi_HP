@@ -44,7 +44,7 @@ const timeline = [
     year: "2026",
     event: "独立開業",
     detail:
-      "NCS Grading（Norikane Colour Studio Grading）として独立。カラーグレーディングの体系化と教育にも取り組む。",
+      "のりかね映像設計室（Norikane Film Design Office）として独立。カラーグレーディングの体系化と教育にも取り組む。",
   },
 ]
 
