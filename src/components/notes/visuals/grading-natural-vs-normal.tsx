@@ -22,6 +22,12 @@ const GLASS_FILL = "rgba(255,255,255,0.65)"
 const GLASS_STROKE = "rgba(255,255,255,0.78)"
 const AXIS_STROKE = "rgba(139,127,255,0.4)"
 
+const AXIS_W = 150
+const AXIS_H = 44
+const AXIS_FONT = 26
+const AXIS_INSET_X = 12
+const AXIS_LINE_GAP = 8
+
 const QUADRANTS = [
   {
     role: "hero" as const,
@@ -99,58 +105,39 @@ function QuadrantLabel({ q }: { q: Quadrant }) {
 }
 
 function AxisLabels() {
-  const AXIS_W_TOP = 200
-  const AXIS_W_RIGHT = 182
-  const AXIS_H = 44
-  const AXIS_FONT = 26
-  const topCx = CROSS_X
-  const topCy = PAD / 2
-  const rightCx = W - AXIS_W_RIGHT / 2 - 12
-  const rightCy = CROSS_Y
+  const pills = [
+    { cx: CROSS_X, cy: PAD / 2, text: "ナチュラル高" },
+    { cx: CROSS_X, cy: H - PAD / 2, text: "ナチュラル低" },
+    { cx: W - AXIS_W / 2 - AXIS_INSET_X, cy: CROSS_Y, text: "ノーマル高" },
+    { cx: AXIS_W / 2 + AXIS_INSET_X, cy: CROSS_Y, text: "ノーマル低" },
+  ]
   return (
     <g>
-      <rect
-        x={topCx - AXIS_W_TOP / 2}
-        y={topCy - AXIS_H / 2}
-        width={AXIS_W_TOP}
-        height={AXIS_H}
-        rx={AXIS_H / 2}
-        fill={GLASS_FILL}
-        stroke={GLASS_STROKE}
-        strokeWidth={1}
-        filter="url(#gnvn-badge-shadow)"
-      />
-      <text
-        x={topCx}
-        y={topCy + 9}
-        textAnchor="middle"
-        fill={ACCENT}
-        fontSize={AXIS_FONT}
-        fontWeight={600}
-      >
-        ↑ ナチュラル
-      </text>
-      <rect
-        x={rightCx - AXIS_W_RIGHT / 2}
-        y={rightCy - AXIS_H / 2}
-        width={AXIS_W_RIGHT}
-        height={AXIS_H}
-        rx={AXIS_H / 2}
-        fill={GLASS_FILL}
-        stroke={GLASS_STROKE}
-        strokeWidth={1}
-        filter="url(#gnvn-badge-shadow)"
-      />
-      <text
-        x={rightCx}
-        y={rightCy + 9}
-        textAnchor="middle"
-        fill={ACCENT}
-        fontSize={AXIS_FONT}
-        fontWeight={600}
-      >
-        ノーマル →
-      </text>
+      {pills.map((p) => (
+        <g key={p.text}>
+          <rect
+            x={p.cx - AXIS_W / 2}
+            y={p.cy - AXIS_H / 2}
+            width={AXIS_W}
+            height={AXIS_H}
+            rx={AXIS_H / 2}
+            fill={GLASS_FILL}
+            stroke={GLASS_STROKE}
+            strokeWidth={1}
+            filter="url(#gnvn-badge-shadow)"
+          />
+          <text
+            x={p.cx}
+            y={p.cy + 9}
+            textAnchor="middle"
+            fill={ACCENT}
+            fontSize={AXIS_FONT}
+            fontWeight={600}
+          >
+            {p.text}
+          </text>
+        </g>
+      ))}
     </g>
   )
 }
@@ -163,7 +150,7 @@ export default function GradingNaturalVsNormal() {
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label="ナチュラル軸 (上が高い) とノーマル軸 (右が高い) の二軸を 4 象限独立画像で対比し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。軸ラベルは外周帯に横書きで配置し、4 象限ラベルはすべて CELL 右下に統一する。"
+      aria-label="ナチュラル軸（上=ナチュラル高 / 下=ナチュラル低）とノーマル軸（右=ノーマル高 / 左=ノーマル低）の二軸を 4 象限独立画像で対比し、左上のナチュラルだけどノーマルじゃない領域を主役として強調する図。中央十字の交点に accent point を置き、4 象限ラベルはすべて CELL 右下に統一する。"
       fontFamily="var(--font-noto-sans-jp), sans-serif"
     >
       <defs>
@@ -231,24 +218,28 @@ export default function GradingNaturalVsNormal() {
 
       <line
         x1={CROSS_X}
-        y1={PAD + 8}
+        y1={PAD / 2 + AXIS_H / 2 + AXIS_LINE_GAP}
         x2={CROSS_X}
-        y2={H - PAD - 8}
+        y2={H - PAD / 2 - AXIS_H / 2 - AXIS_LINE_GAP}
         stroke={AXIS_STROKE}
         strokeWidth={1.5}
         strokeDasharray="6 8"
         strokeLinecap="round"
       />
       <line
-        x1={PAD + 8}
+        x1={AXIS_W / 2 + AXIS_INSET_X + AXIS_W / 2 + AXIS_LINE_GAP}
         y1={CROSS_Y}
-        x2={W - PAD - 8}
+        x2={W - AXIS_W / 2 - AXIS_INSET_X - AXIS_W / 2 - AXIS_LINE_GAP}
         y2={CROSS_Y}
         stroke={AXIS_STROKE}
         strokeWidth={1.5}
         strokeDasharray="6 8"
         strokeLinecap="round"
       />
+      <g filter="url(#gnvn-badge-shadow)">
+        <circle cx={CROSS_X} cy={CROSS_Y} r={14} fill={ACCENT} />
+        <circle cx={CROSS_X} cy={CROSS_Y} r={14} fill="none" stroke={GLASS_STROKE} strokeWidth={3} />
+      </g>
 
       <AxisLabels />
 
