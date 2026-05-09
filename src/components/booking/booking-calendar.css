@@ -492,6 +492,24 @@
   box-shadow: none;
 }
 
+.booking-calendar .fc-event .fc-event-resizer-start,
+.booking-calendar .fc-event .fc-event-resizer-end {
+  height: 14px;
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.booking-calendar .fc-event .fc-event-resizer-start {
+  top: -4px;
+  transform: translateY(-4px);
+}
+
+.booking-calendar .fc-event .fc-event-resizer-end {
+  bottom: -4px;
+  transform: translateY(4px);
+}
+
 .booking-calendar .booking-calendar__busy-pill,
 .booking-calendar .fc-event.booking-calendar__booking-event {
   overflow: hidden;
@@ -506,6 +524,7 @@
 }
 
 .booking-calendar .fc-event.booking-calendar__booking-event--tentative {
+  overflow: visible;
   background:
     repeating-linear-gradient(
       45deg,

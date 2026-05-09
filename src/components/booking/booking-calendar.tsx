@@ -107,6 +107,8 @@ const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
 ]
 
 const MIN_SELECTION_MS = 30 * 60 * 1000
+const BASE_SLOT_MIN_MINUTES = 10 * 60
+const BASE_SLOT_MAX_MINUTES = 19 * 60
 
 function toDateKey(date: Date): string {
   const year = date.getFullYear()
@@ -190,7 +192,7 @@ function toBookingEvent(
     ],
     editable: canEdit,
     startEditable: canEdit,
-    durationEditable: false,
+    durationEditable: canEdit,
     extendedProps,
   }
 }
@@ -285,6 +287,29 @@ function formatTimeMinutes(minutes: number): string {
   return `${String(hours).padStart(2, "0")}:${String(restMinutes).padStart(2, "0")}:00`
 }
 
+function timeOfDayMinutes(value: string): number | null {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.getHours() * 60 + date.getMinutes()
+}
+
+function recomputeTimeRangeBounds(slots: { start: string; end: string }[]): { slotMinTime: string; slotMaxTime: string } {
+  let minMinutes = BASE_SLOT_MIN_MINUTES
+  let maxMinutes = BASE_SLOT_MAX_MINUTES
+
+  for (const slot of slots) {
+    const startMinutes = timeOfDayMinutes(slot.start)
+    const endMinutes = timeOfDayMinutes(slot.end)
+    if (startMinutes !== null) minMinutes = Math.min(minMinutes, startMinutes)
+    if (endMinutes !== null) maxMinutes = Math.max(maxMinutes, endMinutes)
+  }
+
+  return {
+    slotMinTime: formatTimeMinutes(Math.max(0, minMinutes)),
+    slotMaxTime: formatTimeMinutes(Math.min(24 * 60, maxMinutes)),
+  }
+}
+
 type BookingCalendarProps = {
   initialSlots?: { start: string; end: string }[]
   projectTitle?: string
@@ -317,6 +342,7 @@ export function BookingCalendar({
   const prevWasInTopZoneRef = useRef(false)
   const prevWasInBottomZoneRef = useRef(false)
   const draftPreviewRef = useRef<DraftEvent | null>(null)
+  const fetchedRef = useRef<Map<string, FreeBusyResponse>>(new Map())
 
   const initialDrafts = useMemo<DraftEvent[]>(() => {
     return initialSlots.map((slot) => ({ id: makeDraftId(), start: slot.start, end: slot.end }))
@@ -331,6 +357,11 @@ export function BookingCalendar({
   >(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [preflighting, setPreflighting] = useState(false)
+  const initialSlotsSignature = useMemo(
+    () => initialSlots.map((slot) => `${slot.start}|${slot.end}`).join("||"),
+    [initialSlots],
+  )
+  const restoredInitialSlotsSignatureRef = useRef(initialSlotsSignature)
 
   const activeDraft = useMemo(
     () => drafts.find((draft) => draft.id === activeDraftId) ?? null,
@@ -344,14 +375,18 @@ export function BookingCalendar({
   }, [])
 
   useEffect(() => {
-    if (initialSlots.length === 0 || drafts.length > 0) return
+    if (initialSlots.length === 0) {
+      restoredInitialSlotsSignatureRef.current = ""
+      return
+    }
+    if (drafts.length > 0 || restoredInitialSlotsSignatureRef.current === initialSlotsSignature) return
+    restoredInitialSlotsSignatureRef.current = initialSlotsSignature
     const restored = initialSlots.map((slot) => ({ id: makeDraftId(), start: slot.start, end: slot.end }))
     // Restores persisted draft props after hydration; this sync cannot be derived from local state alone.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrafts(restored)
     setActiveDraftId(restored[0]?.id ?? null)
     setModeKind("adjust")
-  }, [drafts.length, initialSlots])
+  }, [drafts.length, initialSlots, initialSlotsSignature])
 
   const changeCalendarView = useCallback((nextView: CalendarView, dateStr?: string) => {
     selectedViewRef.current = nextView
@@ -362,6 +397,32 @@ export function BookingCalendar({
       calendarApi.refetchEvents()
     }
   }, [])
+
+  const getReservationTimeRangeSlots = useCallback((extraSlots: { start: string; end: string }[] = []) => {
+    const remoteBookings = Array.from(fetchedRef.current.values()).flatMap((data) =>
+      (data.bookings ?? []).map((booking) => ({ start: booking.start, end: booking.end })),
+    )
+    const focusedSlots = focusSlot ? [{ start: focusSlot.start, end: focusSlot.end }] : []
+    return [...drafts, ...remoteBookings, ...focusedSlots, ...extraSlots]
+  }, [drafts, focusSlot])
+
+  const applyDynamicTimeRangeBounds = useCallback((extraSlots: { start: string; end: string }[] = []) => {
+    const bounds = recomputeTimeRangeBounds(getReservationTimeRangeSlots(extraSlots))
+    setSlotMinTime(bounds.slotMinTime)
+    setSlotMaxTime(bounds.slotMaxTime)
+  }, [getReservationTimeRangeSlots])
+
+  const finishInteraction = useCallback((extraSlots: { start: string; end: string }[] = []) => {
+    interactionInProgressRef.current = false
+    prevWasInTopZoneRef.current = false
+    prevWasInBottomZoneRef.current = false
+    applyDynamicTimeRangeBounds(extraSlots)
+  }, [applyDynamicTimeRangeBounds])
+
+  useEffect(() => {
+    if (interactionInProgressRef.current) return
+    applyDynamicTimeRangeBounds()
+  }, [applyDynamicTimeRangeBounds])
 
   useEffect(() => {
     if (adjustRequestKey === 0) return
@@ -400,7 +461,6 @@ export function BookingCalendar({
     }
   }, [adjustRequestKey, changeCalendarView, drafts, focusSlot, initialSlots])
 
-  const fetchedRef = useRef<Map<string, FreeBusyResponse>>(new Map())
   const fetchEvents = useCallback(async (arg: EventSourceFuncArg): Promise<EventInput[]> => {
     const cacheKey = `${arg.startStr}|${arg.endStr}`
     let data = fetchedRef.current.get(cacheKey)
@@ -631,16 +691,14 @@ export function BookingCalendar({
   }, [previewDraftFromEvent])
 
   const handleEventDragStop = useCallback((arg: EventDragStopArg) => {
-    interactionInProgressRef.current = false
-    prevWasInTopZoneRef.current = false
-    prevWasInBottomZoneRef.current = false
     const props = arg.event.extendedProps as AnyEventProps
     const preview = draftPreviewRef.current
     if (props.kind === "draft" && props.draftId && preview?.id === props.draftId) {
       updateDraftRange(preview.id, new Date(preview.start), new Date(preview.end))
     }
+    finishInteraction(preview ? [{ start: preview.start, end: preview.end }] : [])
     setDraftPreviewValue(null)
-  }, [setDraftPreviewValue, updateDraftRange])
+  }, [finishInteraction, setDraftPreviewValue, updateDraftRange])
 
   const handleEventResizeStart = useCallback((arg: EventResizeStartArg) => {
     const props = arg.event.extendedProps as AnyEventProps
@@ -652,16 +710,14 @@ export function BookingCalendar({
   }, [previewDraftFromEvent])
 
   const handleEventResizeStop = useCallback((arg: EventResizeStopArg) => {
-    interactionInProgressRef.current = false
-    prevWasInTopZoneRef.current = false
-    prevWasInBottomZoneRef.current = false
     const props = arg.event.extendedProps as AnyEventProps
     const preview = draftPreviewRef.current
     if (props.kind === "draft" && props.draftId && preview?.id === props.draftId) {
       updateDraftRange(preview.id, new Date(preview.start), new Date(preview.end))
     }
+    finishInteraction(preview ? [{ start: preview.start, end: preview.end }] : [])
     setDraftPreviewValue(null)
-  }, [setDraftPreviewValue, updateDraftRange])
+  }, [finishInteraction, setDraftPreviewValue, updateDraftRange])
 
   const handleCalendarMouseDownCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (selectedViewRef.current === "dayGridMonth" || event.button !== 0) return
@@ -721,9 +777,7 @@ export function BookingCalendar({
 
   useEffect(() => {
     function stopSelectInteraction() {
-      interactionInProgressRef.current = false
-      prevWasInTopZoneRef.current = false
-      prevWasInBottomZoneRef.current = false
+      finishInteraction()
     }
 
     window.addEventListener("pointerup", stopSelectInteraction)
@@ -734,12 +788,9 @@ export function BookingCalendar({
       window.removeEventListener("pointercancel", stopSelectInteraction)
       window.removeEventListener("mouseup", stopSelectInteraction)
     }
-  }, [])
+  }, [finishInteraction])
 
   const handleSelect = useCallback((arg: DateSelectArg) => {
-    interactionInProgressRef.current = false
-    prevWasInTopZoneRef.current = false
-    prevWasInBottomZoneRef.current = false
     const calendarApi = calendarRef.current?.getApi()
     if (
       !isSelectableView(arg.view.type) ||
@@ -747,6 +798,7 @@ export function BookingCalendar({
       overlapsBlockedEvent(arg.start, arg.end) ||
       overlapsConfirmedBufferZone(arg.start, arg.end)
     ) {
+      finishInteraction()
       calendarApi?.unselect()
       return
     }
@@ -755,15 +807,14 @@ export function BookingCalendar({
       start: arg.start.toISOString(),
       end: arg.end.toISOString(),
     }
+    finishInteraction([{ start: draft.start, end: draft.end }])
     upsertDraft(draft, true)
     calendarApi?.unselect()
-  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone, upsertDraft])
+  }, [finishInteraction, overlapsBlockedEvent, overlapsConfirmedBufferZone, upsertDraft])
 
   const handleUnselect = useCallback(() => {
-    interactionInProgressRef.current = false
-    prevWasInTopZoneRef.current = false
-    prevWasInBottomZoneRef.current = false
-  }, [])
+    finishInteraction()
+  }, [finishInteraction])
 
   const handleSelectAllow = useCallback<AllowFunc>((span) => {
     return (
@@ -1181,6 +1232,7 @@ export function BookingCalendar({
           editable={false}
           eventStartEditable
           eventDurationEditable
+          eventResizableFromStart
           nowIndicator
           slotMinTime={slotMinTime}
           slotMaxTime={slotMaxTime}
