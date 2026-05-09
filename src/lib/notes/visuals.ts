@@ -124,13 +124,13 @@ export const VISUAL_REGISTRY: Record<string, VisualConfig> = {
   "grading-mix-vs-split": {
     slug: "grading-mix-vs-split",
     kind: "video",
-    title: "混ぜたまま触る / 分けて触る",
+    title: "LUT まるごと触ろうとした日",
     caption:
-      "監督から降りる 4 軸オーダー。1 ノードで一気に処理する左セルと、4 ノードに分けて順次処理する右セルを 10 秒で並列ループ。",
-    alt: "左セル＝1 ノードで 4 軸を混在処理し 3 chip が破綻、右セル＝4 ノードに分けて順次適用し 12 chip 全部が安定着地する比較ループ動画。",
+      "LUT まるごと触ろうとした日。空の抜けを出すと肌が沈み、肌を戻すと空が戻って、2 時間どこにも辿り着けない。",
+    alt: "無名の LUT 箱に監督オーダーを入れると、空 chip と肌 chip が連鎖で揺り戻しを 2 ターン繰り返し、結末でハンドカーソルが箱の上で止まる 12 秒の 1 セル動画。",
     aspect: { width: 16, height: 5 },
-    intro: "混ぜると壊れる軸が、分けると独立に動く。",
-    loopSec: 10,
+    intro: "分けられない道具で、分けられない問題に挑むと、揺り戻しになる。",
+    loopSec: 12,
   },
 }
 
