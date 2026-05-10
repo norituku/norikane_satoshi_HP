@@ -10,22 +10,11 @@ const PURPLE = "#8B7FFF"
 const ACCENT_GREEN = "rgb(80,180,120)"
 const ACCENT_RED = "rgb(220,80,80)"
 const AXIS_STROKE = "rgba(139,127,255,0.4)"
-const GLASS_FILL = "rgba(255,255,255,0.65)"
-const GLASS_STROKE = "rgba(255,255,255,0.78)"
-const LUT_FILL = "rgba(255,255,255,0.08)"
-const LUT_STROKE = "rgba(255,255,255,0.4)"
-const METER_BASE = "rgba(255,255,255,0.16)"
+const GRAPH_FILL = "rgba(255,255,255,0.08)"
+const GRAPH_STROKE = "rgba(255,255,255,0.4)"
 
-const BOX = { x: 120, y: 180, w: 300, h: 160 }
+const GRAPH = { x: 140, y: 120, w: 400, h: 320 }
 const PREVIEW = { x: 900, y: 108, w: 560, h: 315 }
-const METERS = [
-  { x: 310, y: 420, w: 180, h: 12 },
-  { x: 550, y: 420, w: 180, h: 12 },
-  { x: 790, y: 420, w: 180, h: 12 },
-  { x: 1030, y: 420, w: 180, h: 12 },
-]
-
-type Rgb = { r: number; g: number; b: number }
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v))
@@ -55,277 +44,325 @@ function fadeOut(t: number, start: number, end: number) {
   return 1 - easeInOutCubic(windowProgress(t, start, end))
 }
 
-function fadeInOut(t: number, start: number, inEnd: number, outStart: number, end: number) {
-  if (t < start || t > end) return 0
-  if (t < inEnd) return fadeIn(t, start, inEnd)
-  if (t > outStart) return fadeOut(t, outStart, end)
-  return 1
+function applyGamma(channel: number, shift: number) {
+  const gamma = 1 + shift * 0.6
+  return clamp255(Math.pow(channel / 255, gamma) * 255)
 }
 
-function rgb({ r, g, b }: Rgb) {
-  return `rgb(${clamp255(r)},${clamp255(g)},${clamp255(b)})`
+function gammaRgb(r: number, g: number, b: number, shift: number) {
+  return `rgb(${applyGamma(r, shift)},${applyGamma(g, shift)},${applyGamma(b, shift)})`
 }
 
-function mixColor(a: Rgb, b: Rgb, p: number): Rgb {
-  return {
-    r: lerp(a.r, b.r, p),
-    g: lerp(a.g, b.g, p),
-    b: lerp(a.b, b.b, p),
+function gammaShiftAt(t: number) {
+  if (t < 3) return 0
+  if (t < 7) return 0.55 * easeInOutCubic(windowProgress(t, 3, 7))
+  if (t < 9) return 0.55
+  if (t < 10.5) return 0.55 * fadeOut(t, 9, 10.5)
+  return 0
+}
+
+function orderPillPose(t: number) {
+  if (t < 1.5) {
+    const p = fadeIn(t, 0, 1.5)
+    return { y: lerp(-32, 22, p), opacity: p }
   }
+  if (t < 9.5) return { y: 22, opacity: 1 }
+  if (t < 10.5) return { y: 22, opacity: fadeOut(t, 9.5, 10.5) }
+  const p = fadeIn(t, 10.5, 12)
+  return { y: lerp(-32, 22, p), opacity: p }
 }
 
-function orderPose(t: number) {
-  if (t < 2) {
-    const p = fadeIn(t, 0, 1.75)
-    return {
-      x: lerp(520, BOX.x + 34, p),
-      y: lerp(34, BOX.y + 50, p),
-      opacity: t < 1.35 ? 1 : fadeOut(t, 1.35, 2),
-      scale: lerp(1, 0.62, windowProgress(t, 1.35, 2)),
-    }
-  }
-
-  if (t >= 11.5) {
-    return {
-      x: 520,
-      y: 34,
-      opacity: fadeIn(t, 11.5, 12),
-      scale: 1,
-    }
-  }
-
-  return { x: 520, y: 34, opacity: 0, scale: 1 }
-}
-
-function lutPulse(t: number) {
-  const absorb = Math.sin(Math.PI * windowProgress(t, 1.7, 2.1)) * Number(t >= 1.7 && t <= 2.1)
-  const handTouch = Math.sin(Math.PI * windowProgress(t, 2.25, 2.8)) * Number(t >= 2.25 && t <= 2.8)
-  return 1 + 0.025 * Math.max(absorb, handTouch)
-}
-
-function resetProgress(t: number) {
-  return t >= 10 ? fadeIn(t, 10, 11.5) : 0
-}
-
-function meterValues(t: number) {
-  const reset = resetProgress(t)
-  const intentProgress = fadeIn(t, 2.6, 7.6)
-  const sideProgress = fadeIn(t, 2.8, 7.9)
-  const intent = lerp(0.5, 0.82, intentProgress)
-  const finals = [intent, 0.27, 0.73, 0.38]
-
-  if (t >= 8) {
-    return finals.map((value) => lerp(value, 0.5, reset))
-  }
-
-  if (t < 2.4) return [0.5, 0.5, 0.5, 0.5]
-
-  const side1 = 0.5 + (0.27 - 0.5) * sideProgress + Math.sin((t - 2.8) * 2.7 + 0.6) * 0.08 * sideProgress
-  const side2 = 0.5 + (0.73 - 0.5) * sideProgress + Math.sin((t - 2.8) * 1.9 + 2.2) * 0.1 * sideProgress
-  const side3 = 0.5 + (0.38 - 0.5) * sideProgress + Math.sin((t - 2.8) * 3.25 + 4.1) * 0.075 * sideProgress
-
-  return [intent, side1, side2, side3].map((value) => clamp01(value))
-}
-
-function sideEffectOpacity(t: number) {
-  if (t < 2.7) return 0
-  if (t < 8) {
-    const pulse = 0.5 + 0.5 * Math.sin(((t - 2.7) / 1.5) * Math.PI * 2)
-    return fadeIn(t, 2.7, 3.2) * (0.12 + pulse * 0.48)
-  }
-  if (t < 10) return 0.52
-  return 0.52 * fadeOut(t, 10, 11.5)
-}
-
-function previewState(t: number) {
-  const values = meterValues(t)
-  const previewOn = fadeIn(t, 4, 7.8)
-  const reset = resetProgress(t)
-  const hold = t >= 8 ? 1 : previewOn
-  const active = hold * (1 - reset)
-  const warm = 0.18 * values[0] * active
-  const density = (values[1] - 0.5) * 0.72 * active
-  const balance = (values[2] - 0.5) * 0.92 * active
-  const saturation = (values[3] - 0.5) * 0.66 * active
-
-  return { warm, density, balance, saturation, active }
-}
-
-function previewOverlayOpacity(t: number) {
-  if (t < 4) return 0
-  if (t < 8) return fadeIn(t, 4, 4.6) * 0.78
-  if (t < 10) return 0.78
-  return 0.78 * fadeOut(t, 10, 11.5)
-}
-
-function handPose(t: number) {
-  if (t < 2) return { x: BOX.x + 212, y: BOX.y + 44, opacity: 0 }
-  if (t < 2.75) {
-    const p = fadeIn(t, 2, 2.75)
-    return {
-      x: lerp(BOX.x + 212, METERS[0].x + 90, p),
-      y: lerp(BOX.y + 44, METERS[0].y - 48, p),
-      opacity: p,
-    }
-  }
-  if (t < 8) {
-    const drag = fadeIn(t, 2.75, 7.6)
-    return {
-      x: lerp(METERS[0].x + 90, METERS[0].x + 148, drag),
-      y: METERS[0].y - 48 + Math.sin((t - 2.75) * 4.1) * 4,
-      opacity: 1,
-    }
-  }
-  if (t < 10) {
-    const p = fadeIn(t, 8, 10)
-    return {
-      x: lerp(METERS[0].x + 148, 150, p),
-      y: lerp(METERS[0].y - 48, 560, p),
-      opacity: fadeOut(t, 8.35, 9.35),
-    }
-  }
-  return { x: 150, y: 560, opacity: 0 }
+function thoughtOpacity(t: number) {
+  if (t < 1.5) return 0
+  if (t < 3) return fadeIn(t, 1.5, 3)
+  if (t < 9) return 1
+  if (t < 10.5) return fadeOut(t, 9, 10.5)
+  return 0
 }
 
 function gazeOpacity(t: number) {
-  return fadeInOut(t, 2.55, 2.95, 8, 8.7)
+  if (t < 1.5) return 0
+  if (t < 3) return fadeIn(t, 1.5, 3)
+  if (t < 9) return 1
+  if (t < 10.5) return fadeOut(t, 9, 10.5)
+  return 0
+}
+
+function faceOverlayOpacity(t: number) {
+  if (t < 3 || t > 10.5) return 0
+  const fade = t < 4 ? fadeIn(t, 3, 4) : t > 9 ? fadeOut(t, 9, 10.5) : 1
+  const phase = (t - 3) / 1.5
+  const pulse = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI)
+  return fade * 0.6 * pulse
 }
 
 function conclusionOpacity(t: number) {
-  if (t < 8.35) return 0
-  if (t < 10.25) return fadeIn(t, 8.35, 9)
-  return fadeOut(t, 10.25, 11.2)
+  if (t < 7) return 0
+  if (t < 8) return fadeIn(t, 7, 8)
+  if (t < 9) return 1
+  if (t < 10.5) return fadeOut(t, 9, 10.5)
+  return 0
+}
+
+function controlPointY(shift: number) {
+  return GRAPH.y + GRAPH.h / 2 + 160 * shift
+}
+
+function curvePath(shift: number) {
+  const P0x = GRAPH.x
+  const P0y = GRAPH.y + GRAPH.h
+  const P1x = GRAPH.x + GRAPH.w / 2
+  const P1y = controlPointY(shift)
+  const P2x = GRAPH.x + GRAPH.w
+  const P2y = GRAPH.y
+  const t0x = P1x - P0x
+  const t0y = P1y - P0y
+  const t1x = (P2x - P0x) / 2
+  const t1y = (P2y - P0y) / 2
+  const t2x = P2x - P1x
+  const t2y = P2y - P1y
+  const c1ax = P0x + t0x / 3
+  const c1ay = P0y + t0y / 3
+  const c1bx = P1x - t1x / 3
+  const c1by = P1y - t1y / 3
+  const c2ax = P1x + t1x / 3
+  const c2ay = P1y + t1y / 3
+  const c2bx = P2x - t2x / 3
+  const c2by = P2y - t2y / 3
+  return `M ${P0x} ${P0y} C ${c1ax.toFixed(2)} ${c1ay.toFixed(2)} ${c1bx.toFixed(2)} ${c1by.toFixed(2)} ${P1x} ${P1y.toFixed(2)} C ${c2ax.toFixed(2)} ${c2ay.toFixed(2)} ${c2bx.toFixed(2)} ${c2by.toFixed(2)} ${P2x} ${P2y}`
 }
 
 function OrderPill({ t }: { t: number }) {
-  const pose = orderPose(t)
+  const pose = orderPillPose(t)
   return (
-    <g opacity={pose.opacity} transform={`translate(${pose.x} ${pose.y}) scale(${pose.scale})`}>
-      <rect x={0} y={0} width={360} height={54} rx={27} fill={PURPLE} />
-      <text x={180} y={35} textAnchor="middle" fontSize={22} fontWeight={760} fill="white">
-        もう少し暖かく
+    <g opacity={pose.opacity} transform={`translate(580 ${pose.y})`}>
+      <rect x={0} y={0} width={440} height={54} rx={27} fill={PURPLE} />
+      <text x={220} y={35} textAnchor="middle" fontSize={24} fontWeight={760} fill="white">
+        もう少ししっとり感を
       </text>
     </g>
   )
 }
 
-function LutBox({ t }: { t: number }) {
-  const scale = lutPulse(t)
+function ThoughtBubble({ t }: { t: number }) {
+  const opacity = thoughtOpacity(t)
   return (
-    <g transform={`translate(${BOX.x + BOX.w / 2} ${BOX.y + BOX.h / 2}) scale(${scale}) translate(${-BOX.x - BOX.w / 2} ${-BOX.y - BOX.h / 2})`}>
-      <rect x={BOX.x} y={BOX.y} width={BOX.w} height={BOX.h} rx={44} fill={LUT_FILL} stroke={LUT_STROKE} strokeWidth={2} />
+    <g opacity={opacity}>
       <rect
-        x={BOX.x + 28}
-        y={BOX.y + 36}
-        width={BOX.w - 56}
-        height={BOX.h - 72}
-        rx={30}
-        fill="rgba(172,172,188,0.16)"
-        stroke="rgba(255,255,255,0.2)"
-      />
-      <text x={BOX.x + BOX.w / 2} y={BOX.y + 94} textAnchor="middle" fontSize={34} fontWeight={800} fill={GLASS_FILL}>
-        LUT
-      </text>
-    </g>
-  )
-}
-
-function Meter({ index, value, t }: { index: number; value: number; t: number }) {
-  const meter = METERS[index]
-  const knobX = meter.x + value * meter.w
-  const redOpacity = index === 0 ? 0 : sideEffectOpacity(t)
-  const gaze = index === 0 ? gazeOpacity(t) : 0
-
-  return (
-    <g>
-      <rect x={meter.x} y={meter.y} width={meter.w} height={meter.h} rx={6} fill={METER_BASE} />
-      <rect x={meter.x} y={meter.y} width={value * meter.w} height={meter.h} rx={6} fill={PURPLE} opacity={0.82} />
-      <circle cx={knobX} cy={meter.y + meter.h / 2} r={10} fill={GLASS_FILL} stroke={GLASS_STROKE} strokeWidth={1.5} />
-      <circle cx={knobX} cy={meter.y + meter.h / 2} r={22} fill="none" stroke={ACCENT_GREEN} strokeWidth={2} opacity={gaze} />
-      <rect
-        x={meter.x - 8}
-        y={meter.y - 11}
-        width={meter.w + 16}
-        height={meter.h + 22}
-        rx={17}
-        fill="none"
-        stroke={ACCENT_RED}
-        strokeWidth={2}
-        opacity={redOpacity}
-      />
-    </g>
-  )
-}
-
-function Preview({ t }: { t: number }) {
-  const state = previewState(t)
-  const leftBase = mixColor({ r: 124, g: 130, b: 138 }, { r: 178, g: 134, b: 118 }, state.warm)
-  const rightBase = mixColor({ r: 106, g: 116, b: 126 }, { r: 94, g: 130, b: 152 }, Math.abs(state.balance))
-  const bgLeft = rgb({
-    r: leftBase.r + state.balance * 16 - state.density * 44,
-    g: leftBase.g - state.saturation * 30 - state.density * 38,
-    b: leftBase.b - state.balance * 42 - state.density * 46,
-  })
-  const bgRight = rgb({
-    r: rightBase.r - state.balance * 34 - state.density * 48,
-    g: rightBase.g + state.saturation * 24 - state.density * 42,
-    b: rightBase.b + state.balance * 50 - state.density * 36,
-  })
-  const skin = rgb({
-    r: 204 + state.warm * 72 - state.density * 36 + state.balance * 18,
-    g: 142 + state.warm * 28 - state.density * 32 - state.saturation * 16,
-    b: 102 - state.warm * 22 - state.density * 40 - state.balance * 24,
-  })
-  const cloth = rgb({
-    r: 92 - state.density * 54 - state.balance * 30,
-    g: 98 - state.density * 44 + state.saturation * 28,
-    b: 112 - state.density * 38 + state.balance * 50,
-  })
-  const overlayOpacity = previewOverlayOpacity(t)
-
-  return (
-    <g>
-      <rect x={PREVIEW.x - 12} y={PREVIEW.y - 12} width={PREVIEW.w + 24} height={PREVIEW.h + 24} rx={30} fill="rgba(255,255,255,0.1)" />
-      <g clipPath="url(#gmvs-preview-clip)">
-        <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} fill="url(#gmvs-preview-base)" />
-        <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w * 0.42} height={PREVIEW.h} fill={bgLeft} opacity={0.9} />
-        <rect x={PREVIEW.x + PREVIEW.w * 0.42} y={PREVIEW.y} width={PREVIEW.w * 0.58} height={PREVIEW.h} fill={bgRight} opacity={0.86} />
-        <rect x={PREVIEW.x + 44} y={PREVIEW.y + 42} width={98} height={216} rx={18} fill="rgba(226,216,198,0.22)" />
-        <rect x={PREVIEW.x + 408} y={PREVIEW.y + 24} width={96} height={240} rx={22} fill="rgba(126,158,178,0.24)" />
-        <circle cx={PREVIEW.x + 286} cy={PREVIEW.y + 132} r={48} fill={skin} />
-        <rect x={PREVIEW.x + 230} y={PREVIEW.y + 182} width={112} height={132} rx={46} fill={cloth} />
-        <rect x={PREVIEW.x + 252} y={PREVIEW.y + 168} width={68} height={44} rx={22} fill={skin} />
-        <path d={`M ${PREVIEW.x + 236} ${PREVIEW.y + 142} C ${PREVIEW.x + 254} ${PREVIEW.y + 76}, ${PREVIEW.x + 330} ${PREVIEW.y + 78}, ${PREVIEW.x + 338} ${PREVIEW.y + 148} C ${PREVIEW.x + 316} ${PREVIEW.y + 116}, ${PREVIEW.x + 258} ${PREVIEW.y + 118}, ${PREVIEW.x + 236} ${PREVIEW.y + 142} Z`} fill="rgba(52,48,56,0.64)" />
-        <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} fill="rgba(190,72,72,0.16)" opacity={state.active * 0.48} />
-      </g>
-      <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} rx={24} fill="none" stroke={GLASS_STROKE} strokeWidth={1.5} />
-      <rect
-        x={PREVIEW.x - 6}
-        y={PREVIEW.y - 6}
-        width={PREVIEW.w + 12}
-        height={PREVIEW.h + 12}
-        rx={29}
-        fill="none"
-        stroke={ACCENT_RED}
+        x={1060}
+        y={28}
+        width={400}
+        height={48}
+        rx={24}
+        fill="rgba(255,255,255,0.08)"
+        stroke={PURPLE}
+        strokeOpacity={0.4}
         strokeWidth={1.5}
-        opacity={overlayOpacity}
       />
+      <circle
+        cx={1080}
+        cy={84}
+        r={6}
+        fill="rgba(255,255,255,0.08)"
+        stroke={PURPLE}
+        strokeOpacity={0.4}
+        strokeWidth={1.2}
+      />
+      <circle
+        cx={1066}
+        cy={94}
+        r={3.5}
+        fill="rgba(255,255,255,0.08)"
+        stroke={PURPLE}
+        strokeOpacity={0.4}
+        strokeWidth={1}
+      />
+      <text x={1260} y={59} textAnchor="middle" fontSize={20} fontWeight={620} fill="white">
+        暗くすれば？　締めた感じに？
+      </text>
     </g>
   )
 }
 
-function HandCursor({ t }: { t: number }) {
-  const pose = handPose(t)
+function ToneCurveGraph({ shift, gaze }: { shift: number; gaze: number }) {
+  const cy = controlPointY(shift)
+  const cxCenter = GRAPH.x + GRAPH.w / 2
   return (
-    <g transform={`translate(${pose.x} ${pose.y})`} opacity={pose.opacity}>
-      <path
-        d="M 0 0 L 0 72 L 18 54 L 34 88 L 54 78 L 38 45 L 66 45 Z"
-        fill={GLASS_FILL}
-        stroke="rgba(255,255,255,0.92)"
-        strokeWidth={2}
-        strokeLinejoin="round"
+    <g>
+      <rect
+        x={GRAPH.x}
+        y={GRAPH.y}
+        width={GRAPH.w}
+        height={GRAPH.h}
+        rx={14}
+        fill={GRAPH_FILL}
+        stroke={GRAPH_STROKE}
+        strokeWidth={1.5}
       />
-      <path d="M 18 54 L 31 45" stroke={AXIS_STROKE} strokeWidth={2} strokeLinecap="round" />
+      {[0.25, 0.5, 0.75].map((p) => (
+        <g key={`grid-${p}`}>
+          <line
+            x1={GRAPH.x + GRAPH.w * p}
+            y1={GRAPH.y}
+            x2={GRAPH.x + GRAPH.w * p}
+            y2={GRAPH.y + GRAPH.h}
+            stroke={AXIS_STROKE}
+            strokeOpacity={0.18}
+            strokeWidth={1}
+          />
+          <line
+            x1={GRAPH.x}
+            y1={GRAPH.y + GRAPH.h * p}
+            x2={GRAPH.x + GRAPH.w}
+            y2={GRAPH.y + GRAPH.h * p}
+            stroke={AXIS_STROKE}
+            strokeOpacity={0.18}
+            strokeWidth={1}
+          />
+        </g>
+      ))}
+      <line
+        x1={GRAPH.x}
+        y1={GRAPH.y + GRAPH.h}
+        x2={GRAPH.x + GRAPH.w}
+        y2={GRAPH.y}
+        stroke={PURPLE}
+        strokeOpacity={0.3}
+        strokeWidth={1.5}
+      />
+      <path
+        d={curvePath(shift)}
+        fill="none"
+        stroke={PURPLE}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+      />
+      <circle cx={cxCenter} cy={cy} r={6} fill={PURPLE} stroke="white" strokeWidth={1.5} />
+      <circle
+        cx={cxCenter}
+        cy={cy}
+        r={18}
+        fill="none"
+        stroke={ACCENT_GREEN}
+        strokeWidth={2}
+        opacity={gaze}
+      />
+      <text
+        x={GRAPH.x + GRAPH.w / 2}
+        y={GRAPH.y + GRAPH.h + 28}
+        textAnchor="middle"
+        fontSize={16}
+        fontWeight={620}
+        fill="rgba(255,255,255,0.78)"
+        letterSpacing="0.2em"
+      >
+        IN
+      </text>
+      <text
+        x={GRAPH.x - 26}
+        y={GRAPH.y + GRAPH.h / 2}
+        textAnchor="middle"
+        fontSize={16}
+        fontWeight={620}
+        fill="rgba(255,255,255,0.78)"
+        letterSpacing="0.2em"
+        transform={`rotate(-90 ${GRAPH.x - 26} ${GRAPH.y + GRAPH.h / 2})`}
+      >
+        OUT
+      </text>
+    </g>
+  )
+}
+
+// TODO: replace placeholder with actual reference image when ready
+function ReferenceImage({ shift, overlay }: { shift: number; overlay: number }) {
+  const bgTop = gammaRgb(184, 184, 188, shift)
+  const bgMid = gammaRgb(146, 146, 152, shift)
+  const bgBot = gammaRgb(102, 104, 114, shift)
+  const skin = gammaRgb(204, 142, 102, shift)
+  const cloth = gammaRgb(78, 86, 100, shift)
+  const hair = gammaRgb(50, 40, 38, shift)
+
+  const faceCx = PREVIEW.x + 280
+  const faceCy = PREVIEW.y + 152
+  const faceRx = 56
+  const faceRy = 72
+
+  return (
+    <g>
+      <defs>
+        <linearGradient
+          id="gmvs-ref-bg"
+          x1="0"
+          y1={PREVIEW.y}
+          x2="0"
+          y2={PREVIEW.y + PREVIEW.h}
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor={bgTop} />
+          <stop offset="55%" stopColor={bgMid} />
+          <stop offset="100%" stopColor={bgBot} />
+        </linearGradient>
+        <clipPath id="gmvs-ref-clip">
+          <rect
+            x={PREVIEW.x}
+            y={PREVIEW.y}
+            width={PREVIEW.w}
+            height={PREVIEW.h}
+            rx={20}
+          />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#gmvs-ref-clip)">
+        <rect
+          x={PREVIEW.x}
+          y={PREVIEW.y}
+          width={PREVIEW.w}
+          height={PREVIEW.h}
+          fill="url(#gmvs-ref-bg)"
+        />
+        <ellipse cx={faceCx} cy={faceCy - 64} rx={70} ry={52} fill={hair} />
+        <rect
+          x={faceCx - 100}
+          y={faceCy + 64}
+          width={200}
+          height={160}
+          rx={28}
+          fill={cloth}
+        />
+        <ellipse cx={faceCx} cy={faceCy} rx={faceRx} ry={faceRy} fill={skin} />
+      </g>
+      <rect
+        x={PREVIEW.x}
+        y={PREVIEW.y}
+        width={PREVIEW.w}
+        height={PREVIEW.h}
+        rx={20}
+        fill="none"
+        stroke="rgba(255,255,255,0.16)"
+        strokeWidth={6}
+      />
+      <rect
+        x={PREVIEW.x}
+        y={PREVIEW.y}
+        width={PREVIEW.w}
+        height={PREVIEW.h}
+        rx={20}
+        fill="none"
+        stroke={PURPLE}
+        strokeWidth={2}
+      />
+      <g opacity={overlay}>
+        <ellipse
+          cx={faceCx}
+          cy={faceCy}
+          rx={faceRx + 14}
+          ry={faceRy + 16}
+          fill="rgba(220,80,80,0.16)"
+          stroke={ACCENT_RED}
+          strokeWidth={2}
+        />
+      </g>
     </g>
   )
 }
@@ -334,9 +371,9 @@ function ConclusionPill({ t }: { t: number }) {
   const opacity = conclusionOpacity(t)
   return (
     <g opacity={opacity}>
-      <rect x={548} y={446} width={504} height={42} rx={21} fill={PURPLE} />
-      <text x={800} y={474} textAnchor="middle" fontSize={20} fontWeight={780} fill="white">
-        気づかないところで、動いている
+      <rect x={580} y={448} width={440} height={42} rx={21} fill={PURPLE} />
+      <text x={800} y={476} textAnchor="middle" fontSize={20} fontWeight={780} fill="white">
+        全体は締まったけど、顔も一緒に沈んだ
       </text>
     </g>
   )
@@ -375,8 +412,8 @@ export default function GradingMixVsSplit({
     }
   }, [isPlaying, reducedMotion])
 
-  const t = reducedMotion ? 9 : animT
-  const values = meterValues(t)
+  const t = reducedMotion ? 8 : animT
+  const shift = gammaShiftAt(t)
 
   return (
     <svg
@@ -397,26 +434,15 @@ export default function GradingMixVsSplit({
           <stop offset="0%" stopColor="rgba(110,174,210,0.28)" />
           <stop offset="100%" stopColor="rgba(110,174,210,0)" />
         </radialGradient>
-        <linearGradient id="gmvs-preview-base" x1="900" y1="108" x2="1460" y2="423" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="rgb(148,148,150)" />
-          <stop offset="52%" stopColor="rgb(128,130,134)" />
-          <stop offset="100%" stopColor="rgb(104,110,118)" />
-        </linearGradient>
-        <clipPath id="gmvs-preview-clip">
-          <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} rx={24} />
-        </clipPath>
       </defs>
       <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.16)" />
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-purple)" />
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-pink)" />
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-sky)" />
+      <ToneCurveGraph shift={shift} gaze={gazeOpacity(t)} />
+      <ReferenceImage shift={shift} overlay={faceOverlayOpacity(t)} />
       <OrderPill t={t} />
-      <LutBox t={t} />
-      <Preview t={t} />
-      {values.map((value, index) => (
-        <Meter key={index} index={index} value={value} t={t} />
-      ))}
-      <HandCursor t={t} />
+      <ThoughtBubble t={t} />
       <ConclusionPill t={t} />
     </svg>
   )
