@@ -7,13 +7,12 @@ const LOOP = 14
 const W = 1600
 const H = 500
 const PURPLE = "#8B7FFF"
-const ACCENT_GREEN = "rgb(80,180,120)"
 const ACCENT_RED = "rgb(220,80,80)"
 const AXIS_STROKE = "rgba(139,127,255,0.4)"
 const GRAPH_FILL = "rgba(255,255,255,0.08)"
 const GRAPH_STROKE = "rgba(255,255,255,0.4)"
 
-const GRAPH = { x: 80, y: 240, w: 200, h: 160 }
+const GRAPH = { x: 100, y: 310, w: 260, h: 150 }
 const PREVIEW = { x: 520, y: 70, w: 1000, h: 400 }
 const BADGE_AREA = { x: 80, y: 70, w: 400, h: 140 }
 const ORDER_PILL = { cx: 800, w: 480, h: 44, y: 14 }
@@ -79,8 +78,7 @@ function orderPillPose(t: number) {
   }
   if (t < 11) return { y: ORDER_PILL.y, opacity: 1 }
   if (t < 12.5) return { y: ORDER_PILL.y, opacity: fadeOut(t, 11, 12.5) }
-  const p = fadeIn(t, 12.5, 14)
-  return { y: lerp(-32, ORDER_PILL.y, p), opacity: p }
+  return { y: -32, opacity: 0 }
 }
 
 function badgeCenters() {
@@ -121,24 +119,20 @@ function graphOpacity(t: number) {
   return 0
 }
 
-function gazePosition(t: number) {
+function selectedBadgeIdx(t: number) {
   if (t < 1.5) return null
-  const centers = badgeCenters()
   if (t < 4) {
     const within = ((t - 1.5) % 2.4) / 0.8
-    const idx = Math.min(2, Math.floor(within))
-    const offset = badgeOffset(t, idx)
-    return { cx: centers[idx].cx + offset.dx, cy: centers[idx].cy + offset.dy, opacity: 1 }
+    return Math.min(2, Math.floor(within))
   }
-  const graphCx = GRAPH.x + GRAPH.w / 2
-  const graphCy = GRAPH.y + GRAPH.h / 2
-  if (t < 4.5) {
-    const p = easeInOutCubic(windowProgress(t, 4, 4.5))
-    return { cx: lerp(centers[0].cx, graphCx, p), cy: lerp(centers[0].cy, graphCy, p), opacity: 1 }
-  }
-  if (t < 11) return { cx: graphCx, cy: graphCy, opacity: 1 }
-  if (t < 12.5) return { cx: graphCx, cy: graphCy, opacity: fadeOut(t, 11, 12.5) }
+  if (t < 4.5) return 0
   return null
+}
+
+function badgeHighlightAlpha(t: number) {
+  const phase = t / 1.5
+  const pulse = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI)
+  return 0.6 + 0.4 * pulse
 }
 
 function faceOverlayOpacity(t: number) {
@@ -214,6 +208,8 @@ function OrderPill({ t }: { t: number }) {
 function ToolBadges({ t }: { t: number }) {
   const centers = badgeCenters()
   const absorbTarget = { x: GRAPH.x + GRAPH.w / 2, y: GRAPH.y + GRAPH.h / 2 }
+  const selectedIdx = selectedBadgeIdx(t)
+  const highlightAlpha = badgeHighlightAlpha(t)
   return (
     <g>
       {TOOL_CANDIDATES.map((cand, idx) => {
@@ -228,26 +224,40 @@ function ToolBadges({ t }: { t: number }) {
           cx = lerp(cx, absorbTarget.x, p)
           cy = lerp(cy, absorbTarget.y, p)
         }
+        const isSelected = selectedIdx === idx
         return (
           <g key={cand.key} opacity={opacity} transform={`translate(${cx - BADGE_W / 2} ${cy - BADGE_H / 2})`}>
+            {isSelected && (
+              <rect
+                x={-6}
+                y={-6}
+                width={BADGE_W + 12}
+                height={BADGE_H + 12}
+                rx={(BADGE_H + 12) / 2}
+                fill="none"
+                stroke={PURPLE}
+                strokeOpacity={highlightAlpha}
+                strokeWidth={3}
+              />
+            )}
             <rect
               x={0}
               y={0}
               width={BADGE_W}
               height={BADGE_H}
               rx={BADGE_H / 2}
-              fill="rgba(255,255,255,0.08)"
+              fill="rgba(24,20,56,0.82)"
               stroke={PURPLE}
-              strokeOpacity={0.4}
-              strokeWidth={1.5}
+              strokeOpacity={0.85}
+              strokeWidth={2}
             />
             <text
               x={BADGE_W / 2}
-              y={BADGE_H / 2 + 5}
+              y={BADGE_H / 2 + 6}
               textAnchor="middle"
-              fontSize={15}
-              fontWeight={620}
-              fill="rgba(255,255,255,0.78)"
+              fontSize={17}
+              fontWeight={720}
+              fill="white"
             >
               {cand.label}
             </text>
@@ -262,6 +272,17 @@ function ToneCurveGraph({ shift, opacity }: { shift: number; opacity: number }) 
   if (opacity <= 0) return null
   return (
     <g opacity={opacity}>
+      <rect
+        x={GRAPH.x - 8}
+        y={GRAPH.y - 8}
+        width={GRAPH.w + 16}
+        height={GRAPH.h + 16}
+        rx={14}
+        fill="rgba(139,127,255,0.18)"
+        stroke={PURPLE}
+        strokeOpacity={0.6}
+        strokeWidth={1}
+      />
       <rect
         x={GRAPH.x}
         y={GRAPH.y}
@@ -494,7 +515,6 @@ export default function GradingMixVsSplit({ isPlaying, reducedMotion }: VideoVis
 
   const t = reducedMotion ? 10 : animT
   const shift = contrastShiftAt(t)
-  const gaze = gazePosition(t)
 
   return (
     <svg viewBox="0 0 1600 500" className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid meet">
@@ -519,9 +539,6 @@ export default function GradingMixVsSplit({ isPlaying, reducedMotion }: VideoVis
       <ReferenceImage shift={shift} faceOverlay={faceOverlayOpacity(t)} borderOverlay={borderOverlayOpacity(t)} />
       <ToneCurveGraph shift={shift} opacity={graphOpacity(t)} />
       <ToolBadges t={t} />
-      {gaze && (
-        <circle cx={gaze.cx} cy={gaze.cy} r={26} fill="none" stroke={ACCENT_GREEN} strokeWidth={2} opacity={gaze.opacity} />
-      )}
       <OrderPill t={t} />
       <ConclusionPill t={t} />
     </svg>
