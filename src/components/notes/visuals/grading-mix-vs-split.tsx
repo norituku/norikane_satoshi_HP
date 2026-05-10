@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { VideoVisualProps } from "@/components/notes/note-visual"
 
-const LOOP = 12
+const LOOP = 14
 const W = 1600
 const H = 500
 const PURPLE = "#8B7FFF"
@@ -13,8 +13,19 @@ const AXIS_STROKE = "rgba(139,127,255,0.4)"
 const GRAPH_FILL = "rgba(255,255,255,0.08)"
 const GRAPH_STROKE = "rgba(255,255,255,0.4)"
 
-const GRAPH = { x: 140, y: 120, w: 400, h: 320 }
-const PREVIEW = { x: 900, y: 108, w: 560, h: 315 }
+const GRAPH = { x: 80, y: 240, w: 200, h: 160 }
+const PREVIEW = { x: 520, y: 70, w: 1000, h: 400 }
+const BADGE_AREA = { x: 80, y: 70, w: 400, h: 140 }
+const ORDER_PILL = { cx: 800, w: 480, h: 44, y: 14 }
+const CONCLUSION_PILL = { cx: 800, w: 760, h: 40, y: 455 }
+const BADGE_W = 120
+const BADGE_H = 36
+
+const TOOL_CANDIDATES = [
+  { label: "コントラスト", key: "contrast" as const },
+  { label: "彩度", key: "saturation" as const },
+  { label: "シャープ", key: "sharpness" as const },
+]
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v))
@@ -44,157 +55,219 @@ function fadeOut(t: number, start: number, end: number) {
   return 1 - easeInOutCubic(windowProgress(t, start, end))
 }
 
-function applyGamma(channel: number, shift: number) {
-  const gamma = 1 + shift * 0.6
-  return clamp255(Math.pow(channel / 255, gamma) * 255)
+function applyContrast(channel: number, shift: number) {
+  const m = 1 + shift * 0.6
+  return clamp255(128 + (channel - 128) * m)
 }
 
-function gammaRgb(r: number, g: number, b: number, shift: number) {
-  return `rgb(${applyGamma(r, shift)},${applyGamma(g, shift)},${applyGamma(b, shift)})`
+function contrastRgb(r: number, g: number, b: number, shift: number) {
+  return `rgb(${applyContrast(r, shift)},${applyContrast(g, shift)},${applyContrast(b, shift)})`
 }
 
-function gammaShiftAt(t: number) {
-  if (t < 3) return 0
-  if (t < 7) return 0.55 * easeInOutCubic(windowProgress(t, 3, 7))
-  if (t < 9) return 0.55
-  if (t < 10.5) return 0.55 * fadeOut(t, 9, 10.5)
+function contrastShiftAt(t: number) {
+  if (t < 4.5) return 0
+  if (t < 9) return 0.7 * easeInOutCubic(windowProgress(t, 4.5, 9))
+  if (t < 11) return 0.7
+  if (t < 12.5) return 0.7 * fadeOut(t, 11, 12.5)
   return 0
 }
 
 function orderPillPose(t: number) {
   if (t < 1.5) {
     const p = fadeIn(t, 0, 1.5)
-    return { y: lerp(-32, 22, p), opacity: p }
+    return { y: lerp(-32, ORDER_PILL.y, p), opacity: p }
   }
-  if (t < 9.5) return { y: 22, opacity: 1 }
-  if (t < 10.5) return { y: 22, opacity: fadeOut(t, 9.5, 10.5) }
-  const p = fadeIn(t, 10.5, 12)
-  return { y: lerp(-32, 22, p), opacity: p }
+  if (t < 11) return { y: ORDER_PILL.y, opacity: 1 }
+  if (t < 12.5) return { y: ORDER_PILL.y, opacity: fadeOut(t, 11, 12.5) }
+  const p = fadeIn(t, 12.5, 14)
+  return { y: lerp(-32, ORDER_PILL.y, p), opacity: p }
 }
 
-function thoughtOpacity(t: number) {
+function badgeCenters() {
+  const colW = BADGE_AREA.w / TOOL_CANDIDATES.length
+  return TOOL_CANDIDATES.map((_, i) => ({
+    cx: BADGE_AREA.x + colW * (i + 0.5),
+    cy: BADGE_AREA.y + BADGE_AREA.h / 2,
+  }))
+}
+
+function badgeOffset(t: number, idx: number) {
+  if (t < 1.5 || t > 4) return { dx: 0, dy: 0 }
+  const period = 3.0 + idx * 0.4
+  const phase = ((t - 1.5) / period) * 2 * Math.PI + idx * 1.7
+  const dx = 15 * Math.sin(phase)
+  const dy = 15 * Math.cos(phase * 0.9)
+  return { dx, dy }
+}
+
+function badgeOpacity(t: number) {
   if (t < 1.5) return 0
-  if (t < 3) return fadeIn(t, 1.5, 3)
-  if (t < 9) return 1
-  if (t < 10.5) return fadeOut(t, 9, 10.5)
+  if (t < 4) return fadeIn(t, 1.5, 2.2)
+  if (t < 4.5) return fadeOut(t, 4, 4.5)
   return 0
 }
 
-function gazeOpacity(t: number) {
-  if (t < 1.5) return 0
-  if (t < 3) return fadeIn(t, 1.5, 3)
-  if (t < 9) return 1
-  if (t < 10.5) return fadeOut(t, 9, 10.5)
+function absorbProgress(t: number) {
+  if (t < 4) return 0
+  if (t < 4.5) return easeInOutCubic(windowProgress(t, 4, 4.5))
+  return 1
+}
+
+function graphOpacity(t: number) {
+  if (t < 4.5) return 0
+  if (t < 5.0) return fadeIn(t, 4.5, 5.0)
+  if (t < 11) return 1
+  if (t < 12.5) return fadeOut(t, 11, 12.5)
   return 0
+}
+
+function gazePosition(t: number) {
+  if (t < 1.5) return null
+  const centers = badgeCenters()
+  if (t < 4) {
+    const within = ((t - 1.5) % 2.4) / 0.8
+    const idx = Math.min(2, Math.floor(within))
+    const offset = badgeOffset(t, idx)
+    return { cx: centers[idx].cx + offset.dx, cy: centers[idx].cy + offset.dy, opacity: 1 }
+  }
+  const graphCx = GRAPH.x + GRAPH.w / 2
+  const graphCy = GRAPH.y + GRAPH.h / 2
+  if (t < 4.5) {
+    const p = easeInOutCubic(windowProgress(t, 4, 4.5))
+    return { cx: lerp(centers[0].cx, graphCx, p), cy: lerp(centers[0].cy, graphCy, p), opacity: 1 }
+  }
+  if (t < 11) return { cx: graphCx, cy: graphCy, opacity: 1 }
+  if (t < 12.5) return { cx: graphCx, cy: graphCy, opacity: fadeOut(t, 11, 12.5) }
+  return null
 }
 
 function faceOverlayOpacity(t: number) {
-  if (t < 3 || t > 10.5) return 0
-  const fade = t < 4 ? fadeIn(t, 3, 4) : t > 9 ? fadeOut(t, 9, 10.5) : 1
-  const phase = (t - 3) / 1.5
+  if (t < 4.5 || t > 12.5) return 0
+  const fade = t < 5.5 ? fadeIn(t, 4.5, 5.5) : t > 11 ? fadeOut(t, 11, 12.5) : 1
+  const phase = (t - 4.5) / 1.5
   const pulse = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI)
   return fade * 0.6 * pulse
 }
 
+function borderOverlayOpacity(t: number) {
+  if (t < 4.5 || t > 12.5) return 0
+  const fade = t < 5.5 ? fadeIn(t, 4.5, 5.5) : t > 11 ? fadeOut(t, 11, 12.5) : 1
+  const phase = (t - 4.5) / 1.7 + 0.4
+  const pulse = 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI)
+  return fade * 0.55 * pulse
+}
+
 function conclusionOpacity(t: number) {
-  if (t < 7) return 0
-  if (t < 8) return fadeIn(t, 7, 8)
-  if (t < 9) return 1
-  if (t < 10.5) return fadeOut(t, 9, 10.5)
+  if (t < 9) return 0
+  if (t < 10) return fadeIn(t, 9, 10)
+  if (t < 11) return 1
+  if (t < 12.5) return fadeOut(t, 11, 12.5)
   return 0
 }
 
-function controlPointY(shift: number) {
-  return GRAPH.y + GRAPH.h / 2 + 160 * shift
-}
-
 function curvePath(shift: number) {
-  const P0x = GRAPH.x
-  const P0y = GRAPH.y + GRAPH.h
-  const P1x = GRAPH.x + GRAPH.w / 2
-  const P1y = controlPointY(shift)
-  const P2x = GRAPH.x + GRAPH.w
-  const P2y = GRAPH.y
-  const t0x = P1x - P0x
-  const t0y = P1y - P0y
-  const t1x = (P2x - P0x) / 2
-  const t1y = (P2y - P0y) / 2
-  const t2x = P2x - P1x
-  const t2y = P2y - P1y
-  const c1ax = P0x + t0x / 3
-  const c1ay = P0y + t0y / 3
-  const c1bx = P1x - t1x / 3
-  const c1by = P1y - t1y / 3
-  const c2ax = P1x + t1x / 3
-  const c2ay = P1y + t1y / 3
-  const c2bx = P2x - t2x / 3
-  const c2by = P2y - t2y / 3
-  return `M ${P0x} ${P0y} C ${c1ax.toFixed(2)} ${c1ay.toFixed(2)} ${c1bx.toFixed(2)} ${c1by.toFixed(2)} ${P1x} ${P1y.toFixed(2)} C ${c2ax.toFixed(2)} ${c2ay.toFixed(2)} ${c2bx.toFixed(2)} ${c2by.toFixed(2)} ${P2x} ${P2y}`
+  const pts = [
+    { in: 0, out: 0 },
+    { in: 64, out: 64 - 32 * shift },
+    { in: 128, out: 128 },
+    { in: 192, out: 192 + 32 * shift },
+    { in: 255, out: 255 },
+  ]
+  const mapped = pts.map((p) => ({
+    x: GRAPH.x + (p.in / 255) * GRAPH.w,
+    y: GRAPH.y + GRAPH.h - (p.out / 255) * GRAPH.h,
+  }))
+  let d = `M ${mapped[0].x.toFixed(2)} ${mapped[0].y.toFixed(2)}`
+  for (let i = 0; i < mapped.length - 1; i++) {
+    const p0 = mapped[Math.max(0, i - 1)]
+    const p1 = mapped[i]
+    const p2 = mapped[i + 1]
+    const p3 = mapped[Math.min(mapped.length - 1, i + 2)]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+  }
+  return d
 }
 
 function OrderPill({ t }: { t: number }) {
   const pose = orderPillPose(t)
   return (
-    <g opacity={pose.opacity} transform={`translate(580 ${pose.y})`}>
-      <rect x={0} y={0} width={440} height={54} rx={27} fill={PURPLE} />
-      <text x={220} y={35} textAnchor="middle" fontSize={24} fontWeight={760} fill="white">
-        もう少ししっとり感を
+    <g opacity={pose.opacity} transform={`translate(${ORDER_PILL.cx - ORDER_PILL.w / 2} ${pose.y})`}>
+      <rect x={0} y={0} width={ORDER_PILL.w} height={ORDER_PILL.h} rx={ORDER_PILL.h / 2} fill={PURPLE} />
+      <text
+        x={ORDER_PILL.w / 2}
+        y={ORDER_PILL.h / 2 + 7}
+        textAnchor="middle"
+        fontSize={20}
+        fontWeight={760}
+        fill="white"
+      >
+        もう少し絵に立体感が欲しい
       </text>
     </g>
   )
 }
 
-function ThoughtBubble({ t }: { t: number }) {
-  const opacity = thoughtOpacity(t)
-  return (
-    <g opacity={opacity}>
-      <rect
-        x={1060}
-        y={28}
-        width={400}
-        height={48}
-        rx={24}
-        fill="rgba(255,255,255,0.08)"
-        stroke={PURPLE}
-        strokeOpacity={0.4}
-        strokeWidth={1.5}
-      />
-      <circle
-        cx={1080}
-        cy={84}
-        r={6}
-        fill="rgba(255,255,255,0.08)"
-        stroke={PURPLE}
-        strokeOpacity={0.4}
-        strokeWidth={1.2}
-      />
-      <circle
-        cx={1066}
-        cy={94}
-        r={3.5}
-        fill="rgba(255,255,255,0.08)"
-        stroke={PURPLE}
-        strokeOpacity={0.4}
-        strokeWidth={1}
-      />
-      <text x={1260} y={59} textAnchor="middle" fontSize={20} fontWeight={620} fill="white">
-        暗くすれば？　締めた感じに？
-      </text>
-    </g>
-  )
-}
-
-function ToneCurveGraph({ shift, gaze }: { shift: number; gaze: number }) {
-  const cy = controlPointY(shift)
-  const cxCenter = GRAPH.x + GRAPH.w / 2
+function ToolBadges({ t }: { t: number }) {
+  const centers = badgeCenters()
+  const absorbTarget = { x: GRAPH.x + GRAPH.w / 2, y: GRAPH.y + GRAPH.h / 2 }
   return (
     <g>
+      {TOOL_CANDIDATES.map((cand, idx) => {
+        const opacity = badgeOpacity(t)
+        if (opacity <= 0) return null
+        const center = centers[idx]
+        const offset = badgeOffset(t, idx)
+        let cx = center.cx + offset.dx
+        let cy = center.cy + offset.dy
+        if (cand.key === "contrast" && t >= 4) {
+          const p = absorbProgress(t)
+          cx = lerp(cx, absorbTarget.x, p)
+          cy = lerp(cy, absorbTarget.y, p)
+        }
+        return (
+          <g key={cand.key} opacity={opacity} transform={`translate(${cx - BADGE_W / 2} ${cy - BADGE_H / 2})`}>
+            <rect
+              x={0}
+              y={0}
+              width={BADGE_W}
+              height={BADGE_H}
+              rx={BADGE_H / 2}
+              fill="rgba(255,255,255,0.08)"
+              stroke={PURPLE}
+              strokeOpacity={0.4}
+              strokeWidth={1.5}
+            />
+            <text
+              x={BADGE_W / 2}
+              y={BADGE_H / 2 + 5}
+              textAnchor="middle"
+              fontSize={15}
+              fontWeight={620}
+              fill="rgba(255,255,255,0.78)"
+            >
+              {cand.label}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+function ToneCurveGraph({ shift, opacity }: { shift: number; opacity: number }) {
+  if (opacity <= 0) return null
+  return (
+    <g opacity={opacity}>
       <rect
         x={GRAPH.x}
         y={GRAPH.y}
         width={GRAPH.w}
         height={GRAPH.h}
-        rx={14}
+        rx={10}
         fill={GRAPH_FILL}
         stroke={GRAPH_STROKE}
         strokeWidth={1.5}
@@ -228,30 +301,14 @@ function ToneCurveGraph({ shift, gaze }: { shift: number; gaze: number }) {
         y2={GRAPH.y}
         stroke={PURPLE}
         strokeOpacity={0.3}
-        strokeWidth={1.5}
+        strokeWidth={1.2}
       />
-      <path
-        d={curvePath(shift)}
-        fill="none"
-        stroke={PURPLE}
-        strokeWidth={2.5}
-        strokeLinecap="round"
-      />
-      <circle cx={cxCenter} cy={cy} r={6} fill={PURPLE} stroke="white" strokeWidth={1.5} />
-      <circle
-        cx={cxCenter}
-        cy={cy}
-        r={18}
-        fill="none"
-        stroke={ACCENT_GREEN}
-        strokeWidth={2}
-        opacity={gaze}
-      />
+      <path d={curvePath(shift)} fill="none" stroke={PURPLE} strokeWidth={2.2} strokeLinecap="round" />
       <text
         x={GRAPH.x + GRAPH.w / 2}
-        y={GRAPH.y + GRAPH.h + 28}
+        y={GRAPH.y + GRAPH.h + 22}
         textAnchor="middle"
-        fontSize={16}
+        fontSize={12}
         fontWeight={620}
         fill="rgba(255,255,255,0.78)"
         letterSpacing="0.2em"
@@ -259,14 +316,14 @@ function ToneCurveGraph({ shift, gaze }: { shift: number; gaze: number }) {
         IN
       </text>
       <text
-        x={GRAPH.x - 26}
+        x={GRAPH.x - 18}
         y={GRAPH.y + GRAPH.h / 2}
         textAnchor="middle"
-        fontSize={16}
+        fontSize={12}
         fontWeight={620}
         fill="rgba(255,255,255,0.78)"
         letterSpacing="0.2em"
-        transform={`rotate(-90 ${GRAPH.x - 26} ${GRAPH.y + GRAPH.h / 2})`}
+        transform={`rotate(-90 ${GRAPH.x - 18} ${GRAPH.y + GRAPH.h / 2})`}
       >
         OUT
       </text>
@@ -275,18 +332,30 @@ function ToneCurveGraph({ shift, gaze }: { shift: number; gaze: number }) {
 }
 
 // TODO: replace placeholder with actual reference image when ready
-function ReferenceImage({ shift, overlay }: { shift: number; overlay: number }) {
-  const bgTop = gammaRgb(184, 184, 188, shift)
-  const bgMid = gammaRgb(146, 146, 152, shift)
-  const bgBot = gammaRgb(102, 104, 114, shift)
-  const skin = gammaRgb(204, 142, 102, shift)
-  const cloth = gammaRgb(78, 86, 100, shift)
-  const hair = gammaRgb(50, 40, 38, shift)
+function ReferenceImage({
+  shift,
+  faceOverlay,
+  borderOverlay,
+}: {
+  shift: number
+  faceOverlay: number
+  borderOverlay: number
+}) {
+  const bgTop = contrastRgb(184, 184, 188, shift)
+  const bgMid = contrastRgb(146, 146, 152, shift)
+  const bgBot = contrastRgb(112, 114, 122, shift)
+  const skin = contrastRgb(204, 142, 102, shift)
+  const cloth = contrastRgb(94, 100, 112, shift)
+  const hair = contrastRgb(54, 44, 42, shift)
 
-  const faceCx = PREVIEW.x + 280
-  const faceCy = PREVIEW.y + 152
-  const faceRx = 56
-  const faceRy = 72
+  const faceCx = PREVIEW.x + PREVIEW.w / 2
+  const faceCy = PREVIEW.y + 200
+  const faceRx = 80
+  const faceRy = 104
+  const clothLeft = faceCx - 160
+  const clothRight = faceCx + 160
+  const clothTop = faceCy + 92
+  const clothBottom = PREVIEW.y + PREVIEW.h - 8
 
   return (
     <g>
@@ -304,30 +373,18 @@ function ReferenceImage({ shift, overlay }: { shift: number; overlay: number }) 
           <stop offset="100%" stopColor={bgBot} />
         </linearGradient>
         <clipPath id="gmvs-ref-clip">
-          <rect
-            x={PREVIEW.x}
-            y={PREVIEW.y}
-            width={PREVIEW.w}
-            height={PREVIEW.h}
-            rx={20}
-          />
+          <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} rx={20} />
         </clipPath>
       </defs>
       <g clipPath="url(#gmvs-ref-clip)">
+        <rect x={PREVIEW.x} y={PREVIEW.y} width={PREVIEW.w} height={PREVIEW.h} fill="url(#gmvs-ref-bg)" />
+        <ellipse cx={faceCx} cy={faceCy - 96} rx={92} ry={70} fill={hair} />
         <rect
-          x={PREVIEW.x}
-          y={PREVIEW.y}
-          width={PREVIEW.w}
-          height={PREVIEW.h}
-          fill="url(#gmvs-ref-bg)"
-        />
-        <ellipse cx={faceCx} cy={faceCy - 64} rx={70} ry={52} fill={hair} />
-        <rect
-          x={faceCx - 100}
-          y={faceCy + 64}
-          width={200}
-          height={160}
-          rx={28}
+          x={clothLeft}
+          y={clothTop}
+          width={clothRight - clothLeft}
+          height={clothBottom - clothTop}
+          rx={32}
           fill={cloth}
         />
         <ellipse cx={faceCx} cy={faceCy} rx={faceRx} ry={faceRy} fill={skin} />
@@ -352,15 +409,26 @@ function ReferenceImage({ shift, overlay }: { shift: number; overlay: number }) 
         stroke={PURPLE}
         strokeWidth={2}
       />
-      <g opacity={overlay}>
+      <g opacity={faceOverlay}>
         <ellipse
           cx={faceCx}
           cy={faceCy}
-          rx={faceRx + 14}
-          ry={faceRy + 16}
+          rx={faceRx + 18}
+          ry={faceRy + 20}
           fill="rgba(220,80,80,0.16)"
           stroke={ACCENT_RED}
           strokeWidth={2}
+        />
+      </g>
+      <g opacity={borderOverlay}>
+        <line
+          x1={clothLeft}
+          y1={clothTop}
+          x2={clothRight}
+          y2={clothTop}
+          stroke={ACCENT_RED}
+          strokeWidth={2.5}
+          strokeDasharray="8 6"
         />
       </g>
     </g>
@@ -369,20 +437,32 @@ function ReferenceImage({ shift, overlay }: { shift: number; overlay: number }) 
 
 function ConclusionPill({ t }: { t: number }) {
   const opacity = conclusionOpacity(t)
+  if (opacity <= 0) return null
   return (
     <g opacity={opacity}>
-      <rect x={580} y={448} width={440} height={42} rx={21} fill={PURPLE} />
-      <text x={800} y={476} textAnchor="middle" fontSize={20} fontWeight={780} fill="white">
-        全体は締まったけど、顔も一緒に沈んだ
+      <rect
+        x={CONCLUSION_PILL.cx - CONCLUSION_PILL.w / 2}
+        y={CONCLUSION_PILL.y}
+        width={CONCLUSION_PILL.w}
+        height={CONCLUSION_PILL.h}
+        rx={CONCLUSION_PILL.h / 2}
+        fill={PURPLE}
+      />
+      <text
+        x={CONCLUSION_PILL.cx}
+        y={CONCLUSION_PILL.y + CONCLUSION_PILL.h / 2 + 6}
+        textAnchor="middle"
+        fontSize={18}
+        fontWeight={780}
+        fill="white"
+      >
+        立体感を出そうとしたのに、顔は暗くなり、服と壁の境目も消えた
       </text>
     </g>
   )
 }
 
-export default function GradingMixVsSplit({
-  isPlaying,
-  reducedMotion,
-}: VideoVisualProps) {
+export default function GradingMixVsSplit({ isPlaying, reducedMotion }: VideoVisualProps) {
   const [animT, setAnimT] = useState(0)
   const lastRef = useRef<number | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -412,15 +492,12 @@ export default function GradingMixVsSplit({
     }
   }, [isPlaying, reducedMotion])
 
-  const t = reducedMotion ? 8 : animT
-  const shift = gammaShiftAt(t)
+  const t = reducedMotion ? 10 : animT
+  const shift = contrastShiftAt(t)
+  const gaze = gazePosition(t)
 
   return (
-    <svg
-      viewBox="0 0 1600 500"
-      className="absolute inset-0 h-full w-full"
-      preserveAspectRatio="xMidYMid meet"
-    >
+    <svg viewBox="0 0 1600 500" className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid meet">
       <defs>
         <radialGradient id="gmvs-aurora-purple" cx="20%" cy="8%" r="58%">
           <stop offset="0%" stopColor="rgba(139,127,255,0.42)" />
@@ -439,10 +516,13 @@ export default function GradingMixVsSplit({
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-purple)" />
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-pink)" />
       <rect x={0} y={0} width={W} height={H} fill="url(#gmvs-aurora-sky)" />
-      <ToneCurveGraph shift={shift} gaze={gazeOpacity(t)} />
-      <ReferenceImage shift={shift} overlay={faceOverlayOpacity(t)} />
+      <ReferenceImage shift={shift} faceOverlay={faceOverlayOpacity(t)} borderOverlay={borderOverlayOpacity(t)} />
+      <ToneCurveGraph shift={shift} opacity={graphOpacity(t)} />
+      <ToolBadges t={t} />
+      {gaze && (
+        <circle cx={gaze.cx} cy={gaze.cy} r={26} fill="none" stroke={ACCENT_GREEN} strokeWidth={2} opacity={gaze.opacity} />
+      )}
       <OrderPill t={t} />
-      <ThoughtBubble t={t} />
       <ConclusionPill t={t} />
     </svg>
   )
