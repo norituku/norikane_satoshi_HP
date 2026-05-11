@@ -7,20 +7,26 @@ const VH_TOP = 450
 
 const OUTER_PAD = 30
 const HEADER_H = 48
-const HEADER_GAP = 10
-const ROW_GAP = 12
+const HEADER_GAP = 14
+
 const COL_PAD = 50
 const COL_GAP = 22
-const COL_NAME_W = 296
-const COL_FAIL_W = 280
-const COL_UI_W = VW - COL_PAD * 2 - COL_NAME_W - COL_FAIL_W - COL_GAP * 2
-const COL_NAME_X = COL_PAD
-const COL_UI_X = COL_NAME_X + COL_NAME_W + COL_GAP
-const COL_FAIL_X = COL_UI_X + COL_UI_W + COL_GAP
+const COLUMN_W = (VW - COL_PAD * 2 - COL_GAP) / 2
 
 const SECTION_TOP_Y = OUTER_PAD
-const ROWS_TOP_Y = SECTION_TOP_Y + HEADER_H + HEADER_GAP
-const ROW_H = (VH_TOP - ROWS_TOP_Y - OUTER_PAD - ROW_GAP) / 2
+const COLUMN_TOP_Y = SECTION_TOP_Y + HEADER_H + HEADER_GAP
+const COLUMN_BOTTOM_Y = VH_TOP - OUTER_PAD
+const COLUMN_H = COLUMN_BOTTOM_Y - COLUMN_TOP_Y
+
+const NAME_H = 60
+const FAIL_H = 60
+const SUB_GAP = 12
+const TOOL_TOP_Y = COLUMN_TOP_Y + NAME_H + SUB_GAP
+const FAIL_TOP_Y = COLUMN_BOTTOM_Y - FAIL_H
+const TOOL_H = FAIL_TOP_Y - TOOL_TOP_Y - SUB_GAP
+
+const COL_LEFT_X = COL_PAD
+const COL_RIGHT_X = COL_PAD + COLUMN_W + COL_GAP
 
 const CARD_R = 14
 const CORNER_R = 18
@@ -35,7 +41,6 @@ const PANEL_STROKE = "rgba(255,255,255,0.72)"
 
 const AMBER = "rgb(200,146,58)"
 const TEAL = "rgb(46,140,132)"
-const MAGENTA = "rgb(192,74,142)"
 
 const FONT_FAMILY = "var(--font-noto-sans-jp), sans-serif"
 const MONO = "var(--font-geist-mono), ui-monospace, monospace"
@@ -53,7 +58,9 @@ type VisibleAxisDef = {
   name: string
   tagline: string
   color: string
-  rowIndex: 0 | 1
+  toolTitle: string
+  failLabel: string
+  columnX: number
 }
 
 const AXES_VISIBLE: VisibleAxisDef[] = [
@@ -62,20 +69,20 @@ const AXES_VISIBLE: VisibleAxisDef[] = [
     name: "カーブ",
     tagline: "1 本のマスタートーンが画面で動く",
     color: AMBER,
-    rowIndex: 0,
+    toolTitle: "TONE CURVE / MASTER",
+    failLabel: "曲線の凹凸が画面に出る",
+    columnX: COL_LEFT_X,
   },
   {
     key: "rgb",
     name: "RGB カラーバランス",
     tagline: "R / G / B 3 本のトーンが少しずつ離れる",
     color: TEAL,
-    rowIndex: 1,
+    toolTitle: "TONE CURVE / R · G · B",
+    failLabel: "ch 別のずれが画面に出る",
+    columnX: COL_RIGHT_X,
   },
 ]
-
-function rowY(rowIndex: 0 | 1) {
-  return ROWS_TOP_Y + rowIndex * (ROW_H + ROW_GAP)
-}
 
 const HiddenSection3D = dynamic(
   () => import("@/components/notes/visuals/grading-visible-vs-hidden-3d"),
@@ -101,7 +108,7 @@ export default function GradingVisibleVsHidden() {
       data-diagram-slug="grading-visible-vs-hidden"
       className="absolute inset-0 flex flex-col"
       role="img"
-      aria-label="グレーディング 4 軸を『ツール上で見える / 即応』と『ツール上で見えない / 仕込み』の上下 2 段に分類するハイブリッド図。上段は SVG でカーブ（AMBER の 1 本マスタートーンカーブ）と RGB バランス（TEAL の R / G / B 3 本トーンカーブ）の対比を描く。下段は @react-three/fiber の 3D 色空間に粒子クラスタ S1–S4 を浮かべ、ゆっくり自動旋回でクラスタ重心のずれが色の広がり（MAGENTA）、縦軸方向の分布偏りが濃度（NAVY）を表す。"
+      aria-label="グレーディング 4 軸を『ツール上で見える / 即応』と『ツール上で見えない / 仕込み』の上下 2 段に分類するハイブリッド図。上段は SVG で AMBER の 1 本マスタートーンカーブ（左カラム）と R / G / B 3 本トーンカーブ（右カラム）を左右 2 カラムで横並びにする。下段は @react-three/fiber の HSV 色立体を 2 つ並べ、左ノードはサーフェスがゆっくりうねって色相帯が転がる『広がり』（MAGENTA）、右ノードは形は安定したまま有彩色帯が中央軸を上下にスライドする『濃度』（NAVY）を表す。"
     >
       <div className="relative w-full" style={{ height: "50%" }}>
         <VisibleSectionSvg />
@@ -169,37 +176,29 @@ function VisibleSectionSvg() {
         color={AMBER}
       />
 
-      {AXES_VISIBLE.map((axis) => {
-        const y = rowY(axis.rowIndex)
-        return (
-          <g key={axis.key}>
-            <AxisNameCard x={COL_NAME_X} y={y} axis={axis} />
-            <ToolPanel
-              x={COL_UI_X}
-              y={y}
-              title={axis.key === "curve" ? "TONE CURVE / MASTER" : "TONE CURVE / R · G · B"}
-            >
-              {axis.key === "curve" ? (
-                <MasterCurveUI x={COL_UI_X} y={y} />
-              ) : (
-                <RgbCurvesUI x={COL_UI_X} y={y} />
-              )}
-            </ToolPanel>
-            <FailPanel x={COL_FAIL_X} y={y} title="FAILURE / VISIBLE">
-              <InstantFail
-                x={COL_FAIL_X}
-                y={y}
-                label={
-                  axis.key === "curve"
-                    ? "曲線の凹凸が画面に出る"
-                    : "ch 別のずれが画面に出る"
-                }
-              />
-            </FailPanel>
-          </g>
-        )
-      })}
+      {AXES_VISIBLE.map((axis) => (
+        <AxisColumn key={axis.key} axis={axis} />
+      ))}
     </svg>
+  )
+}
+
+function AxisColumn({ axis }: { axis: VisibleAxisDef }) {
+  const x = axis.columnX
+  return (
+    <g>
+      <AxisNameCard x={x} y={COLUMN_TOP_Y} axis={axis} />
+      <ToolPanel x={x} y={TOOL_TOP_Y} title={axis.toolTitle}>
+        {axis.key === "curve" ? (
+          <MasterCurveUI x={x} y={TOOL_TOP_Y} />
+        ) : (
+          <RgbCurvesUI x={x} y={TOOL_TOP_Y} />
+        )}
+      </ToolPanel>
+      <FailPanel x={x} y={FAIL_TOP_Y} title="FAILURE / VISIBLE">
+        <InstantFail x={x} y={FAIL_TOP_Y} label={axis.failLabel} color={axis.color} />
+      </FailPanel>
+    </g>
   )
 }
 
@@ -291,15 +290,15 @@ function AxisNameCard({
 }) {
   const chipW = 12
   const chipX = x + 22
-  const chipY = y + 22
-  const chipH = ROW_H - 44
+  const chipY = y + 14
+  const chipH = NAME_H - 28
   return (
     <g>
       <rect
         x={x}
         y={y}
-        width={COL_NAME_W}
-        height={ROW_H}
+        width={COLUMN_W}
+        height={NAME_H}
         rx={CARD_R}
         fill={PANEL_FILL}
         stroke={PANEL_STROKE}
@@ -317,9 +316,9 @@ function AxisNameCard({
       />
       <text
         x={chipX + chipW + 16}
-        y={y + 46}
+        y={y + 30}
         fill={TEXT_PRIMARY}
-        fontSize={24}
+        fontSize={20}
         fontWeight={700}
         fontFamily={FONT_FAMILY}
       >
@@ -327,16 +326,17 @@ function AxisNameCard({
       </text>
       <text
         x={chipX + chipW + 16}
-        y={y + 76}
+        y={y + 50}
         fill={TEXT_MUTED}
-        fontSize={14}
+        fontSize={13}
         fontFamily={FONT_FAMILY}
       >
         {axis.tagline}
       </text>
       <text
-        x={chipX + chipW + 16}
-        y={y + ROW_H - 18}
+        x={x + COLUMN_W - 18}
+        y={y + NAME_H / 2 + 4}
+        textAnchor="end"
         fill={axis.color}
         fontSize={10}
         fontFamily={MONO}
@@ -364,8 +364,8 @@ function ToolPanel({
       <rect
         x={x}
         y={y}
-        width={COL_UI_W}
-        height={ROW_H}
+        width={COLUMN_W}
+        height={TOOL_H}
         rx={CARD_R}
         fill={PANEL_FILL}
         stroke={PANEL_STROKE}
@@ -374,7 +374,7 @@ function ToolPanel({
       />
       <text
         x={x + 20}
-        y={y + 24}
+        y={y + 22}
         fill={TEXT_MUTED}
         fontSize={10}
         fontFamily={MONO}
@@ -403,8 +403,8 @@ function FailPanel({
       <rect
         x={x}
         y={y}
-        width={COL_FAIL_W}
-        height={ROW_H}
+        width={COLUMN_W}
+        height={FAIL_H}
         rx={CARD_R}
         fill={PANEL_FILL}
         stroke={PANEL_STROKE}
@@ -413,9 +413,9 @@ function FailPanel({
       />
       <text
         x={x + 20}
-        y={y + 24}
+        y={y + 18}
         fill={TEXT_MUTED}
-        fontSize={10}
+        fontSize={9}
         fontFamily={MONO}
         letterSpacing="0.2em"
       >
@@ -428,9 +428,9 @@ function FailPanel({
 
 function curveGeometry(x: number, y: number) {
   const innerX = x + 28
-  const innerY = y + 40
-  const innerW = COL_UI_W - 56
-  const innerH = ROW_H - 56
+  const innerY = y + 36
+  const innerW = COLUMN_W - 56
+  const innerH = TOOL_H - 50
   return {
     innerX,
     innerY,
@@ -670,13 +670,21 @@ function RgbCurvesUI({ x, y }: { x: number; y: number }) {
   )
 }
 
-function InstantFail({ x, y, label }: { x: number; y: number; label: string }) {
+function InstantFail({
+  x,
+  y,
+  label,
+  color,
+}: {
+  x: number
+  y: number
+  label: string
+  color: string
+}) {
   const innerX = x + 22
-  const innerY = y + 38
-  const innerH = ROW_H - 56
-  const iconR = 28
+  const iconR = 18
   const iconCx = innerX + iconR
-  const iconCy = innerY + innerH / 2
+  const iconCy = y + FAIL_H / 2 + 4
   return (
     <g>
       <circle
@@ -684,31 +692,31 @@ function InstantFail({ x, y, label }: { x: number; y: number; label: string }) {
         cy={iconCy}
         r={iconR}
         fill="rgba(255,182,77,0.18)"
-        stroke={AMBER}
+        stroke={color}
         strokeWidth={2}
       />
       <path
-        d={`M ${iconCx} ${iconCy - iconR + 12} L ${iconCx} ${iconCy + 4}`}
-        stroke={AMBER}
-        strokeWidth={3}
+        d={`M ${iconCx} ${iconCy - iconR + 8} L ${iconCx} ${iconCy + 2}`}
+        stroke={color}
+        strokeWidth={2.4}
         strokeLinecap="round"
       />
-      <circle cx={iconCx} cy={iconCy + iconR - 14} r={3} fill={AMBER} />
+      <circle cx={iconCx} cy={iconCy + iconR - 8} r={2.4} fill={color} />
       <text
-        x={iconCx + iconR + 14}
-        y={iconCy - 4}
+        x={iconCx + iconR + 12}
+        y={iconCy - 2}
         fill={TEXT_PRIMARY}
-        fontSize={17}
+        fontSize={14}
         fontWeight={700}
         fontFamily={FONT_FAMILY}
       >
         その場で気付く
       </text>
       <text
-        x={iconCx + iconR + 14}
-        y={iconCy + 18}
+        x={iconCx + iconR + 12}
+        y={iconCy + 14}
         fill={TEXT_MUTED}
-        fontSize={12}
+        fontSize={11}
         fontFamily={FONT_FAMILY}
       >
         {label}
