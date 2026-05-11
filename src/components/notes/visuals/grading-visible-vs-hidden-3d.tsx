@@ -4,75 +4,109 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import { useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 
-const MAGENTA_RIM = new THREE.Color(0.7529, 0.2902, 0.5569)
-const NAVY_RIM = new THREE.Color(0.1647, 0.3098, 0.5608)
-const TEAL_FLOOR = new THREE.Color(0.1804, 0.549, 0.5176)
-const AMBER_KEY = new THREE.Color(0.7843, 0.5725, 0.2275)
+const MAGENTA_THREE = new THREE.Color(0.7529, 0.2902, 0.5569)
+const NAVY_THREE = new THREE.Color(0.1647, 0.3098, 0.5608)
+const NAVY_CSS = "rgb(42,79,143)"
 
-const LEFT_DISTORT_AMP = 0.13
-const LEFT_DISTORT_PERIOD_SEC = 10.0
-const LEFT_DISTORT_FREQ = (2.0 * Math.PI) / LEFT_DISTORT_PERIOD_SEC
+const LEFT_SPREAD_PERIOD_SEC = 10.0
+const LEFT_SPREAD_FREQ = (2.0 * Math.PI) / LEFT_SPREAD_PERIOD_SEC
+const LEFT_SPREAD_AMP = 0.5
+
+const LEFT_TWIST_PERIOD_SEC = 14.0
+const LEFT_TWIST_FREQ = (2.0 * Math.PI) / LEFT_TWIST_PERIOD_SEC
+const LEFT_TWIST_AMP = 1.2
+
 const LEFT_ROTATION_Y_RAD_PER_SEC = 0.12
-const LEFT_WOBBLE_AMP = 0.14
 
-const RIGHT_BAND_PERIOD_SEC = 7.0
-const RIGHT_BAND_FREQ = (2.0 * Math.PI) / RIGHT_BAND_PERIOD_SEC
-const RIGHT_BAND_AMPLITUDE = 0.5
+const RIGHT_WAVE_PERIOD_SEC = 6.0
+const RIGHT_WAVE_TIME_FREQ = (2.0 * Math.PI) / RIGHT_WAVE_PERIOD_SEC
+const RIGHT_WAVE_THETA_FREQ = 5.0
+const RIGHT_WAVE_AMP = 0.25
+
 const RIGHT_ROTATION_Y_RAD_PER_SEC = 0.08
+
+const IDLE_DRIFT_AMP = 0.025
+
+type NodeKind = "left" | "right"
+
+function pickParticleCount(width: number): number {
+  if (width >= 1280) return 2400
+  if (width >= 768) return 1000
+  return 500
+}
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 const VERTEX_SHADER = /* glsl */ `
   precision highp float;
 
+  attribute float aTheta;
+  attribute float aRadius;
+  attribute float aBaseY;
+  attribute float aSeed;
+  attribute vec3 aBaseColor;
+
   uniform float uTime;
   uniform float uIsLeft;
-  uniform float uDistortAmp;
-  uniform float uDistortFreq;
-  uniform float uBandY;
+  uniform float uSpread;
+  uniform float uTwistAmp;
+  uniform float uTwistFreq;
+  uniform float uWaveAmp;
+  uniform float uWaveTimeFreq;
+  uniform float uWaveThetaFreq;
+  uniform float uDrift;
+  uniform float uPointSize;
 
   varying vec3 vColor;
-  varying float vLight;
-  varying vec3 vWorldNormal;
-  varying vec3 vViewDir;
-
-  vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-  }
+  varying float vOpacity;
 
   void main() {
-    vec3 pos = position;
+    float theta = aTheta;
+    float radius = aRadius;
+    float y = aBaseY;
+    float waveBoost = 0.0;
 
     if (uIsLeft > 0.5) {
-      float w1 = sin(pos.y * 4.6 + uTime * uDistortFreq);
-      float w2 = sin(pos.y * 2.3 + uTime * uDistortFreq * 0.6 + 1.2);
-      float t = atan(pos.z, pos.x);
-      float w3 = sin(t * 3.0 + uTime * uDistortFreq * 0.5);
-      float displ = (w1 * 0.5 + w2 * 0.35 + w3 * 0.25);
-      pos.xz *= 1.0 + displ * uDistortAmp;
-      pos.y *= 1.0 + sin(t * 2.0 + uTime * uDistortFreq * 0.4) * uDistortAmp * 0.18;
+      radius *= uSpread;
+      theta += uTwistAmp * y * sin(uTime * uTwistFreq);
+    } else {
+      float fade = smoothstep(0.6, 0.0, abs(y));
+      float wave = sin(theta * uWaveThetaFreq + uTime * uWaveTimeFreq);
+      y += uWaveAmp * wave * fade;
+      waveBoost = max(0.0, wave) * fade;
     }
 
-    float hue = atan(position.z, position.x) / 6.2831853 + 0.5;
+    vec3 drift = vec3(
+      sin(uTime * 0.7 + aSeed * 6.2831853) * uDrift,
+      cos(uTime * 0.55 + aSeed * 3.9148292) * uDrift,
+      sin(uTime * 0.93 + aSeed * 4.7715271) * uDrift
+    );
 
-    float yNorm = position.y;
-    float satLeft = smoothstep(1.0, 0.05, abs(yNorm) * 0.85);
-    float yDist = abs(yNorm - uBandY);
-    float satRight = smoothstep(0.6, 0.0, yDist);
-    float saturation = mix(satRight, satLeft, uIsLeft);
+    vec3 worldPos = vec3(
+      radius * cos(theta) + drift.x,
+      y + drift.y,
+      radius * sin(theta) + drift.z
+    );
 
-    float value = mix(0.45, 0.95, yNorm * 0.5 + 0.5);
+    vec4 mvPos = modelViewMatrix * vec4(worldPos, 1.0);
+    gl_Position = projectionMatrix * mvPos;
 
-    vColor = hsv2rgb(vec3(hue, saturation, value));
+    float dist = max(-mvPos.z, 0.4);
+    gl_PointSize = uPointSize * (1.0 / dist);
 
-    vec3 worldNormal = normalize(mat3(modelMatrix) * normal);
-    vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
-    vec3 lightDir = normalize(vec3(0.55, 0.85, 0.5));
-    vLight = 0.42 + 0.58 * max(dot(worldNormal, lightDir), 0.0);
-    vWorldNormal = worldNormal;
-    vViewDir = normalize(cameraPosition - worldPos);
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    vec3 boosted = mix(aBaseColor, vec3(1.0), 0.28);
+    vColor = mix(aBaseColor, boosted, waveBoost);
+    vOpacity = mix(0.72, 0.95, waveBoost);
   }
 `
 
@@ -80,72 +114,109 @@ const FRAGMENT_SHADER = /* glsl */ `
   precision highp float;
 
   varying vec3 vColor;
-  varying float vLight;
-  varying vec3 vWorldNormal;
-  varying vec3 vViewDir;
-
-  uniform vec3 uRimTint;
-  uniform vec3 uFloorTint;
+  varying float vOpacity;
 
   void main() {
-    float rim = 1.0 - max(dot(vWorldNormal, vViewDir), 0.0);
-    rim = pow(rim, 2.4);
-
-    vec3 base = vColor * vLight;
-    vec3 floorTint = mix(uFloorTint, vec3(1.0), 0.55);
-    vec3 lit = mix(base * floorTint, base, vLight);
-    vec3 finalColor = lit + uRimTint * rim * 0.32;
-
-    gl_FragColor = vec4(finalColor, 1.0);
+    vec2 uv = gl_PointCoord - vec2(0.5);
+    float d = length(uv);
+    if (d > 0.5) discard;
+    float alpha = smoothstep(0.5, 0.18, d) * vOpacity;
+    gl_FragColor = vec4(vColor, alpha);
   }
 `
 
-type NodeKind = "left" | "right"
-
-type ColorBundle = {
-  geometry: THREE.CylinderGeometry
+type ParticleBundle = {
+  geometry: THREE.BufferGeometry
   material: THREE.ShaderMaterial
 }
 
-function buildBundle(kind: NodeKind): ColorBundle {
-  const geometry = new THREE.CylinderGeometry(1.0, 1.0, 2.0, 96, 28, false)
-  const isLeft = kind === "left" ? 1.0 : 0.0
+function buildBundle(count: number, kind: NodeKind): ParticleBundle {
+  const total = Math.max(60, count)
+  const positions = new Float32Array(total * 3)
+  const thetas = new Float32Array(total)
+  const radii = new Float32Array(total)
+  const baseY = new Float32Array(total)
+  const seeds = new Float32Array(total)
+  const colors = new Float32Array(total * 3)
+
+  const rng = mulberry32(kind === "left" ? 1481 + total : 2729 + total)
+  const radiusMin = 0.18
+  const radiusSpan = 0.82
+  const yLimit = 0.92
+
+  for (let i = 0; i < total; i += 1) {
+    const theta = rng() * Math.PI * 2
+    const r01 = Math.sqrt(rng())
+    const radius = radiusMin + r01 * radiusSpan
+    const y = (rng() * 2 - 1) * yLimit
+    thetas[i] = theta
+    radii[i] = radius
+    baseY[i] = y
+    seeds[i] = rng()
+
+    const radialT = THREE.MathUtils.clamp(
+      (radius - radiusMin) / radiusSpan,
+      0,
+      1,
+    )
+    const verticalT = THREE.MathUtils.clamp(Math.abs(y) / yLimit, 0, 1)
+    const m = THREE.MathUtils.clamp(
+      radialT * 0.62 + verticalT * 0.42 + (rng() - 0.5) * 0.18,
+      0,
+      1,
+    )
+    const c = new THREE.Color().lerpColors(NAVY_THREE, MAGENTA_THREE, m)
+    colors[i * 3 + 0] = c.r
+    colors[i * 3 + 1] = c.g
+    colors[i * 3 + 2] = c.b
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute("aTheta", new THREE.BufferAttribute(thetas, 1))
+  geometry.setAttribute("aRadius", new THREE.BufferAttribute(radii, 1))
+  geometry.setAttribute("aBaseY", new THREE.BufferAttribute(baseY, 1))
+  geometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1))
+  geometry.setAttribute("aBaseColor", new THREE.BufferAttribute(colors, 3))
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 3)
+
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
     uniforms: {
       uTime: { value: 0 },
-      uIsLeft: { value: isLeft },
-      uDistortAmp: { value: kind === "left" ? LEFT_DISTORT_AMP : 0 },
-      uDistortFreq: { value: kind === "left" ? LEFT_DISTORT_FREQ : 0 },
-      uBandY: { value: 0 },
-      uRimTint: {
-        value: (kind === "left" ? MAGENTA_RIM : NAVY_RIM).clone(),
-      },
-      uFloorTint: {
-        value: (kind === "left" ? TEAL_FLOOR : AMBER_KEY).clone(),
-      },
+      uIsLeft: { value: kind === "left" ? 1.0 : 0.0 },
+      uSpread: { value: 1.0 },
+      uTwistAmp: { value: kind === "left" ? LEFT_TWIST_AMP : 0.0 },
+      uTwistFreq: { value: LEFT_TWIST_FREQ },
+      uWaveAmp: { value: kind === "right" ? RIGHT_WAVE_AMP : 0.0 },
+      uWaveTimeFreq: { value: RIGHT_WAVE_TIME_FREQ },
+      uWaveThetaFreq: { value: RIGHT_WAVE_THETA_FREQ },
+      uDrift: { value: IDLE_DRIFT_AMP },
+      uPointSize: { value: 24 },
     },
-    transparent: false,
-    depthWrite: true,
-    side: THREE.DoubleSide,
   })
+
   return { geometry, material }
 }
 
-function ColorSolid({
+function NodeParticles({
+  count,
   kind,
   reducedMotion,
 }: {
+  count: number
   kind: NodeKind
   reducedMotion: boolean
 }) {
   const groupRef = useRef<THREE.Group>(null)
-  const meshRef = useRef<THREE.Mesh>(null)
   const startTimeRef = useRef<number | null>(null)
   const invalidate = useThree((s) => s.invalidate)
 
-  const bundle = useMemo(() => buildBundle(kind), [kind])
+  const bundle = useMemo(() => buildBundle(count, kind), [count, kind])
 
   useEffect(() => {
     return () => {
@@ -158,7 +229,7 @@ function ColorSolid({
     if (reducedMotion) {
       const u = bundle.material.uniforms
       u.uTime.value = 0
-      u.uBandY.value = 0
+      u.uSpread.value = 1.0
       if (groupRef.current) {
         groupRef.current.rotation.set(0, 0, 0)
       }
@@ -175,28 +246,85 @@ function ColorSolid({
     if (startTimeRef.current === null) startTimeRef.current = state.clock.elapsedTime
     const t = state.clock.elapsedTime - startTimeRef.current
 
+    const u = bundle.material.uniforms
+    u.uTime.value = t
+
     if (kind === "left") {
       groupRef.current.rotation.y += dt * LEFT_ROTATION_Y_RAD_PER_SEC
-      groupRef.current.rotation.x = LEFT_WOBBLE_AMP * Math.sin(t * 0.45)
-      groupRef.current.rotation.z = LEFT_WOBBLE_AMP * 0.85 * Math.cos(t * 0.38)
-      bundle.material.uniforms.uTime.value = t
+      u.uSpread.value = 1.0 + LEFT_SPREAD_AMP * Math.sin(t * LEFT_SPREAD_FREQ)
     } else {
       groupRef.current.rotation.y += dt * RIGHT_ROTATION_Y_RAD_PER_SEC
-      bundle.material.uniforms.uTime.value = t
-      bundle.material.uniforms.uBandY.value =
-        RIGHT_BAND_AMPLITUDE * Math.sin(t * RIGHT_BAND_FREQ)
     }
   })
 
   return (
     <group ref={groupRef}>
-      <mesh
-        ref={meshRef}
-        geometry={bundle.geometry}
-        material={bundle.material}
-      />
+      <points geometry={bundle.geometry} material={bundle.material} frustumCulled={false} />
     </group>
   )
+}
+
+function CylinderFrame() {
+  const ringGeometry = useMemo(() => {
+    const segments = 96
+    const positions = new Float32Array((segments + 1) * 3)
+    for (let i = 0; i <= segments; i += 1) {
+      const t = (i / segments) * Math.PI * 2
+      positions[i * 3 + 0] = Math.cos(t)
+      positions[i * 3 + 1] = 0
+      positions[i * 3 + 2] = Math.sin(t)
+    }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+    return g
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      ringGeometry.dispose()
+    }
+  }, [ringGeometry])
+
+  return (
+    <>
+      <group position={[0, -0.78, 0]}>
+        <line>
+          <primitive object={ringGeometry} attach="geometry" />
+          <lineBasicMaterial color="#8B7FFF" transparent opacity={0.42} />
+        </line>
+      </group>
+      <group position={[0, 0, 0]}>
+        <line>
+          <primitive object={ringGeometry} attach="geometry" />
+          <lineBasicMaterial color="#8B7FFF" transparent opacity={0.22} />
+        </line>
+      </group>
+      <group position={[0, 0.78, 0]}>
+        <line>
+          <primitive object={ringGeometry} attach="geometry" />
+          <lineBasicMaterial color="#8B7FFF" transparent opacity={0.42} />
+        </line>
+      </group>
+      <mesh>
+        <cylinderGeometry args={[0.006, 0.006, 1.6, 6]} />
+        <meshBasicMaterial color={NAVY_CSS} transparent opacity={0.55} />
+      </mesh>
+    </>
+  )
+}
+
+function useParticleCount() {
+  const [count, setCount] = useState<number>(() => {
+    if (typeof window === "undefined") return 1000
+    return pickParticleCount(window.innerWidth)
+  })
+  useEffect(() => {
+    const onResize = () => setCount(pickParticleCount(window.innerWidth))
+    onResize()
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+  return count
 }
 
 function useReducedMotion() {
@@ -215,33 +343,37 @@ function useReducedMotion() {
 function NodeCanvas({
   kind,
   reducedMotion,
+  count,
 }: {
   kind: NodeKind
   reducedMotion: boolean
+  count: number
 }) {
   return (
     <Canvas
-      camera={{ position: [2.4, 1.2, 2.8], fov: 38 }}
+      camera={{ position: [2.6, 1.4, 3.1], fov: 36 }}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       dpr={[1, 1.8]}
       style={{ background: "transparent" }}
       frameloop={reducedMotion ? "demand" : "always"}
     >
-      <ColorSolid kind={kind} reducedMotion={reducedMotion} />
+      <CylinderFrame />
+      <NodeParticles count={count} kind={kind} reducedMotion={reducedMotion} />
     </Canvas>
   )
 }
 
 export default function GradingVisibleVsHidden3D() {
   const reducedMotion = useReducedMotion()
+  const count = useParticleCount()
 
   return (
     <div className="absolute inset-0 flex">
       <div className="relative" style={{ width: "50%", height: "100%" }}>
-        <NodeCanvas kind="left" reducedMotion={reducedMotion} />
+        <NodeCanvas kind="left" reducedMotion={reducedMotion} count={count} />
       </div>
       <div className="relative" style={{ width: "50%", height: "100%" }}>
-        <NodeCanvas kind="right" reducedMotion={reducedMotion} />
+        <NodeCanvas kind="right" reducedMotion={reducedMotion} count={count} />
       </div>
     </div>
   )
