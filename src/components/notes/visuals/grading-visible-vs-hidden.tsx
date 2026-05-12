@@ -9,7 +9,7 @@ const OUTER_PAD = 30
 const HEADER_H = 48
 const HEADER_GAP = 14
 
-const ROW_H = 268
+const ROW_H = 328
 
 const COL_PAD = 50
 const COL_GAP = 22
@@ -21,8 +21,9 @@ const SECTION_TOP_Y = OUTER_PAD
 const ROW_TOP_Y = SECTION_TOP_Y + HEADER_H + HEADER_GAP
 
 const NAME_H = 60
-const FAIL_H = 60
-const FAIL_TOP_Y = ROW_TOP_Y + ROW_H
+const NAME_FAIL_GAP = 12
+const FAIL_TOP_Y = ROW_TOP_Y + NAME_H + NAME_FAIL_GAP
+const FAIL_H = ROW_TOP_Y + ROW_H - FAIL_TOP_Y
 
 const TOOL_H = ROW_H
 
@@ -357,7 +358,7 @@ function HiddenCanvasSlot({
         left,
         top: "28.444%",
         width: "19.25%",
-        height: "48.444%",
+        height: "61.778%",
       }}
     >
       {children}
@@ -657,16 +658,17 @@ function CurveAxesBg({
 
 function MasterCurveUI({ x, y }: { x: number; y: number }) {
   const { innerX, innerY, innerW, innerH, xR, yB } = curveGeometry(x, y)
+  const clampY = (value: number) => Math.min(yB, Math.max(innerY, value))
   const startX = innerX
   const startY = yB
   const c1x = innerX + innerW * 0.18
-  const c1y = yB + innerH * 0.12
+  const c1y = clampY(yB + innerH * 0.12)
   const c2x = innerX + innerW * 0.4
   const c2y = innerY + innerH * 0.9
   const midX = innerX + innerW * 0.5
-  const midY = innerY - innerH * 0.04
+  const midY = clampY(innerY - innerH * 0.04)
   const c3x = innerX + innerW * 0.6
-  const c3y = innerY - innerH * 0.06
+  const c3y = clampY(innerY - innerH * 0.06)
   const c4x = innerX + innerW * 0.82
   const c4y = innerY + innerH * 0.08
   const endX = xR
