@@ -20,8 +20,8 @@ const SUB_W = (COLUMN_W - SUB_GAP) / 2
 const SECTION_TOP_Y = OUTER_PAD
 const ROW_TOP_Y = SECTION_TOP_Y + HEADER_H + HEADER_GAP
 
-const NAME_H = 60
-const NAME_FAIL_GAP = 12
+const NAME_H = 164
+const NAME_FAIL_GAP = 0
 const FAIL_TOP_Y = ROW_TOP_Y + NAME_H + NAME_FAIL_GAP
 const FAIL_H = ROW_TOP_Y + ROW_H - FAIL_TOP_Y
 
@@ -460,6 +460,7 @@ function AxisNameCard({
   const chipX = x + 22
   const chipY = y + 14
   const chipH = NAME_H - 28
+  const textCenterY = y + NAME_H / 2
   return (
     <g>
       <rect
@@ -484,7 +485,7 @@ function AxisNameCard({
       />
       <text
         x={chipX + chipW + 16}
-        y={y + 30}
+        y={textCenterY - 10}
         fill={TEXT_PRIMARY}
         fontSize={20}
         fontWeight={700}
@@ -494,7 +495,7 @@ function AxisNameCard({
       </text>
       <text
         x={chipX + chipW + 16}
-        y={y + 50}
+        y={textCenterY + 10}
         fill={TEXT_MUTED}
         fontSize={13}
         fontFamily={FONT_FAMILY}
