@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { BookingMonthSkeleton } from "@/components/booking/booking-month-skeleton"
 import { BookingSection } from "@/components/booking/booking-section"
 import { getCalendarFreeBusyForUser } from "@/lib/booking/calendar-free-busy"
 import { Menu } from "lucide-react"
@@ -17,7 +18,8 @@ function initialBusyRange(now = new Date()) {
 export default async function BookingPage() {
   const session = await auth()
   if (!session?.user) redirect("/login?callbackUrl=/booking")
-  const initialRange = initialBusyRange()
+  const now = new Date()
+  const initialRange = initialBusyRange(now)
   const initialBusy = await getCalendarFreeBusyForUser({
     userId: session.user.id,
     teamId: null,
@@ -54,6 +56,15 @@ export default async function BookingPage() {
             initialBusy={initialBusy.busy}
             initialBookings={initialBusy.bookings}
             initialRange={initialRange}
+            monthSkeleton={(
+              <BookingMonthSkeleton
+                initialBusy={initialBusy.busy}
+                initialBookings={initialBusy.bookings}
+                initialRange={initialRange}
+                now={now}
+                teamId={null}
+              />
+            )}
           />
         </div>
       </div>

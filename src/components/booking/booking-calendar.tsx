@@ -26,7 +26,7 @@ import type {
   EventSourceFuncArg,
 } from "@fullcalendar/core"
 import { format } from "date-fns"
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 
 import { mapErrorCodeToJa, type BookingConflictsResponse } from "@/lib/booking/api-schema"
 import { getHolidayName } from "@/lib/booking/holidays"
@@ -399,6 +399,7 @@ type BookingCalendarProps = {
   teams?: TeamOption[]
   selectedTeamId?: string | null
   onSelectedTeamIdChange?: (teamId: string | null) => void
+  monthSkeleton?: ReactNode
   onCommit: (slots: { start: string; end: string }[]) => void
 }
 
@@ -415,9 +416,13 @@ export function BookingCalendar({
   teams = [],
   selectedTeamId = null,
   onSelectedTeamIdChange,
+  monthSkeleton,
   onCommit,
 }: BookingCalendarProps) {
   const [view, setView] = useState<CalendarView>("dayGridMonth")
+  const [isFullCalendarReady, setIsFullCalendarReady] = useState(false)
+  const [isMonthSkeletonMounted, setIsMonthSkeletonMounted] = useState(() => Boolean(monthSkeleton))
+  const [isMonthSkeletonFading, setIsMonthSkeletonFading] = useState(false)
   const [modeKind, setModeKind] = useState<ModeKind>("normal")
   const [adjustingGroupId, setAdjustingGroupId] = useState<string | null>(null)
   const [adjustingTitle, setAdjustingTitle] = useState<string | null>(null)
@@ -434,6 +439,9 @@ export function BookingCalendar({
   const lastTopExpandAtRef = useRef<number | null>(null)
   const lastBottomExpandAtRef = useRef<number | null>(null)
   const draftPreviewRef = useRef<DraftEvent | null>(null)
+  const fullCalendarViewMountedRef = useRef(false)
+  const fullCalendarEventsSettledRef = useRef(false)
+  const fullCalendarReadyFrameRef = useRef<number | null>(null)
   const fetchedRef = useRef<CachedRange[]>(
     initialRange
       ? [{
@@ -467,6 +475,67 @@ export function BookingCalendar({
     [drafts, activeDraftId],
   )
   const activePanelDraft = draftPreview?.id === activeDraftId ? draftPreview : activeDraft
+
+  const markFullCalendarReadyIfSettled = useCallback(() => {
+    if (
+      isFullCalendarReady ||
+      selectedViewRef.current !== "dayGridMonth" ||
+      !fullCalendarViewMountedRef.current ||
+      !fullCalendarEventsSettledRef.current
+    ) {
+      return
+    }
+    if (fullCalendarReadyFrameRef.current !== null) return
+    fullCalendarReadyFrameRef.current = window.requestAnimationFrame(() => {
+      fullCalendarReadyFrameRef.current = null
+      setIsFullCalendarReady(true)
+    })
+  }, [isFullCalendarReady])
+
+  useEffect(() => {
+    return () => {
+      if (fullCalendarReadyFrameRef.current !== null) {
+        window.cancelAnimationFrame(fullCalendarReadyFrameRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    let frame: number | null = null
+    if (view !== "dayGridMonth") {
+      frame = window.requestAnimationFrame(() => {
+        setIsMonthSkeletonMounted(false)
+        setIsMonthSkeletonFading(false)
+      })
+      return () => {
+        if (frame !== null) window.cancelAnimationFrame(frame)
+      }
+    }
+    if (!isFullCalendarReady && monthSkeleton) {
+      frame = window.requestAnimationFrame(() => {
+        setIsMonthSkeletonMounted(true)
+        setIsMonthSkeletonFading(false)
+      })
+    }
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [isFullCalendarReady, monthSkeleton, view])
+
+  useEffect(() => {
+    if (!isFullCalendarReady || !isMonthSkeletonMounted) return
+    let timeout: number | null = null
+    const frame = window.requestAnimationFrame(() => {
+      setIsMonthSkeletonFading(true)
+      timeout = window.setTimeout(() => {
+        setIsMonthSkeletonMounted(false)
+      }, 150)
+    })
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (timeout !== null) window.clearTimeout(timeout)
+    }
+  }, [isFullCalendarReady, isMonthSkeletonMounted])
 
   const setDraftPreviewValue = useCallback((preview: DraftEvent | null) => {
     draftPreviewRef.current = preview
@@ -651,8 +720,10 @@ export function BookingCalendar({
         extendedProps: { kind: "buffer" },
       })
     }
+    fullCalendarEventsSettledRef.current = true
+    markFullCalendarReadyIfSettled()
     return [...busyEvents, ...bookingEvents, ...bufferEvents]
-  }, [adjustingGroupId, modeKind, selectedTeamId])
+  }, [adjustingGroupId, markFullCalendarReadyIfSettled, modeKind, selectedTeamId])
 
   const draftEventInputs = useMemo<EventInput[]>(
     () => drafts.map((draft) => toDraftEventInput(draft, draft.id === activeDraftId)),
@@ -1296,6 +1367,19 @@ export function BookingCalendar({
     [moveCopyPopup, refetchRemoteEvents],
   )
 
+  const handleFullCalendarViewDidMount = useCallback(() => {
+    fullCalendarViewMountedRef.current = true
+    markFullCalendarReadyIfSettled()
+  }, [markFullCalendarReadyIfSettled])
+
+  const handleFullCalendarLoading = useCallback((isLoading: boolean) => {
+    if (isLoading) return
+    fullCalendarEventsSettledRef.current = true
+    markFullCalendarReadyIfSettled()
+  }, [markFullCalendarReadyIfSettled])
+
+  const hideFullCalendarForMonthSkeleton = view === "dayGridMonth" && !isFullCalendarReady && Boolean(monthSkeleton)
+
   return (
     <div
       className="booking-calendar"
@@ -1390,57 +1474,70 @@ export function BookingCalendar({
         </div>
       ) : null}
       <div className="booking-calendar__surface glass-flat">
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          locale={jaLocale}
-          firstDay={0}
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "",
-          }}
-          buttonText={{
-            today: "今日",
-          }}
-          height="auto"
-          selectable={view === "timeGridWeek"}
-          selectAllow={handleSelectAllow}
-          selectOverlap={false}
-          eventAllow={handleEventAllow}
-          selectMinDistance={16}
-          selectMirror
-          unselectAuto={false}
-          editable={false}
-          eventStartEditable
-          eventDurationEditable
-          eventResizableFromStart
-          nowIndicator
-          slotMinTime={slotMinTime}
-          slotMaxTime={slotMaxTime}
-          slotDuration="00:30:00"
-          snapDuration="00:30:00"
-          allDaySlot={false}
-          navLinks
-          navLinkDayClick={(date) => changeCalendarView("timeGridDay", toDateKey(date))}
-          eventSources={eventSources}
-          lazyFetching
-          eventContent={renderEventContent}
-          eventDidMount={handleEventDidMount}
-          dayCellClassNames={dayCellClassNames}
-          dayCellDidMount={handleDayCellDidMount}
-          dateClick={handleDateClick}
-          select={handleSelect}
-          unselect={handleUnselect}
-          eventClick={handleEventClick}
-          eventDragStart={handleEventDragStart}
-          eventDragStop={handleEventDragStop}
-          eventDrop={handleEventDrop}
-          eventResizeStart={handleEventResizeStart}
-          eventResizeStop={handleEventResizeStop}
-          eventResize={handleEventResize}
-        />
+        <div className="booking-calendar__stack">
+          {isMonthSkeletonMounted ? (
+            <div
+              className={`booking-calendar__month-skeleton-layer ${isMonthSkeletonFading ? "booking-calendar__month-skeleton-layer--fading" : ""}`}
+            >
+              {monthSkeleton}
+            </div>
+          ) : null}
+          <div className={`booking-calendar__fullcalendar-layer ${hideFullCalendarForMonthSkeleton ? "booking-calendar__fullcalendar-layer--hidden" : ""}`}>
+            <FullCalendar
+              ref={calendarRef}
+              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+              initialView="dayGridMonth"
+              locale={jaLocale}
+              firstDay={0}
+              headerToolbar={{
+                left: "prev,next today",
+                center: "title",
+                right: "",
+              }}
+              buttonText={{
+                today: "今日",
+              }}
+              height="auto"
+              selectable={view === "timeGridWeek"}
+              selectAllow={handleSelectAllow}
+              selectOverlap={false}
+              eventAllow={handleEventAllow}
+              selectMinDistance={16}
+              selectMirror
+              unselectAuto={false}
+              editable={false}
+              eventStartEditable
+              eventDurationEditable
+              eventResizableFromStart
+              nowIndicator
+              slotMinTime={slotMinTime}
+              slotMaxTime={slotMaxTime}
+              slotDuration="00:30:00"
+              snapDuration="00:30:00"
+              allDaySlot={false}
+              navLinks
+              navLinkDayClick={(date) => changeCalendarView("timeGridDay", toDateKey(date))}
+              eventSources={eventSources}
+              lazyFetching
+              loading={handleFullCalendarLoading}
+              viewDidMount={handleFullCalendarViewDidMount}
+              eventContent={renderEventContent}
+              eventDidMount={handleEventDidMount}
+              dayCellClassNames={dayCellClassNames}
+              dayCellDidMount={handleDayCellDidMount}
+              dateClick={handleDateClick}
+              select={handleSelect}
+              unselect={handleUnselect}
+              eventClick={handleEventClick}
+              eventDragStart={handleEventDragStart}
+              eventDragStop={handleEventDragStop}
+              eventDrop={handleEventDrop}
+              eventResizeStart={handleEventResizeStart}
+              eventResizeStop={handleEventResizeStop}
+              eventResize={handleEventResize}
+            />
+          </div>
+        </div>
       </div>
       {moveCopyPopup ? (
         <div
