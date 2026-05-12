@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { BookingCalendar } from "@/components/booking/booking-calendar"
 import { BookingConfirm } from "@/components/booking/booking-confirm"
@@ -25,6 +25,7 @@ type BookingSectionProps = {
   initialBusy?: CalendarBusyEventWithBuffer[]
   initialBookings?: CalendarBookingFromApi[]
   initialRange?: { start: string; end: string }
+  monthSkeleton?: ReactNode
 }
 
 type TeamOption = {
@@ -78,6 +79,7 @@ export function BookingSection({
   initialBusy = [],
   initialBookings = [],
   initialRange,
+  monthSkeleton,
 }: BookingSectionProps) {
   const defaultFormData = useMemo(() => createDefaultBookingFormData(userEmail), [userEmail])
   const [step, setStep] = useState<BookingStep>("calendar")
@@ -265,6 +267,7 @@ export function BookingSection({
           initialBusy={initialBusy}
           initialBookings={initialBookings}
           initialRange={initialRange}
+          monthSkeleton={monthSkeleton}
           remoteRefreshRequestKey={remoteRefreshRequestKey}
           onCommit={handleCommitSlot}
         />

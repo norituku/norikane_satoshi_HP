@@ -18,6 +18,9 @@ test.describe("booking personal smoke", () => {
 
     const authResponse = await page.goto("/api/dev/auth-bypass")
     expect(authResponse?.status()).toBe(200)
+    const bookingHtmlResponse = await page.request.get("/booking")
+    expect(bookingHtmlResponse.status()).toBe(200)
+    expect(await bookingHtmlResponse.text()).toContain('data-testid="booking-month-skeleton"')
 
     const freeBusyUrl = "/api/calendar/free-busy?start=2026-05-01T00:00:00.000Z&end=2026-06-01T00:00:00.000Z"
     const cachedBeforeSubmit = await page.request.get(freeBusyUrl)
@@ -25,6 +28,7 @@ test.describe("booking personal smoke", () => {
 
     await page.goto("/booking")
     await expect(page.locator(".booking-calendar__booking-event")).toHaveCount(1)
+    await expect(page.getByTestId("booking-month-skeleton")).toHaveCount(0)
     await page.waitForTimeout(750)
     await expect(page.locator(".booking-calendar__booking-event")).toHaveCount(1)
     await page.getByRole("button", { name: "週" }).click()
