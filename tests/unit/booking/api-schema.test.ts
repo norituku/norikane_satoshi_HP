@@ -38,6 +38,26 @@ describe("bookingApiSchema", () => {
     if (parsed.success) expect(parsed.data.teamId).toBe("team_1")
   })
 
+  it("accepts legacy selectedSlot payloads", () => {
+    const parsed = bookingApiSchema.safeParse(
+      validBooking({
+        selectedSlots: undefined,
+        selectedSlot: {
+          start: "2026-06-10T01:00:00.000Z",
+          end: "2026-06-10T02:00:00.000Z",
+        },
+      }),
+    )
+
+    expect(parsed.success).toBe(true)
+  })
+
+  it("rejects blank project titles, invalid contact email, and empty team ids", () => {
+    expect(bookingApiSchema.safeParse(validBooking({ projectTitle: "" })).success).toBe(false)
+    expect(bookingApiSchema.safeParse(validBooking({ contactEmail: "not-an-email" })).success).toBe(false)
+    expect(bookingApiSchema.safeParse(validBooking({ teamId: "" })).success).toBe(false)
+  })
+
   it("rejects empty selectedSlots", () => {
     const parsed = bookingApiSchema.safeParse(validBooking({ selectedSlots: [] }))
 
@@ -62,6 +82,24 @@ describe("bookingApiSchema", () => {
     expect(parsed.success).toBe(false)
     if (!parsed.success) {
       expect(parsed.error.issues[0]?.message).toBe("終了時刻は開始時刻より後にしてください")
+    }
+  })
+
+  it("rejects equal start/end slots", () => {
+    const parsed = bookingApiSchema.safeParse(
+      validBooking({
+        selectedSlots: [
+          {
+            start: "2026-06-10T01:00:00.000Z",
+            end: "2026-06-10T01:00:00.000Z",
+          },
+        ],
+      }),
+    )
+
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.path).toEqual(["selectedSlots", 0, "end"])
     }
   })
 })

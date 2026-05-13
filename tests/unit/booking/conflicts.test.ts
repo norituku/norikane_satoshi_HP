@@ -114,6 +114,59 @@ describe("findConflictingBookings", () => {
       ),
     ).resolves.toEqual([])
   })
+
+  it("omits excludeBookingId when no exclusion is requested", async () => {
+    mocks.prisma.bookingTimeSlot.findMany.mockResolvedValue([])
+
+    await findConflictingBookings(
+      new Date("2026-06-10T01:00:00.000Z"),
+      new Date("2026-06-10T02:00:00.000Z"),
+    )
+
+    expect(mocks.prisma.bookingTimeSlot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ id: expect.anything() }),
+      }),
+    )
+  })
+
+  it.each([
+    ["complete match", "2026-06-10T01:00:00.000Z", "2026-06-10T02:00:00.000Z"],
+    ["one second overlap at start", "2026-06-10T00:59:59.000Z", "2026-06-10T01:00:01.000Z"],
+    ["one second overlap at end", "2026-06-10T01:59:59.000Z", "2026-06-10T02:00:01.000Z"],
+  ])("maps confirmed group conflicts for %s", async (_label, start, end) => {
+    mocks.prisma.bookingTimeSlot.findMany.mockResolvedValue([
+      {
+        id: "slot_1",
+        bookingGroupId: "group_1",
+        startTime: new Date("2026-06-10T01:00:00.000Z"),
+        endTime: new Date("2026-06-10T02:00:00.000Z"),
+        status: "CONFIRMED",
+        bookingGroup: {
+          status: "CONFIRMED",
+          projectTitle: "Project",
+          memo: null,
+          gcalEventId: null,
+          customer: {
+            displayName: "Satoshi",
+            user: { email: "satoshi@example.com" },
+          },
+        },
+      },
+    ])
+
+    const result = await findConflictingBookings(new Date(start), new Date(end))
+
+    expect(result).toHaveLength(1)
+    expect(mocks.prisma.bookingTimeSlot.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          startTime: { lt: new Date(end) },
+          endTime: { gt: new Date(start) },
+        }),
+      }),
+    )
+  })
 })
 
 describe("conflict verdicts", () => {
@@ -135,5 +188,20 @@ describe("conflict verdicts", () => {
 
     expect(existing.endTime.getTime() + 2 * 60 * 60 * 1000 < nextStart.getTime()).toBe(true)
     expect(resolveConflictForFinalSubmit([])).toBeNull()
+  })
+
+  it("treats exact two-hour buffer boundaries as caller-owned preflight data", () => {
+    const existing = conflict()
+    const exactlyBefore = new Date(existing.startTime.getTime() - 2 * 60 * 60 * 1000)
+    const oneMsInsideBefore = new Date(exactlyBefore.getTime() + 1)
+    const exactlyAfter = new Date(existing.endTime.getTime() + 2 * 60 * 60 * 1000)
+    const oneMsInsideAfter = new Date(exactlyAfter.getTime() - 1)
+
+    expect(exactlyBefore.toISOString()).toBe("2026-06-09T23:00:00.000Z")
+    expect(oneMsInsideBefore.toISOString()).toBe("2026-06-09T23:00:00.001Z")
+    expect(exactlyAfter.toISOString()).toBe("2026-06-10T04:00:00.000Z")
+    expect(oneMsInsideAfter.toISOString()).toBe("2026-06-10T03:59:59.999Z")
+    expect(resolveConflictForFinalSubmit([])).toBeNull()
+    expect(resolveConflictForFinalSubmit([existing])).toBe("slot_taken")
   })
 })

@@ -79,6 +79,16 @@ describe("GET /api/teams", () => {
     })
   })
 
+  it("returns an empty team list for authenticated users with no channels", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+    mocks.prisma.team.findMany.mockResolvedValue([])
+
+    const response = await GET()
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ teams: [] })
+  })
+
   it("returns 401 when unauthenticated", async () => {
     mocks.auth.mockResolvedValue(null)
 
@@ -123,6 +133,16 @@ describe("POST /api/teams", () => {
     expect(response.status).toBe(201)
     expect(json.teamId).toBe("team_1")
     expect(json.teams).toHaveLength(1)
+    expect(mocks.prisma.team.create).toHaveBeenCalledWith({
+      data: {
+        name: "Studio",
+        createdByUserId: "user_1",
+        members: {
+          create: { userId: "user_1" },
+        },
+      },
+      select: { id: true },
+    })
   })
 
   it("rejects invalid team names", async () => {
@@ -134,6 +154,59 @@ describe("POST /api/teams", () => {
     }))
 
     expect(response.status).toBe(400)
+  })
+
+  it("returns 401 when team creation is unauthenticated", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await POST(new NextRequest("http://localhost/api/teams", {
+      method: "POST",
+      body: JSON.stringify({ name: "Studio" }),
+    }))
+
+    expect(response.status).toBe(401)
+    expect(mocks.prisma.team.create).not.toHaveBeenCalled()
+  })
+
+  it("rejects malformed JSON payloads", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+
+    const response = await POST(new NextRequest("http://localhost/api/teams", {
+      method: "POST",
+      body: "{",
+    }))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" })
+  })
+
+  it("allows duplicate team names for the same user", async () => {
+    const createdAt = new Date("2026-06-10T01:00:00.000Z")
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+    mocks.prisma.team.create.mockResolvedValue({ id: "team_2" })
+    mocks.prisma.team.findMany.mockResolvedValue([
+      {
+        id: "team_1",
+        name: "Studio",
+        createdAt,
+        members: [],
+      },
+      {
+        id: "team_2",
+        name: "Studio",
+        createdAt,
+        members: [],
+      },
+    ])
+
+    const response = await POST(new NextRequest("http://localhost/api/teams", {
+      method: "POST",
+      body: JSON.stringify({ name: "Studio" }),
+    }))
+    const json = await response.json()
+
+    expect(response.status).toBe(201)
+    expect(json.teams.map((team: { name: string }) => team.name)).toEqual(["Studio", "Studio"])
   })
 })
 
@@ -154,6 +227,17 @@ describe("team deletion routes", () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({ status: "deleted" })
     expect(mocks.prisma.team.delete).toHaveBeenCalledWith({ where: { id: "team_1" } })
+  })
+
+  it("returns 401 when deleting a team unauthenticated", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await DELETE_TEAM(new Request("http://localhost/api/teams/team_1"), {
+      params: Promise.resolve({ teamId: "team_1" }),
+    })
+
+    expect(response.status).toBe(401)
+    expect(mocks.prisma.team.delete).not.toHaveBeenCalled()
   })
 
   it("returns 404 when deleting a team outside membership", async () => {
@@ -179,6 +263,17 @@ describe("team deletion routes", () => {
     await expect(response.json()).resolves.toEqual({ status: "left" })
   })
 
+  it("returns 401 when leaving a team unauthenticated", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await LEAVE_TEAM(new Request("http://localhost/api/teams/team_1/membership"), {
+      params: Promise.resolve({ teamId: "team_1" }),
+    })
+
+    expect(response.status).toBe(401)
+    expect(mocks.prisma.teamMember.deleteMany).not.toHaveBeenCalled()
+  })
+
   it("returns 404 when no membership is removed", async () => {
     mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
     mocks.prisma.teamMember.deleteMany.mockResolvedValue({ count: 0 })
@@ -188,5 +283,17 @@ describe("team deletion routes", () => {
     })
 
     expect(response.status).toBe(404)
+  })
+
+  it("does not delete the Team row when the final member leaves", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+    mocks.prisma.teamMember.deleteMany.mockResolvedValue({ count: 1 })
+
+    const response = await LEAVE_TEAM(new Request("http://localhost/api/teams/team_1/membership"), {
+      params: Promise.resolve({ teamId: "team_1" }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(mocks.prisma.team.delete).not.toHaveBeenCalled()
   })
 })

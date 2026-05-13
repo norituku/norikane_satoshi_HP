@@ -121,6 +121,30 @@ describe("GET /api/calendar/free-busy", () => {
     expect(response.headers.get("cache-control")).toBe("private, max-age=15, stale-while-revalidate=60")
   })
 
+  it("returns 401 for unauthenticated requests", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await GET(request())
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "unauthorized" })
+  })
+
+  it("validates missing and invalid time bounds", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+
+    const missing = await GET(new NextRequest("http://localhost/api/calendar/free-busy"))
+    expect(missing.status).toBe(400)
+    await expect(missing.json()).resolves.toEqual({ error: "Missing timeMin or timeMax" })
+
+    const invalidUrl = new URL("http://localhost/api/calendar/free-busy")
+    invalidUrl.searchParams.set("start", "bad")
+    invalidUrl.searchParams.set("end", "2026-06-30T00:00:00.000Z")
+    const invalid = await GET(new NextRequest(invalidUrl))
+    expect(invalid.status).toBe(400)
+    await expect(invalid.json()).resolves.toEqual({ error: "Invalid timeMin or timeMax" })
+  })
+
   it("queries team member bookings when teamId is present", async () => {
     mockCalendar()
     mocks.listTeamMemberUserIds.mockResolvedValue(["user_1", "user_2"])
@@ -228,6 +252,37 @@ describe("GET /api/calendar/free-busy", () => {
     expect(json).toMatchObject({
       code: "calendar_oauth_env_missing",
       bookings: [expect.objectContaining({ id: "slot_1" })],
+    })
+  })
+
+  it("returns revoked-token errors raised during event listing", async () => {
+    mockCalendar()
+    mockBookingRows()
+    mocks.listBusyEventsWithBuffer.mockRejectedValue(new mocks.CalendarTokenRevokedError())
+
+    const response = await GET(request())
+    const json = await response.json()
+
+    expect(response.status).toBe(401)
+    expect(json).toMatchObject({
+      code: "calendar_token_revoked",
+      busy: [],
+      bookings: [expect.objectContaining({ id: "slot_1" })],
+    })
+  })
+
+  it("uses the route fallback for unexpected free-busy failures", async () => {
+    mockCalendar()
+    mocks.prisma.bookingTimeSlot.findMany.mockRejectedValue(new Error("db down"))
+
+    const response = await GET(request())
+    const json = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(json).toEqual({
+      code: "calendar_free_busy_failed",
+      busy: [],
+      bookings: [],
     })
   })
 
