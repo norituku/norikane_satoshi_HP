@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveEmbed } from "@/lib/notes/embeds"
+import { resolveEmbed } from "@/lib/notes/domain/embeds"
 
 describe("notes embed resolver", () => {
   it("resolves X/Twitter statuses and falls back for invalid URLs", () => {

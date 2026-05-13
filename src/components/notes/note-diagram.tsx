@@ -11,7 +11,7 @@ import type {
   PhotoStripDiagram,
   QuadCardsDiagram,
   TripleCompareDiagram,
-} from "@/lib/notes/diagrams"
+} from "@/lib/notes/domain/diagrams"
 
 /**
  * 記事本文に埋め込む横長図解。
