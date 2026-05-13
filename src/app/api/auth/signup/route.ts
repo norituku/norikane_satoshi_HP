@@ -2,8 +2,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { sendVerificationEmail } from "@/lib/auth/email"
-import { newToken, VERIFICATION_TOKEN_TTL_MS } from "@/lib/auth/tokens"
+import { sendVerificationEmail } from "@/lib/auth/server/email"
+import { newToken, VERIFICATION_TOKEN_TTL_MS } from "@/lib/auth/server/tokens"
 
 const BCRYPT_COST = 12
 

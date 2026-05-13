@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { sendPasswordResetEmail } from "@/lib/auth/email"
-import { newToken, PASSWORD_RESET_TTL_MS } from "@/lib/auth/tokens"
+import { sendPasswordResetEmail } from "@/lib/auth/server/email"
+import { newToken, PASSWORD_RESET_TTL_MS } from "@/lib/auth/server/tokens"
 
 const forgotSchema = z.object({
   email: z.string().email(),
