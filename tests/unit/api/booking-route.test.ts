@@ -159,34 +159,6 @@ describe("POST /api/booking", () => {
     expect(mocks.invalidateCalendarFreeBusyCacheForUser).toHaveBeenCalledWith("user_1", null)
   })
 
-  it("creates a booking from a legacy selectedSlot payload", async () => {
-    mockHappyPath()
-
-    const response = await POST(request(validBooking({
-      selectedSlots: undefined,
-      selectedSlot: {
-        start: "2026-06-10T01:00:00.000Z",
-        end: "2026-06-10T02:00:00.000Z",
-      },
-    })))
-
-    expect(response.status).toBe(200)
-    expect(mocks.prisma.bookingGroup.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          timeSlots: {
-            create: [
-              expect.objectContaining({
-                startTime: new Date("2026-06-10T01:00:00.000Z"),
-                endTime: new Date("2026-06-10T02:00:00.000Z"),
-              }),
-            ],
-          },
-        }),
-      }),
-    )
-  })
-
   it("rejects team bookings when the user is not a member", async () => {
     mockHappyPath()
     mocks.isTeamMember.mockResolvedValue(false)

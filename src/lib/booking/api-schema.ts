@@ -10,21 +10,10 @@ const slotSchema = z.object({
 export const bookingApiSchema = bookingFormSchema
   .extend({
     teamId: z.string().min(1).nullable().optional(),
-    selectedSlot: slotSchema.optional(),
-    selectedSlots: z.array(slotSchema).min(1).optional(),
+    selectedSlots: z.array(slotSchema).min(1, "予約日時を選択してください"),
   })
   .superRefine((value, context) => {
-    const slots = value.selectedSlots ?? (value.selectedSlot ? [value.selectedSlot] : [])
-    if (slots.length === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "予約日時を選択してください",
-        path: ["selectedSlots"],
-      })
-      return
-    }
-
-    slots.forEach((slot, index) => {
+    value.selectedSlots.forEach((slot, index) => {
       const start = new Date(slot.start)
       const end = new Date(slot.end)
 
