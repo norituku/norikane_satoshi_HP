@@ -283,7 +283,6 @@ export function BookingSection({
       <div className={step === "form" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingForm
           formData={formData}
-          selectedSlot={selectedSlots[0] ?? null}
           selectedSlots={selectedSlots}
           onChange={setFormData}
           onValidityChange={setFormValid}
@@ -293,7 +292,6 @@ export function BookingSection({
       <div className={step === "confirm" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingConfirm
           formData={formData}
-          selectedSlot={selectedSlots[0] ?? null}
           selectedSlots={selectedSlots}
           submitError={submitError}
           onDismissSubmitError={() => setSubmitError(null)}
@@ -301,7 +299,7 @@ export function BookingSection({
         />
       </div>
       <div className={step === "done" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingDone selectedSlot={selectedSlots[0] ?? null} />
+        <BookingDone selectedSlots={selectedSlots} />
       </div>
     </>
   )
