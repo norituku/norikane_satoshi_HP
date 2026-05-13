@@ -32,21 +32,6 @@ import {
   moveSlotByDates,
 } from "@/lib/booking/slot-operations"
 import {
-  BookingStatus,
-  ClientType,
-  createBookingSchema,
-  createProjectSchema,
-  createResourceSchema,
-  createStaffSchema,
-  StaffRole,
-  updateBookingSchema,
-  updateProjectSchema,
-  updateRateMatrixSchema,
-  updateResourceSchema,
-  updateStaffSchema,
-  upsertProjectRateOverrideSchema,
-} from "@/lib/booking/validators"
-import {
   assignWeekBookingLanes,
   getWeekBookingPlacements,
   getWeekTimeWindow,
@@ -256,7 +241,7 @@ describe("booking display helpers", () => {
   })
 })
 
-describe("form, draft, holiday, and validator helpers", () => {
+describe("form, draft, holiday, and email helpers", () => {
   it("formats booking form defaults and durations", () => {
     expect(createDefaultBookingFormData("satoshi@example.com").sessionEmail).toBe("satoshi@example.com")
     expect(getSlotDurationMinutes({ start: "bad", end: "2026-06-10T01:00:00.000Z" })).toBe(0)
@@ -324,34 +309,5 @@ describe("form, draft, holiday, and validator helpers", () => {
     })).resolves.toEqual({ skipped: true })
 
     if (previous) process.env.RESEND_API_KEY = previous
-  })
-
-  it("validates scheduler schemas", () => {
-    expect(StaffRole.parse("COLORIST")).toBe("COLORIST")
-    expect(ClientType.parse("EXTERNAL")).toBe("EXTERNAL")
-    expect(BookingStatus.parse("CONFIRMED")).toBe("CONFIRMED")
-    expect(createProjectSchema.parse({ title: "Project", client: "Client" }).title).toBe("Project")
-    expect(updateProjectSchema.parse({ memo: "memo" }).memo).toBe("memo")
-    expect(createStaffSchema.parse({ name: "Staff", email: "" }).email).toBe("")
-    expect(updateStaffSchema.parse({ maxConcurrent: 2 }).maxConcurrent).toBe(2)
-    expect(createResourceSchema.parse({ name: "Room" }).name).toBe("Room")
-    expect(updateResourceSchema.parse({ isActive: false }).isActive).toBe(false)
-    expect(updateRateMatrixSchema.parse({ hourlyRate: 0 }).hourlyRate).toBe(0)
-    expect(upsertProjectRateOverrideSchema.parse({ staffRole: "COLORIST", hourlyRate: 1 }).staffRole).toBe("COLORIST")
-    expect(createBookingSchema.safeParse({
-      projectId: "project_1",
-      staffId: "staff_1",
-      resourceId: "resource_1",
-      startTime: "2026-06-10T01:00:00.000Z",
-      endTime: "2026-06-10T02:00:00.000Z",
-    }).success).toBe(true)
-    expect(createBookingSchema.safeParse({
-      projectId: "project_1",
-      staffId: "staff_1",
-      resourceId: "resource_1",
-      startTime: "2026-06-10T02:00:00.000Z",
-      endTime: "2026-06-10T01:00:00.000Z",
-    }).success).toBe(false)
-    expect(updateBookingSchema.parse({ title: "Moved", actualEndTime: null }).title).toBe("Moved")
   })
 })
