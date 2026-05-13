@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/auth", () => ({ auth: mocks.auth }))
-vi.mock("@/lib/booking/team-access", () => ({
+vi.mock("@/lib/booking/server/team-access", () => ({
   requireTeamMembership: mocks.requireTeamMembership,
 }))
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }))

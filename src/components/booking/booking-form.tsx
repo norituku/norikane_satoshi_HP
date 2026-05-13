@@ -10,12 +10,11 @@ import {
   getTotalDurationMinutes,
   type BookingFormData,
   type BookingSlot,
-} from "@/lib/booking/form-schema"
+} from "@/lib/booking/domain/form-schema"
 
 
 type BookingFormProps = {
   formData: BookingFormData
-  selectedSlot: BookingSlot | null
   selectedSlots: BookingSlot[]
   onChange: (data: BookingFormData) => void
   onValidityChange: (isValid: boolean) => void
@@ -38,7 +37,6 @@ function formatSlot(slot: BookingSlot): string {
 
 export function BookingForm({
   formData,
-  selectedSlot,
   selectedSlots,
   onChange,
   onValidityChange,
@@ -55,9 +53,8 @@ export function BookingForm({
     values: formData,
   })
 
-  const displaySlots = selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : []
-
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((value) => onChange(value as BookingFormData))
     return () => subscription.unsubscribe()
   }, [onChange, watch])
@@ -70,10 +67,10 @@ export function BookingForm({
     <div className="booking-form">
       <div className="booking-form__slot-row">
         <div className="booking-form__slot-list">
-          {displaySlots.length === 0 ? (
+          {selectedSlots.length === 0 ? (
             <span className="glass-badge booking-form__slot-pill">日時未選択</span>
           ) : (
-            displaySlots.map((slot, index) => (
+            selectedSlots.map((slot, index) => (
               <button
                 type="button"
                 key={`${slot.start}-${slot.end}-${index}`}
@@ -92,7 +89,7 @@ export function BookingForm({
       </div>
       <div className="booking-form__duration-total glass-inset">
         <span className="booking-form__label">想定作業時間合計</span>
-        <strong>{formatDurationMinutes(getTotalDurationMinutes(selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : []))}</strong>
+        <strong>{formatDurationMinutes(getTotalDurationMinutes(selectedSlots))}</strong>
       </div>
 
       <p className="booking-form__callout glass-flat">

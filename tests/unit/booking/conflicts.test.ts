@@ -12,10 +12,12 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }))
 
 import {
   evaluateConflicts,
-  findConflictingBookings,
   resolveConflictForFinalSubmit,
+} from "@/lib/booking/domain/conflicts"
+import {
+  findConflictingBookings,
   type ConflictBooking,
-} from "@/lib/booking/conflicts"
+} from "@/lib/booking/server/conflicts"
 
 function conflict(overrides: Partial<ConflictBooking> = {}): ConflictBooking {
   const now = new Date("2026-06-10T00:00:00.000Z")

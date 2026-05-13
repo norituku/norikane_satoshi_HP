@@ -8,16 +8,16 @@ import { BookingDone } from "@/components/booking/booking-done"
 import { BookingFooter } from "@/components/booking/booking-footer"
 import { BookingForm } from "@/components/booking/booking-form"
 import { BookingProgressBar } from "@/components/booking/booking-progress-bar"
-import { mapErrorCodeToJa } from "@/lib/booking/api-schema"
-import type { CalendarBookingFromApi } from "@/lib/booking/calendar-free-busy/bookings-repository"
+import { mapErrorCodeToJa } from "@/lib/booking/domain/api-schema"
+import type { CalendarBookingFromApi } from "@/lib/booking/server/calendar-free-busy/bookings-repository"
 import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar"
-import { clearDraft, hasDraft, loadDraft, saveDraft } from "@/lib/booking/draft-storage"
+import { clearDraft, hasDraft, loadDraft, saveDraft } from "@/lib/booking/client/draft-storage"
 import {
   createDefaultBookingFormData,
   type BookingFormData,
   type BookingSlot,
   type BookingStep,
-} from "@/lib/booking/form-schema"
+} from "@/lib/booking/domain/form-schema"
 
 type BookingSectionProps = {
   userId: string
@@ -283,7 +283,6 @@ export function BookingSection({
       <div className={step === "form" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingForm
           formData={formData}
-          selectedSlot={selectedSlots[0] ?? null}
           selectedSlots={selectedSlots}
           onChange={setFormData}
           onValidityChange={setFormValid}
@@ -293,7 +292,6 @@ export function BookingSection({
       <div className={step === "confirm" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
         <BookingConfirm
           formData={formData}
-          selectedSlot={selectedSlots[0] ?? null}
           selectedSlots={selectedSlots}
           submitError={submitError}
           onDismissSubmitError={() => setSubmitError(null)}
@@ -301,7 +299,7 @@ export function BookingSection({
         />
       </div>
       <div className={step === "done" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingDone selectedSlot={selectedSlots[0] ?? null} />
+        <BookingDone selectedSlots={selectedSlots} />
       </div>
     </>
   )

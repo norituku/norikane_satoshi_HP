@@ -7,6 +7,7 @@
     "build": "next build",
     "check:console": "node scripts/check-browser-console.mjs",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "diagrams:preview": "node scripts/diagrams/render-preview.mjs",
     "diagrams:preview:sync": "node scripts/diagrams/render-preview.mjs && node scripts/diagrams/sync-preview.mjs --all-pages",

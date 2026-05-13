@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 
 import { auth } from "@/auth"
-import { listTeamsForUser, serializeTeam } from "@/lib/booking/team-access"
+import { listTeamsForUser, serializeTeam } from "@/lib/booking/server/team-access"
 import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"

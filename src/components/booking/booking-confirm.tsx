@@ -3,20 +3,17 @@ import {
   getTotalDurationMinutes,
   type BookingFormData,
   type BookingSlot,
-} from "@/lib/booking/form-schema"
+} from "@/lib/booking/domain/form-schema"
 
 type BookingConfirmProps = {
   formData: BookingFormData
-  selectedSlot: BookingSlot | null
   selectedSlots: BookingSlot[]
   submitError?: string | null
   onDismissSubmitError?: () => void
   onReselectDate?: (slot?: BookingSlot) => void
 }
 
-function formatSlot(slot: BookingSlot | null): string {
-  if (!slot) return "日時未選択"
-
+function formatSlot(slot: BookingSlot): string {
   const start = new Date(slot.start)
   const end = new Date(slot.end)
   return `${start.toLocaleString("ja-JP", {
@@ -43,7 +40,6 @@ function formatSlots(slots: BookingSlot[]): string {
 
 export function BookingConfirm({
   formData,
-  selectedSlot,
   selectedSlots,
   submitError,
   onDismissSubmitError,
@@ -84,7 +80,7 @@ export function BookingConfirm({
         </div>
       ) : null}
       <div>
-        <span className="glass-badge booking-confirm__slot-pill">{formatSlots(selectedSlots.length > 0 ? selectedSlots : selectedSlot ? [selectedSlot] : [])}</span>
+        <span className="glass-badge booking-confirm__slot-pill">{formatSlots(selectedSlots)}</span>
         <h2 className="booking-confirm__title">申込内容の確認</h2>
       </div>
       <dl className="booking-confirm__list glass-inset">

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { auth } from "@/auth"
-import { requireTeamMembership } from "@/lib/booking/team-access"
+import { requireTeamMembership } from "@/lib/booking/server/team-access"
 import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"

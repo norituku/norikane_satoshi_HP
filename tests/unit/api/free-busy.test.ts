@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/auth", () => ({ auth: mocks.auth }))
-vi.mock("@/lib/booking/team-access", () => ({
+vi.mock("@/lib/booking/server/team-access", () => ({
   listTeamMemberUserIds: mocks.listTeamMemberUserIds,
 }))
 vi.mock("@/lib/google-calendar", () => ({
@@ -42,7 +42,7 @@ import {
   clearCalendarFreeBusyCachesForTest,
   getCalendarFreeBusyForUser,
   invalidateCalendarFreeBusyCacheForUser,
-} from "@/lib/booking/calendar-free-busy/free-busy"
+} from "@/lib/booking/server/calendar-free-busy/free-busy"
 
 function request(teamId?: string) {
   const url = new URL("http://localhost/api/calendar/free-busy")

@@ -80,7 +80,7 @@ export async function getCalendarFreeBusyForUser(input: {
 
   const timings: CalendarFreeBusyTimings = { db: 0, oauthRefresh: 0, gcal: 0 }
   const dbStarted = performance.now()
-  const { listTeamMemberUserIds } = await import("@/lib/booking/team-access")
+  const { listTeamMemberUserIds } = await import("@/lib/booking/server/team-access")
   const bookingUserIds = teamId ? await listTeamMemberUserIds(userId, teamId) : [userId]
   if (!bookingUserIds) {
     return {
