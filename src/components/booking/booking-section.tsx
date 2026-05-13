@@ -236,7 +236,6 @@ export function BookingSection({
         body: JSON.stringify({
           ...formData,
           teamId: selectedTeamId,
-          selectedSlot: selectedSlots[0],
           selectedSlots,
         }),
       })

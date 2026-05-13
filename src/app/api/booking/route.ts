@@ -47,7 +47,7 @@ function createSummary(input: BookingApiInput): string {
 }
 
 function createBookingEmailArgs(input: BookingApiInput, to: string): BookingEmailArgs {
-  const slot = getInputSlots(input)[0]
+  const slot = input.selectedSlots[0]
   return {
     to,
     projectTitle: input.projectTitle,
@@ -57,10 +57,6 @@ function createBookingEmailArgs(input: BookingApiInput, to: string): BookingEmai
     otherWorkDetail: input.memo,
     estimatedDuration: "consult",
   }
-}
-
-function getInputSlots(input: BookingApiInput): { start: string; end: string }[] {
-  return input.selectedSlots ?? (input.selectedSlot ? [input.selectedSlot] : [])
 }
 
 async function warnOnEmailFailure(task: Promise<unknown>, tag: string, to: string) {
@@ -134,7 +130,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const slots = getInputSlots(input)
+  const slots = input.selectedSlots
   const primarySlot = slots[0]
   const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
 
