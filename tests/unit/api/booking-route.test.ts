@@ -39,7 +39,7 @@ vi.mock("@/lib/booking/conflicts", () => ({
   resolveConflictForFinalSubmit: mocks.resolveConflictForFinalSubmit,
 }))
 vi.mock("@/lib/booking/team-access", () => ({ isTeamMember: mocks.isTeamMember }))
-vi.mock("@/lib/booking/calendar-free-busy", () => ({
+vi.mock("@/lib/booking/calendar-free-busy/free-busy", () => ({
   invalidateCalendarFreeBusyCacheForUser: mocks.invalidateCalendarFreeBusyCacheForUser,
 }))
 vi.mock("@/lib/booking/email", () => ({ sendBookingConfirmedEmail: mocks.sendBookingConfirmedEmail }))

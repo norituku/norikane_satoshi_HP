@@ -9,7 +9,7 @@ import { BookingFooter } from "@/components/booking/booking-footer"
 import { BookingForm } from "@/components/booking/booking-form"
 import { BookingProgressBar } from "@/components/booking/booking-progress-bar"
 import { mapErrorCodeToJa } from "@/lib/booking/api-schema"
-import type { CalendarBookingFromApi } from "@/lib/booking/calendar-free-busy"
+import type { CalendarBookingFromApi } from "@/lib/booking/calendar-free-busy/bookings-repository"
 import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar"
 import { clearDraft, hasDraft, loadDraft, saveDraft } from "@/lib/booking/draft-storage"
 import {
@@ -132,7 +132,7 @@ export function BookingSection({
         ...draft.formData,
         sessionEmail: userEmail,
       })
-      if (restoreSlots) setSelectedSlots(draft.selectedSlots ?? (draft.selectedSlot ? [draft.selectedSlot] : []))
+      if (restoreSlots) setSelectedSlots(draft.selectedSlots)
       if (restoreStep && draft.step !== "done") setStep(draft.step)
     },
     [defaultFormData, userEmail],
@@ -168,7 +168,7 @@ export function BookingSection({
     if (!hasDraftContent(formData, selectedSlots, step)) return
 
     const timeout = window.setTimeout(() => {
-      saveDraft(userId, { formData, selectedSlot: selectedSlots[0] ?? null, selectedSlots, step })
+      saveDraft(userId, { formData, selectedSlots, step })
     }, 500)
 
     return () => window.clearTimeout(timeout)

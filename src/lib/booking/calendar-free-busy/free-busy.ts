@@ -1,25 +1,19 @@
 import {
-  CALENDAR_TOKEN_USER_ID,
   CalendarOAuthEnvMissingError,
   CalendarTokenRevokedError,
   listBusyEventsWithBuffer,
-  refreshCalendarAccessToken,
   type CalendarBusyEventWithBuffer,
 } from "@/lib/google-calendar"
+import { listBookings, type CalendarBookingFromApi } from "./bookings-repository"
+import {
+  clearCalendarAccessTokenCacheForTest,
+  getCachedCalendarAccessToken,
+} from "./google-token-cache"
+
+export type { CalendarBookingFromApi } from "./bookings-repository"
 
 const FREE_BUSY_TTL_MS = 15 * 1000
-const ACCESS_TOKEN_TTL_MS = 50 * 60 * 1000
-const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000
 const RANGE_BUCKET_MS = 15 * 60 * 1000
-
-export type CalendarBookingFromApi = {
-  id: string
-  bookingGroupId: string
-  start: string
-  end: string
-  title: string
-  status: string
-}
 
 export type CalendarFreeBusyValue = {
   busy: CalendarBusyEventWithBuffer[]
@@ -44,13 +38,7 @@ type FreeBusyCacheEntry = {
   expiresAt: number
 }
 
-type AccessTokenCacheEntry = {
-  token: string
-  expiresAt: number
-}
-
 const freeBusyCache = new Map<string, FreeBusyCacheEntry>()
-const accessTokenCache = new Map<string, AccessTokenCacheEntry>()
 
 function nowMs(): number {
   return Date.now()
@@ -67,82 +55,6 @@ function floorBucket(value: string): string {
 
 function cacheKey(userId: string, teamId: string | null, timeMin: string, timeMax: string): string {
   return `${userId}:${teamId ?? "self"}:${floorBucket(timeMin)}:${floorBucket(timeMax)}`
-}
-
-async function listBookings(timeMin: string, timeMax: string, userIds: string[]): Promise<CalendarBookingFromApi[]> {
-  const { prisma } = await import("@/lib/prisma")
-  const startDate = new Date(timeMin)
-  const endDate = new Date(timeMax)
-  const dbBookings = await prisma.bookingTimeSlot.findMany({
-    where: {
-      startTime: { lt: endDate },
-      endTime: { gt: startDate },
-      status: "CONFIRMED",
-      bookingGroup: {
-        customer: {
-          userId: { in: userIds },
-        },
-      },
-    },
-    select: {
-      id: true,
-      bookingGroupId: true,
-      startTime: true,
-      endTime: true,
-      status: true,
-      bookingGroup: {
-        select: {
-          projectTitle: true,
-          status: true,
-        },
-      },
-    },
-  })
-
-  return dbBookings.map((booking) => ({
-    id: booking.id,
-    bookingGroupId: booking.bookingGroupId,
-    start: booking.startTime.toISOString(),
-    end: booking.endTime.toISOString(),
-    title: booking.bookingGroup.projectTitle,
-    status: booking.bookingGroup.status,
-  }))
-}
-
-async function getCachedCalendarAccessToken(cacheUserId: string): Promise<{ token: string; refreshMs: number }> {
-  const cached = accessTokenCache.get(cacheUserId)
-  const now = nowMs()
-  if (cached && cached.expiresAt > now) {
-    return { token: cached.token, refreshMs: 0 }
-  }
-
-  const { prisma } = await import("@/lib/prisma")
-  const storedToken = await prisma.calendarToken.findUnique({
-    where: { userId: CALENDAR_TOKEN_USER_ID },
-  })
-  if (!storedToken) throw new Error("calendar_token_not_connected")
-
-  const started = performance.now()
-  const refreshed = await refreshCalendarAccessToken(storedToken.refreshToken)
-  const refreshMs = elapsedSince(started)
-  await prisma.calendarToken.update({
-    where: { userId: CALENDAR_TOKEN_USER_ID },
-    data: {
-      accessToken: refreshed.accessToken,
-      expiresAt: refreshed.expiresAt,
-      scope: refreshed.scope,
-    },
-  })
-
-  const tokenExpiresAt = Math.min(
-    now + ACCESS_TOKEN_TTL_MS,
-    refreshed.expiresAt.getTime() - TOKEN_EXPIRY_SKEW_MS,
-  )
-  accessTokenCache.set(cacheUserId, {
-    token: refreshed.accessToken,
-    expiresAt: Math.max(now, tokenExpiresAt),
-  })
-  return { token: refreshed.accessToken, refreshMs }
 }
 
 export async function getCalendarFreeBusyForUser(input: {
@@ -286,5 +198,5 @@ export function invalidateCalendarFreeBusyCacheForUser(userId: string, teamId?: 
 export function clearCalendarFreeBusyCachesForTest(): void {
   if (process.env.NODE_ENV !== "test") return
   freeBusyCache.clear()
-  accessTokenCache.clear()
+  clearCalendarAccessTokenCacheForTest()
 }
