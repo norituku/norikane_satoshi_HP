@@ -85,6 +85,20 @@ describe("POST /api/team-invitations", () => {
 
     expect(response.status).toBe(404)
   })
+
+  it("rejects invalid and malformed invitation creation payloads", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+
+    const invalid = await POST(postRequest({ teamId: "" }))
+    expect(invalid.status).toBe(400)
+
+    const malformed = await POST(new NextRequest("http://localhost/api/team-invitations", {
+      method: "POST",
+      body: "{",
+    }))
+    expect(malformed.status).toBe(400)
+    expect(mocks.requireTeamMembership).not.toHaveBeenCalled()
+  })
 })
 
 describe("GET /api/team-invitations/accept", () => {
@@ -156,5 +170,21 @@ describe("GET /api/team-invitations/accept", () => {
     expect(response.status).toBe(307)
     expect(response.headers.get("location")).toBe("http://localhost/booking/settings?invite=invalid")
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("redirects racing token reuse as used when updateMany wins zero rows", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_2" } })
+    mocks.prisma.teamInvitation.findUnique.mockResolvedValue({
+      id: "invite_1",
+      teamId: "team_1",
+      usedAt: null,
+    })
+    mocks.tx.teamInvitation.updateMany.mockResolvedValue({ count: 0 })
+
+    const response = await GET(acceptRequest("token_1"))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe("http://localhost/booking/settings?invite=used")
+    expect(mocks.tx.teamMember.upsert).not.toHaveBeenCalled()
   })
 })

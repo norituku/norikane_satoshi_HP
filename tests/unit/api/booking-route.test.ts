@@ -114,6 +114,29 @@ describe("POST /api/booking", () => {
     delete process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
   })
 
+  it("returns 401 when unauthenticated", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await POST(request(validBooking()))
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "unauthorized" })
+  })
+
+  it("returns invalid_request for malformed JSON", async () => {
+    mocks.auth.mockResolvedValue({
+      user: { id: "user_1", email: "satoshi@example.com" },
+    })
+
+    const response = await POST(new NextRequest("http://localhost/api/booking", {
+      method: "POST",
+      body: "{",
+    }))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" })
+  })
+
   it("creates a personal booking with teamId null", async () => {
     mockHappyPath()
 
@@ -134,6 +157,34 @@ describe("POST /api/booking", () => {
       }),
     )
     expect(mocks.invalidateCalendarFreeBusyCacheForUser).toHaveBeenCalledWith("user_1", null)
+  })
+
+  it("creates a booking from a legacy selectedSlot payload", async () => {
+    mockHappyPath()
+
+    const response = await POST(request(validBooking({
+      selectedSlots: undefined,
+      selectedSlot: {
+        start: "2026-06-10T01:00:00.000Z",
+        end: "2026-06-10T02:00:00.000Z",
+      },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(mocks.prisma.bookingGroup.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          timeSlots: {
+            create: [
+              expect.objectContaining({
+                startTime: new Date("2026-06-10T01:00:00.000Z"),
+                endTime: new Date("2026-06-10T02:00:00.000Z"),
+              }),
+            ],
+          },
+        }),
+      }),
+    )
   })
 
   it("rejects team bookings when the user is not a member", async () => {
@@ -211,6 +262,80 @@ describe("POST /api/booking", () => {
     })
     expect(mocks.createCalendarEvent).not.toHaveBeenCalled()
     expect(mocks.invalidateCalendarFreeBusyCacheForUser).toHaveBeenCalledWith("user_1", null)
+  })
+
+  it("keeps the booking when confirmation email fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    mockHappyPath()
+    mocks.sendBookingConfirmedEmail.mockRejectedValue(new Error("resend down"))
+
+    const response = await POST(request(validBooking()))
+
+    expect(response.status).toBe(200)
+    expect(warn).toHaveBeenCalledWith(
+      "[email failed] tag=confirmed to=satoshi@example.com",
+      "resend down",
+    )
+    warn.mockRestore()
+  })
+
+  it("logs non-Error confirmation email failures without failing the booking", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    mockHappyPath()
+    mocks.sendBookingConfirmedEmail.mockRejectedValue("down")
+
+    const response = await POST(request(validBooking()))
+
+    expect(response.status).toBe(200)
+    expect(warn).toHaveBeenCalledWith(
+      "[email failed] tag=confirmed to=satoshi@example.com",
+      "email send failed",
+    )
+    warn.mockRestore()
+  })
+
+  it("returns 207 when the Google Calendar write fails after DB booking creation", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    mockHappyPath()
+    mocks.createCalendarEvent.mockRejectedValue(new Error("gcal down"))
+
+    const response = await POST(request(validBooking()))
+    const json = await response.json()
+
+    expect(response.status).toBe(207)
+    expect(json).toMatchObject({
+      status: "ok_with_warning",
+      bookingGroupId: "group_1",
+      gcalError: "gcal down",
+    })
+    expect(mocks.prisma.bookingGroup.update).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("returns 207 when the shared Google Calendar token is missing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    mockHappyPath()
+    mocks.prisma.calendarToken.findUnique.mockResolvedValue(null)
+
+    const response = await POST(request(validBooking()))
+    const json = await response.json()
+
+    expect(response.status).toBe(207)
+    expect(json.gcalError).toBe("Google Calendar token is not connected")
+    expect(mocks.refreshCalendarAccessToken).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("returns unknown for unexpected persistence failures", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    mockHappyPath()
+    mocks.prisma.bookingGroup.create.mockRejectedValue(new Error("db down"))
+
+    const response = await POST(request(validBooking()))
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ error: "unknown" })
+    error.mockRestore()
   })
 })
 
@@ -316,6 +441,15 @@ describe("/api/booking/[id]", () => {
     expect(mocks.deleteCalendarEvent).toHaveBeenCalledWith("gcal_1")
   })
 
+  it("returns 401 for unauthenticated slot deletion", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await DELETE(new NextRequest("http://localhost/api/booking/slot_1"), context())
+
+    expect(response.status).toBe(401)
+    expect(mocks.prisma.bookingTimeSlot.findUnique).not.toHaveBeenCalled()
+  })
+
   it("rejects missing or unowned slots", async () => {
     mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
     mocks.prisma.bookingTimeSlot.findUnique.mockResolvedValue(
@@ -348,6 +482,38 @@ describe("/api/booking/[id]", () => {
       bookingId: "slot_1",
       bookingGroupId: "group_1",
     })
+  })
+
+  it("returns 401 for unauthenticated slot patching", async () => {
+    mocks.auth.mockResolvedValue(null)
+
+    const response = await PATCH(
+      request({
+        action: "move",
+        start: "2026-06-10T03:00:00.000Z",
+        end: "2026-06-10T04:00:00.000Z",
+      }),
+      context(),
+    )
+
+    expect(response.status).toBe(401)
+    expect(mocks.prisma.bookingTimeSlot.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("returns 404 for missing slots during patching", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
+    mocks.prisma.bookingTimeSlot.findUnique.mockResolvedValue(null)
+
+    const response = await PATCH(
+      request({
+        action: "move",
+        start: "2026-06-10T03:00:00.000Z",
+        end: "2026-06-10T04:00:00.000Z",
+      }),
+      context(),
+    )
+
+    expect(response.status).toBe(404)
   })
 
   it("copies an owned slot", async () => {

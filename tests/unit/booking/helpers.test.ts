@@ -5,7 +5,10 @@ import {
   formatMonth,
   formatWeek,
   getCalendarDays,
+  getCurrentDateKey,
+  getCurrentMonth,
   getMonthFromDate,
+  getWeekDays,
   groupBookingsByDate,
   navigateDay,
   navigateMonth,
@@ -78,10 +81,15 @@ describe("calendar utilities", () => {
     expect(navigateWeek("2026-06-10", 1)).toBe("2026-06-17")
     expect(navigateMonth("2026-12", 1)).toBe("2027-01")
     expect(formatWeek("2026-06-10")).toBe("2026年6月7日 - 13日")
+    expect(formatWeek("2026-06-30")).toBe("2026年6月28日 - 7月4日")
+    expect(formatWeek("2026-12-31")).toBe("2026年12月27日 - 2027年1月2日")
 
     const days = getCalendarDays("2026-06")
     expect(days[0]?.getDay()).toBe(0)
     expect(splitIntoWeeks(days).every((week) => week.length === 7)).toBe(true)
+    expect(getWeekDays("bad-date")).toHaveLength(7)
+    expect(getCurrentDateKey()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(getCurrentMonth()).toMatch(/^\d{4}-\d{2}$/)
   })
 
   it("groups multi-day bookings by date and sorts per day", () => {
@@ -126,6 +134,39 @@ describe("week calendar utilities", () => {
     expect(placements.map((placement) => placement.laneIndex)).toEqual([0, 1])
   })
 
+  it("reuses week lanes for non-overlapping placements and sorts equal starts by end time", () => {
+    const placements = assignWeekBookingLanes([
+      {
+        booking: { startTime: "2026-06-10T01:00:00.000Z", endTime: "2026-06-10T03:00:00.000Z" },
+        dateKey: "2026-06-10",
+        startMinute: 60,
+        endMinute: 180,
+        continuesBefore: false,
+        continuesAfter: false,
+      },
+      {
+        booking: { startTime: "2026-06-10T01:00:00.000Z", endTime: "2026-06-10T02:00:00.000Z" },
+        dateKey: "2026-06-10",
+        startMinute: 60,
+        endMinute: 120,
+        continuesBefore: false,
+        continuesAfter: false,
+      },
+      {
+        booking: { startTime: "2026-06-10T03:00:00.000Z", endTime: "2026-06-10T04:00:00.000Z" },
+        dateKey: "2026-06-10",
+        startMinute: 180,
+        endMinute: 240,
+        continuesBefore: false,
+        continuesAfter: false,
+      },
+    ])
+
+    expect(placements.map((placement) => placement.endMinute)).toEqual([120, 180, 240])
+    expect(placements[2]?.laneIndex).toBe(0)
+    expect(assignWeekBookingLanes([])).toEqual([])
+  })
+
   it("splits bookings across week days and derives padded time windows", () => {
     const placements = getWeekBookingPlacements(
       [
@@ -142,16 +183,49 @@ describe("week calendar utilities", () => {
     expect(getWeekTimeWindow([], "2026-06-10")).toEqual({ startMinute: 480, endMinute: 1200 })
     expect(getWeekTimeWindowFromPlacements(placements).startMinute).toBe(0)
   })
+
+  it("drops bookings outside the visible week and handles midnight endings", () => {
+    const placements = getWeekBookingPlacements(
+      [
+        {
+          startTime: new Date(2026, 5, 1, 1, 0, 0),
+          endTime: new Date(2026, 5, 1, 2, 0, 0),
+        },
+        {
+          startTime: new Date(2026, 5, 10, 22, 0, 0),
+          endTime: new Date(2026, 5, 11, 0, 0, 0),
+        },
+      ],
+      "2026-06-10",
+    )
+
+    expect(Array.from(placements.values()).flat()).toHaveLength(1)
+    expect(placements.get("2026-06-10")?.[0]).toMatchObject({
+      startMinute: 1320,
+      endMinute: 1440,
+    })
+  })
 })
 
 describe("booking display helpers", () => {
   it("formats booking colors and labels", () => {
     expect(getBookingCSSColor({ status: "AVAILABLE" })).toContain("accent-primary")
+    expect(getBookingCSSColor({ status: "MEETING" })).toContain("text-primary")
     expect(getBookingCSSColor({ status: "CONFIRMED" })).toBe("var(--accent-primary)")
     expect(getBookingCSSColor({ status: "CANCELLED" })).toBe("transparent")
     expect(getBookingColorLabel({ status: "CONFIRMED", hasAttendance: true })).toBe("確定（立会いあり）")
+    expect(getBookingColorLabel({ status: "CONFIRMED" })).toBe("確定")
     expect(getBookingColorLabel({ status: "HOLIDAY" })).toBe("休暇・NG")
+    expect(getBookingColorLabel({ status: "MEETING" })).toBe("社内")
+    expect(getBookingColorLabel({ status: "OTHER" })).toBe("予定")
     expect(getBookingBlockStyle({ status: "CANCELLED" }).className).toBe("glass-flat")
+    expect(getBookingBlockStyle({ status: "MEETING", hasAttendance: true })).toMatchObject({
+      className: "glass-card-sm",
+      label: "立会い",
+    })
+    const displayed = getBookingBlockStyle({ status: "CONFIRMED" }, { isActualDisplayed: true })
+    expect(displayed).toMatchObject({ className: "glass-inset" })
+    expect(displayed).not.toHaveProperty("opacity")
     expect(getBookingBlockStyle({ status: "CONFIRMED" }, { isActualDisplayed: true, isActualPending: true })).toMatchObject({
       className: "glass-inset",
       opacity: "0.4",

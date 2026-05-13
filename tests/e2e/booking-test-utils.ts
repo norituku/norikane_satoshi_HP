@@ -1,5 +1,6 @@
 import { PrismaLibSql } from "@prisma/adapter-libsql"
-import { PrismaClient, type User } from "@prisma/client"
+import { PrismaClient, type Prisma, type Team, type User } from "@prisma/client"
+import type { APIRequestContext, BrowserContext } from "@playwright/test"
 import { encode } from "next-auth/jwt"
 
 export const testUserEmail = "norikane.satoshi@gmail.com"
@@ -47,10 +48,65 @@ export async function sessionCookieFor(user: User) {
   return `${cookieName}=${value}`
 }
 
+export async function addSessionCookie(context: BrowserContext, user: User) {
+  const cookie = await sessionCookieFor(user)
+  const [, value] = cookie.split("=")
+  const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:41237"
+
+  await context.addCookies([
+    {
+      name: cookieName,
+      value,
+      url: baseURL,
+      httpOnly: true,
+      sameSite: "Lax",
+      expires: Math.floor(Date.now() / 1000) + 60 * 60,
+    },
+  ])
+}
+
+export async function jsonRequest(
+  request: APIRequestContext,
+  method: "get" | "post" | "delete",
+  path: string,
+  cookie: string,
+  body?: unknown,
+) {
+  const response = await request[method](path, {
+    headers: {
+      cookie,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    data: body,
+    maxRedirects: 0,
+  })
+  const text = await response.text()
+  return { response, json: text ? JSON.parse(text) : {} }
+}
+
+export function hasBooking(bookings: { bookingGroupId: string }[], bookingGroupId: string) {
+  return bookings.some((booking) => booking.bookingGroupId === bookingGroupId)
+}
+
+export async function createTeamWithMembers(
+  prisma: PrismaClient,
+  input: { name: string; owner: User; members?: User[] },
+): Promise<Team> {
+  return prisma.team.create({
+    data: {
+      name: input.name,
+      createdByUserId: input.owner.id,
+      members: {
+        create: [input.owner, ...(input.members ?? [])].map((user) => ({ userId: user.id })),
+      },
+    },
+  })
+}
+
 export async function createBookingForUser(
   prisma: PrismaClient,
   user: User,
-  input: { prefix: string; label: string; start: string; end: string },
+  input: { prefix: string; label: string; start: string; end: string; teamId?: string | null },
 ) {
   const customer = await prisma.customer.upsert({
     where: { userId: user.id },
@@ -64,6 +120,7 @@ export async function createBookingForUser(
   return prisma.bookingGroup.create({
     data: {
       customerId: customer.id,
+      teamId: input.teamId ?? null,
       status: "CONFIRMED",
       projectTitle: `${input.prefix} ${input.label}`,
       contactName: user.name ?? input.label,
@@ -78,4 +135,27 @@ export async function createBookingForUser(
     },
     include: { timeSlots: true },
   })
+}
+
+export async function cleanupBookingE2E(
+  prisma: PrismaClient,
+  input: { prefix: string; emails: (string | null)[] },
+) {
+  await prisma.team.deleteMany({ where: { name: { startsWith: input.prefix } } })
+  await prisma.bookingGroup.deleteMany({ where: { projectTitle: { startsWith: input.prefix } } })
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: input.emails.filter((email): email is string => Boolean(email)),
+      },
+    },
+  })
+}
+
+export type BookingJson = {
+  bookings: { bookingGroupId: string; title?: string }[]
+}
+
+export type TeamJson = {
+  teams: { id: string; name: string; members: Prisma.JsonValue[] }[]
 }
