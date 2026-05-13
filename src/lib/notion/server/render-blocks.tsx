@@ -4,9 +4,9 @@ import { Tweet } from "react-tweet"
 import type { RichTextItemResponse } from "@notionhq/client"
 import { NoteDiagram } from "@/components/notes/note-diagram"
 import { NoteVisual } from "@/components/notes/note-visual"
-import { getDiagramConfig, parseDiagramMarker } from "@/lib/notes/diagrams"
-import { resolveEmbed, type EmbedResolution } from "@/lib/notes/embeds"
-import { getVisualConfig } from "@/lib/notes/visuals"
+import { getDiagramConfig, parseDiagramMarker } from "@/lib/notes/domain/diagrams"
+import { resolveEmbed, type EmbedResolution } from "@/lib/notes/domain/embeds"
+import { getVisualConfig } from "@/lib/notes/domain/visuals"
 import type { BlockWithChildren } from "./types"
 
 const LINK_CLASS =

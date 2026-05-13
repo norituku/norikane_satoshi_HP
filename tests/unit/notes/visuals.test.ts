@@ -4,7 +4,7 @@ import {
   getVisualConfig,
   VISUAL_REGISTRY,
   type VisualKind,
-} from "@/lib/notes/visuals"
+} from "@/lib/notes/domain/visuals"
 
 describe("notes visual registry", () => {
   it("resolves registered visuals and returns null for unknown slugs", () => {

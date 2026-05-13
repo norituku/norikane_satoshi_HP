@@ -4,7 +4,7 @@ import {
   DIAGRAM_REGISTRY,
   getDiagramConfig,
   parseDiagramMarker,
-} from "@/lib/notes/diagrams"
+} from "@/lib/notes/domain/diagrams"
 
 describe("notes diagram registry", () => {
   it("parses exact diagram markers and rejects non-marker text", () => {

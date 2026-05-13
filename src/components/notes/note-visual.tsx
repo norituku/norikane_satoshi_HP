@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState, type ComponentType } from "react"
-import { getVisualConfig, type VisualConfig } from "@/lib/notes/visuals"
+import { getVisualConfig, type VisualConfig } from "@/lib/notes/domain/visuals"
 
 /**
  * v5 説明ビジュアル基盤の共通入口。
