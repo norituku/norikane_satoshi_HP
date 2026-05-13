@@ -6,7 +6,8 @@ import {
   mapErrorCodeToJa,
   type BookingConflictsResponse,
 } from "@/lib/booking/domain/api-schema"
-import { evaluateConflicts, findConflictingBookings } from "@/lib/booking/conflicts"
+import { evaluateConflicts } from "@/lib/booking/domain/conflicts"
+import { findConflictingBookings } from "@/lib/booking/server/conflicts"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"

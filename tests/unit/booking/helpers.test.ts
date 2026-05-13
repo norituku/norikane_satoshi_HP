@@ -17,7 +17,7 @@ import {
   splitIntoWeeks,
 } from "@/lib/booking/domain/calendar-utils"
 import { clearDraft, hasDraft, loadDraft, saveDraft } from "@/lib/booking/draft-storage"
-import { getResendClient, sendBookingConfirmedEmail } from "@/lib/booking/email"
+import { getResendClient, sendBookingConfirmedEmail } from "@/lib/booking/server/email"
 import {
   createDefaultBookingFormData,
   formatDurationMinutes,

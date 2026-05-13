@@ -33,16 +33,18 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/auth", () => ({ auth: mocks.auth }))
-vi.mock("@/lib/booking/conflicts", () => ({
+vi.mock("@/lib/booking/domain/conflicts", () => ({
   evaluateConflicts: mocks.evaluateConflicts,
-  findConflictingBookings: mocks.findConflictingBookings,
   resolveConflictForFinalSubmit: mocks.resolveConflictForFinalSubmit,
 }))
-vi.mock("@/lib/booking/team-access", () => ({ isTeamMember: mocks.isTeamMember }))
-vi.mock("@/lib/booking/calendar-free-busy/free-busy", () => ({
+vi.mock("@/lib/booking/server/conflicts", () => ({
+  findConflictingBookings: mocks.findConflictingBookings,
+}))
+vi.mock("@/lib/booking/server/team-access", () => ({ isTeamMember: mocks.isTeamMember }))
+vi.mock("@/lib/booking/server/calendar-free-busy/free-busy", () => ({
   invalidateCalendarFreeBusyCacheForUser: mocks.invalidateCalendarFreeBusyCacheForUser,
 }))
-vi.mock("@/lib/booking/email", () => ({ sendBookingConfirmedEmail: mocks.sendBookingConfirmedEmail }))
+vi.mock("@/lib/booking/server/email", () => ({ sendBookingConfirmedEmail: mocks.sendBookingConfirmedEmail }))
 vi.mock("@/lib/google-calendar", () => ({
   CALENDAR_TOKEN_USER_ID: "satoshi-calendar-owner",
   createCalendarEvent: mocks.createCalendarEvent,

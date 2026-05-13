@@ -24,7 +24,7 @@ describe("booking email sender", () => {
 
   it("skips sending when Resend is not configured", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
-    const { sendBookingConfirmedEmail } = await import("@/lib/booking/email")
+    const { sendBookingConfirmedEmail } = await import("@/lib/booking/server/email")
 
     await expect(sendBookingConfirmedEmail({
       to: "satoshi@example.com",
@@ -45,7 +45,7 @@ describe("booking email sender", () => {
     process.env.RESEND_API_KEY = "resend_key"
     process.env.RESEND_FROM_EMAIL = "booking@norikane.studio"
     mocks.send.mockResolvedValue({ data: { id: "email_1" }, error: null })
-    const { sendBookingConfirmedEmail, getResendClient } = await import("@/lib/booking/email")
+    const { sendBookingConfirmedEmail, getResendClient } = await import("@/lib/booking/server/email")
 
     await expect(sendBookingConfirmedEmail({
       to: "client@example.com",
@@ -72,7 +72,7 @@ describe("booking email sender", () => {
   it("raises Resend errors", async () => {
     process.env.RESEND_API_KEY = "resend_key"
     mocks.send.mockResolvedValue({ data: null, error: { message: "rate limited" } })
-    const { sendBookingConfirmedEmail } = await import("@/lib/booking/email")
+    const { sendBookingConfirmedEmail } = await import("@/lib/booking/server/email")
 
     await expect(sendBookingConfirmedEmail({
       to: "client@example.com",

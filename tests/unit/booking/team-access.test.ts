@@ -20,7 +20,7 @@ import {
   listTeamsForUser,
   requireTeamMembership,
   serializeTeam,
-} from "@/lib/booking/team-access"
+} from "@/lib/booking/server/team-access"
 
 describe("isTeamMember", () => {
   beforeEach(() => {

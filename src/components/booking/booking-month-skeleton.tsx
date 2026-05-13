@@ -1,5 +1,5 @@
 import { getHolidayName } from "@/lib/booking/domain/holidays"
-import type { CalendarBookingFromApi } from "@/lib/booking/calendar-free-busy/bookings-repository"
+import type { CalendarBookingFromApi } from "@/lib/booking/server/calendar-free-busy/bookings-repository"
 import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar"
 
 type MonthSkeletonItem = {

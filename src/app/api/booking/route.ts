@@ -2,16 +2,14 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
 import { bookingApiSchema, type BookingApiInput } from "@/lib/booking/domain/api-schema"
-import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/calendar-free-busy/free-busy"
-import {
-  findConflictingBookings,
-  resolveConflictForFinalSubmit,
-} from "@/lib/booking/conflicts"
-import { isTeamMember } from "@/lib/booking/team-access"
+import { resolveConflictForFinalSubmit } from "@/lib/booking/domain/conflicts"
+import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/server/calendar-free-busy/free-busy"
+import { findConflictingBookings } from "@/lib/booking/server/conflicts"
+import { isTeamMember } from "@/lib/booking/server/team-access"
 import {
   sendBookingConfirmedEmail,
   type BookingEmailArgs,
-} from "@/lib/booking/email"
+} from "@/lib/booking/server/email"
 import {
   CALENDAR_TOKEN_USER_ID,
   createCalendarEvent,
