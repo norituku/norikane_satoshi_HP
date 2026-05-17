@@ -53,10 +53,10 @@ function AxisLabels() {
         <text x={800} y={860}>
           ナチュラル
         </text>
-        <text x={-60} y={450}>
+        <text x={-40} y={430}>
           ノーマル
         </text>
-        <text x={1560} y={450}>
+        <text x={1540} y={430}>
           ノーマル
         </text>
       </g>
@@ -67,10 +67,10 @@ function AxisLabels() {
         <text x={800} y={838}>
           LOW
         </text>
-        <text x={15} y={450}>
+        <text x={-40} y={470}>
           LOW
         </text>
-        <text x={1485} y={450}>
+        <text x={1540} y={470}>
           HIGH
         </text>
       </g>
@@ -103,17 +103,19 @@ function AxisCrossDashed() {
 
 function AxisCrossExtensions() {
   return (
-    <g
-      stroke={TEXT_PRIMARY}
-      strokeWidth={2}
-      strokeOpacity={0.42}
-      strokeLinecap="round"
-      fill="none"
-    >
-      <path d="M 800 80 L 800 100" markerStart="url(#gnvn-axis-arrow)" />
-      <path d="M 800 800 L 800 820" markerEnd="url(#gnvn-axis-arrow)" />
-      <path d="M 80 450 L 100 450" markerStart="url(#gnvn-axis-arrow)" />
-      <path d="M 1500 450 L 1520 450" markerEnd="url(#gnvn-axis-arrow)" />
+    <g fill="none">
+      <g>
+        <path d="M 800 100 L 800 84" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
+        <path d="M 800 800 L 800 816" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
+        <path d="M 100 450 L 84 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
+        <path d="M 1500 450 L 1516 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
+      </g>
+      <g stroke="none">
+        <path d="M 800 80 L 800 81" markerStart="url(#cross-head)" />
+        <path d="M 800 820 L 800 819" markerStart="url(#cross-head)" />
+        <path d="M 80 450 L 81 450" markerStart="url(#cross-head)" />
+        <path d="M 1520 450 L 1519 450" markerStart="url(#cross-head)" />
+      </g>
     </g>
   )
 }
@@ -233,11 +235,11 @@ export default function GradingNaturalVsNormal() {
           <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#8B7FFF" floodOpacity="0.35" />
         </filter>
         <marker
-          id="gnvn-axis-arrow"
+          id="cross-head"
           viewBox="0 0 10 10"
           markerWidth={9}
           markerHeight={9}
-          refX={8}
+          refX={0}
           refY={5}
           orient="auto-start-reverse"
         >
