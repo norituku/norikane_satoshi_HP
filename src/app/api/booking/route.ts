@@ -216,6 +216,8 @@ export async function POST(request: NextRequest) {
         end: primarySlot.end,
         colorId: "9",
         accessToken,
+        contactName: input.contactName,
+        companyName: input.companyName ?? "",
       })
       gcalEventId = event.id ?? null
 
