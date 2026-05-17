@@ -53,10 +53,10 @@ function AxisLabels() {
         <text x={800} y={860}>
           ナチュラル
         </text>
-        <text x={40} y={450} transform="rotate(-90 40 450)">
+        <text x={-60} y={450}>
           ノーマル
         </text>
-        <text x={1560} y={450} transform="rotate(-90 1560 450)">
+        <text x={1560} y={450}>
           ノーマル
         </text>
       </g>
@@ -67,10 +67,10 @@ function AxisLabels() {
         <text x={800} y={838}>
           LOW
         </text>
-        <text x={62} y={450} transform="rotate(-90 62 450)">
+        <text x={15} y={450}>
           LOW
         </text>
-        <text x={1538} y={450} transform="rotate(-90 1538 450)">
+        <text x={1485} y={450}>
           HIGH
         </text>
       </g>
@@ -78,22 +78,57 @@ function AxisLabels() {
   )
 }
 
-function AxisCross() {
+function AxisCrossDashed() {
   return (
-    <g strokeWidth="2" strokeOpacity="0.42" strokeLinecap="round" fill="none">
+    <g fill="none">
       <path
-        d="M 800 80 L 800 820"
+        d="M 800 100 L 800 800"
         stroke={TEXT_PRIMARY}
-        markerStart="url(#gnvn-axis-arrow)"
-        markerEnd="url(#gnvn-axis-arrow)"
+        strokeWidth={1.5}
+        strokeOpacity={0.28}
+        strokeDasharray="5 5"
+        strokeLinecap="butt"
       />
       <path
-        d="M 80 450 L 1520 450"
+        d="M 100 450 L 1500 450"
         stroke={TEXT_PRIMARY}
-        markerStart="url(#gnvn-axis-arrow)"
-        markerEnd="url(#gnvn-axis-arrow)"
+        strokeWidth={1.5}
+        strokeOpacity={0.28}
+        strokeDasharray="5 5"
+        strokeLinecap="butt"
       />
     </g>
+  )
+}
+
+function AxisCrossExtensions() {
+  return (
+    <g
+      stroke={TEXT_PRIMARY}
+      strokeWidth={2}
+      strokeOpacity={0.42}
+      strokeLinecap="round"
+      fill="none"
+    >
+      <path d="M 800 80 L 800 100" markerStart="url(#gnvn-axis-arrow)" />
+      <path d="M 800 800 L 800 820" markerEnd="url(#gnvn-axis-arrow)" />
+      <path d="M 80 450 L 100 450" markerStart="url(#gnvn-axis-arrow)" />
+      <path d="M 1500 450 L 1520 450" markerEnd="url(#gnvn-axis-arrow)" />
+    </g>
+  )
+}
+
+function AxisCenterMark() {
+  return (
+    <circle
+      cx={800}
+      cy={450}
+      r={5}
+      fill="#FFFFFF"
+      stroke={TEXT_PRIMARY}
+      strokeWidth={1}
+      strokeOpacity={0.42}
+    />
   )
 }
 
@@ -169,7 +204,7 @@ export default function GradingNaturalVsNormal() {
   return (
     <svg
       data-diagram-slug="grading-natural-vs-normal"
-      viewBox={`0 0 ${W} ${H}`}
+      viewBox="-120 0 1840 900"
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid meet"
       role="img"
@@ -225,7 +260,9 @@ export default function GradingNaturalVsNormal() {
       ))}
 
       <QuadrantFrames />
-      <AxisCross />
+      <AxisCrossDashed />
+      <AxisCrossExtensions />
+      <AxisCenterMark />
       <AxisLabels />
       <QuadrantLabels />
     </svg>
