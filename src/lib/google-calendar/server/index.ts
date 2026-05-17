@@ -32,6 +32,8 @@ export type CalendarEventWriteInput = {
   end: string
   colorId: string
   accessToken: string
+  contactName: string
+  companyName: string
 }
 
 export type CalendarEventUpdateInput = CalendarEventWriteInput & {
@@ -254,6 +256,13 @@ export async function createCalendarEvent(input: CalendarEventWriteInput): Promi
       },
       end: {
         dateTime: input.end,
+      },
+      extendedProperties: {
+        private: {
+          source: "hp-booking",
+          customer_name: input.contactName,
+          customer_company: input.companyName,
+        },
       },
     },
   })
