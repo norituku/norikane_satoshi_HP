@@ -53,10 +53,10 @@ function AxisLabels() {
         <text x={800} y={860}>
           ナチュラル
         </text>
-        <text x={-40} y={430}>
+        <text x={0} y={440}>
           ノーマル
         </text>
-        <text x={1540} y={430}>
+        <text x={1600} y={440}>
           ノーマル
         </text>
       </g>
@@ -67,10 +67,10 @@ function AxisLabels() {
         <text x={800} y={838}>
           LOW
         </text>
-        <text x={-40} y={470}>
+        <text x={0} y={460}>
           LOW
         </text>
-        <text x={1540} y={470}>
+        <text x={1600} y={460}>
           HIGH
         </text>
       </g>
@@ -105,10 +105,10 @@ function AxisCrossExtensions() {
   return (
     <g fill="none">
       <g>
-        <path d="M 800 100 L 800 84" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
-        <path d="M 800 800 L 800 816" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
-        <path d="M 100 450 L 84 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
-        <path d="M 1500 450 L 1516 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeLinecap="round" />
+        <path d="M 800 100 L 800 84" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeDasharray="5 5" strokeLinecap="butt" />
+        <path d="M 800 800 L 800 816" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeDasharray="5 5" strokeLinecap="butt" />
+        <path d="M 100 450 L 84 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeDasharray="5 5" strokeLinecap="butt" />
+        <path d="M 1500 450 L 1516 450" stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} strokeDasharray="5 5" strokeLinecap="butt" />
       </g>
       <g stroke="none">
         <path d="M 800 80 L 800 81" markerStart="url(#cross-head)" />
@@ -237,8 +237,8 @@ export default function GradingNaturalVsNormal() {
         <marker
           id="cross-head"
           viewBox="0 0 10 10"
-          markerWidth={9}
-          markerHeight={9}
+          markerWidth={14}
+          markerHeight={14}
           refX={0}
           refY={5}
           orient="auto-start-reverse"
