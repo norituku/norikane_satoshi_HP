@@ -52,7 +52,6 @@ export function BookingConfirm({
     ["会社名", formData.companyName],
     ["担当者氏名", formData.contactName],
     ["メールアドレス", formData.sessionEmail],
-    ["連絡用メール", formData.contactEmail],
     ["電話番号", formData.phone],
     ["補足メモ", formData.memo],
   ] as const

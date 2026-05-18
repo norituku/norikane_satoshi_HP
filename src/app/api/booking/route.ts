@@ -32,7 +32,6 @@ function createDescription(input: BookingApiInput): string {
     ["会社名", input.companyName],
     ["担当者氏名", input.contactName],
     ["メールアドレス", input.sessionEmail],
-    ["連絡用メール", input.contactEmail],
     ["電話番号", input.phone],
     ["補足メモ", input.memo],
   ]
@@ -166,7 +165,7 @@ export async function POST(request: NextRequest) {
         memo: nullable(input.memo),
         contactName: input.contactName,
         companyName: nullable(input.companyName),
-        contactEmail: nullable(input.contactEmail),
+        customerEmail: userEmail,
         phone: nullable(input.phone),
         dueDate: nullable(input.dueDate),
         timeSlots: {

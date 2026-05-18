@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
 const baseDetails: EditableBookingDetails = {
   projectTitle: "Project",
   contactName: "Customer",
-  contactEmail: null,
+  customerEmail: null,
   phone: null,
   companyName: null,
   memo: null,
@@ -36,12 +36,12 @@ const baseSlots: EditableBookingTimeSlot[] = [{
   status: "CONFIRMED",
 }]
 
-function renderForm(contactEmail: string | null, scope: BookingAccessScope = "admin") {
+function renderForm(customerEmail: string | null, scope: BookingAccessScope = "admin") {
   return renderToStaticMarkup(
     React.createElement(BookingEditForm, {
       bookingId: "slot_1",
       bookingGroupId: "group_1",
-      initialDetails: { ...baseDetails, contactEmail },
+      initialDetails: { ...baseDetails, customerEmail },
       initialTimeSlots: baseSlots,
       scope,
       isCalendarAdmin: scope === "admin",
@@ -50,12 +50,18 @@ function renderForm(contactEmail: string | null, scope: BookingAccessScope = "ad
   )
 }
 
-describe("BookingEditForm contact email initial value", () => {
-  it("keeps contact email empty when initialDetails.contactEmail is null", () => {
-    expect(renderForm(null)).toContain('type="email" value=""')
+describe("BookingEditForm customer email display", () => {
+  it("renders the customer email field as read-only and disabled", () => {
+    const markup = renderForm("customer@example.com")
+
+    expect(markup).toContain(">メールアドレス<")
+    expect(markup).toContain('type="email"')
+    expect(markup).toContain('value="customer@example.com"')
+    expect(markup).toContain("readOnly")
+    expect(markup).toContain("disabled")
   })
 
-  it("uses the customer contact email when initialDetails.contactEmail is set", () => {
-    expect(renderForm("customer@example.com")).toContain('type="email" value="customer@example.com"')
+  it("keeps customer email empty when initialDetails.customerEmail is null", () => {
+    expect(renderForm(null)).toContain('type="email" readOnly="" disabled="" value=""')
   })
 })

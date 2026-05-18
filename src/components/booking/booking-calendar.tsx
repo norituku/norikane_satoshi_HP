@@ -130,6 +130,8 @@ type ModeKind = "normal" | "adjust"
 
 type MoveCopyPopupState = {
   bookingId: string
+  oldStart: string
+  oldEnd: string
   start: string
   end: string
   x: number
@@ -334,14 +336,12 @@ async function fetchFreeBusy(
   start: string,
   end: string,
   teamId: string | null,
-  refreshNonce: number | null,
 ): Promise<FreeBusyResponse> {
   const params = new URLSearchParams({
     start,
     end,
   })
   if (teamId) params.set("teamId", teamId)
-  if (refreshNonce !== null) params.set("refresh", String(refreshNonce))
   const response = await fetch(`/api/calendar/free-busy?${params.toString()}`)
 
   if (!response.ok) {
@@ -563,7 +563,6 @@ export function BookingCalendar({
         }]
       : [],
   )
-  const forceRefreshNonceRef = useRef<number | null>(null)
   const lastEmittedCodeRef = useRef<string | null>(null)
 
   const initialDrafts = useMemo<DraftEvent[]>(() => {
@@ -690,6 +689,44 @@ export function BookingCalendar({
     setSlotMaxTime(bounds.slotMaxTime)
   }, [getReservationTimeRangeSlots])
 
+  const refreshRemoteEventsFromCache = useCallback(() => {
+    calendarRef.current?.getApi().getEventSourceById("remote-events")?.refetch()
+  }, [])
+
+  const getCachedBooking = useCallback((bookingId: string): BookingFromApi | null => {
+    for (const range of fetchedRef.current) {
+      const booking = range.data.bookings?.find((item) => item.id === bookingId)
+      if (booking) return booking
+    }
+    return null
+  }, [])
+
+  const patchCachedBooking = useCallback((
+    bookingId: string,
+    patches: Partial<Pick<BookingFromApi, "start" | "end" | "bufferBeforeHours" | "bufferAfterHours">>,
+  ): boolean => {
+    let changed = false
+    fetchedRef.current = fetchedRef.current.map((range) => {
+      const bookings = range.data.bookings
+      if (!bookings?.some((booking) => booking.id === bookingId)) return range
+      changed = true
+      return {
+        ...range,
+        data: {
+          ...range.data,
+          bookings: bookings.map((booking) => (
+            booking.id === bookingId ? { ...booking, ...patches } : booking
+          )),
+        },
+      }
+    })
+    if (changed) {
+      refreshRemoteEventsFromCache()
+      applyDynamicTimeRangeBounds()
+    }
+    return changed
+  }, [applyDynamicTimeRangeBounds, refreshRemoteEventsFromCache])
+
   const finishInteraction = useCallback((extraSlots: { start: string; end: string }[] = []) => {
     interactionInProgressRef.current = false
     interactionTypeRef.current = null
@@ -751,7 +788,6 @@ export function BookingCalendar({
         new Date(range.startMs).toISOString(),
         new Date(range.endMs).toISOString(),
         selectedTeamId,
-        forceRefreshNonceRef.current,
       )
       fetchedRef.current.push({
         teamId: selectedTeamId,
@@ -760,7 +796,6 @@ export function BookingCalendar({
         data,
       })
     }
-    if (rangesToFetch.length > 0) forceRefreshNonceRef.current = null
     const data = mergeResponses(
       fetchedRef.current
         .filter((range) => range.teamId === selectedTeamId && range.startMs < endMs && range.endMs > startMs)
@@ -900,11 +935,7 @@ export function BookingCalendar({
     [draftEventInputs, fetchEvents],
   )
 
-  const refetchRemoteEvents = useCallback((clearCache = false) => {
-    if (clearCache) {
-      fetchedRef.current = []
-      forceRefreshNonceRef.current = Date.now()
-    }
+  const refetchRemoteEvents = useCallback(() => {
     calendarRef.current?.getApi().getEventSourceById("remote-events")?.refetch()
   }, [])
 
@@ -1014,7 +1045,7 @@ export function BookingCalendar({
 
   useEffect(() => {
     if (remoteRefreshRequestKey === 0) return
-    refetchRemoteEvents(true)
+    refetchRemoteEvents()
   }, [refetchRemoteEvents, remoteRefreshRequestKey])
 
   const cancelActiveDraft = useCallback(() => {
@@ -1287,6 +1318,8 @@ export function BookingCalendar({
   }, [adjustingGroupId, modeKind])
 
   const moveBookingImmediately = useCallback((bookingId: string, start: string, end: string, revert: () => void) => {
+    const previous = getCachedBooking(bookingId)
+    patchCachedBooking(bookingId, { start, end })
     void (async () => {
       try {
         const response = await fetch(`/api/booking/${bookingId}`, {
@@ -1301,16 +1334,17 @@ export function BookingCalendar({
         if (!response.ok) {
           const payload = (await response.json().catch(() => ({}))) as { error?: string }
           setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+          if (previous) patchCachedBooking(bookingId, { start: previous.start, end: previous.end })
           revert()
           return
         }
-        refetchRemoteEvents(true)
       } catch {
         setActionError(mapErrorCodeToJa("unknown"))
+        if (previous) patchCachedBooking(bookingId, { start: previous.start, end: previous.end })
         revert()
       }
     })()
-  }, [refetchRemoteEvents])
+  }, [getCachedBooking, patchCachedBooking])
 
   const handleEventDrop = useCallback(
     (arg: EventDropArg) => {
@@ -1360,6 +1394,8 @@ export function BookingCalendar({
         if (modeKind !== "adjust" || props.bookingGroupId !== adjustingGroupId) return
         setMoveCopyPopup({
           bookingId: props.bookingId,
+          oldStart: arg.oldEvent.start?.toISOString() ?? "",
+          oldEnd: arg.oldEvent.end?.toISOString() ?? "",
           start: newStart.toISOString(),
           end: newEnd.toISOString(),
           x: arg.jsEvent.clientX,
@@ -1390,6 +1426,11 @@ export function BookingCalendar({
         ? (new Date(props.bookingStart).getTime() - newStart.getTime()) / (60 * 60 * 1000)
         : (newEnd.getTime() - new Date(props.bookingEnd).getTime()) / (60 * 60 * 1000)
       const hours = Math.max(0, Math.round(rawHours * 2) / 2)
+      const previous = getCachedBooking(props.bookingId)
+      patchCachedBooking(
+        props.bookingId,
+        props.side === "before" ? { bufferBeforeHours: hours } : { bufferAfterHours: hours },
+      )
       void (async () => {
         try {
           const response = await fetch(`/api/booking/${props.bookingId}`, {
@@ -1404,12 +1445,23 @@ export function BookingCalendar({
           if (!response.ok) {
             const payload = (await response.json().catch(() => ({}))) as { error?: string }
             setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+            if (previous) {
+              patchCachedBooking(props.bookingId!, {
+                bufferBeforeHours: previous.bufferBeforeHours,
+                bufferAfterHours: previous.bufferAfterHours,
+              })
+            }
             arg.revert()
             return
           }
-          refetchRemoteEvents(true)
         } catch {
           setActionError(mapErrorCodeToJa("unknown"))
+          if (previous) {
+            patchCachedBooking(props.bookingId!, {
+              bufferBeforeHours: previous.bufferBeforeHours,
+              bufferAfterHours: previous.bufferAfterHours,
+            })
+          }
           arg.revert()
         }
       })()
@@ -1445,7 +1497,7 @@ export function BookingCalendar({
       return
     }
     arg.revert()
-  }, [isCalendarAdmin, moveBookingImmediately, overlapsBlockedEvent, overlapsConfirmedBufferZone, refetchRemoteEvents, setDraftPreviewValue, updateDraftRange, viewerUserId])
+  }, [getCachedBooking, isCalendarAdmin, moveBookingImmediately, overlapsBlockedEvent, overlapsConfirmedBufferZone, patchCachedBooking, setDraftPreviewValue, updateDraftRange, viewerUserId])
 
   const dayCellClassNames = (arg: DayCellContentArg): string[] => {
     const classes: string[] = []
@@ -1621,48 +1673,70 @@ export function BookingCalendar({
   const executeMove = useCallback(
     async () => {
       if (!moveCopyPopup) return
-      const response = await fetch(`/api/booking/${moveCopyPopup.bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "move",
-          start: moveCopyPopup.start,
-          end: moveCopyPopup.end,
-        }),
-      })
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string }
-        setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
-        return
+      patchCachedBooking(moveCopyPopup.bookingId, { start: moveCopyPopup.start, end: moveCopyPopup.end })
+      try {
+        const response = await fetch(`/api/booking/${moveCopyPopup.bookingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "move",
+            start: moveCopyPopup.start,
+            end: moveCopyPopup.end,
+          }),
+        })
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string }
+          setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+          patchCachedBooking(moveCopyPopup.bookingId, { start: moveCopyPopup.oldStart, end: moveCopyPopup.oldEnd })
+          return
+        }
+        setMoveCopyPopup(null)
+      } catch {
+        setActionError(mapErrorCodeToJa("unknown"))
+        patchCachedBooking(moveCopyPopup.bookingId, { start: moveCopyPopup.oldStart, end: moveCopyPopup.oldEnd })
       }
-      setMoveCopyPopup(null)
-      refetchRemoteEvents(true)
     },
-    [moveCopyPopup, refetchRemoteEvents],
+    [moveCopyPopup, patchCachedBooking],
   )
 
   const executeAdminMove = useCallback(
     async () => {
       if (!adminMoveConfirm) return
-      const response = await fetch(`/api/booking/${adminMoveConfirm.bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "move",
-          start: adminMoveConfirm.newStart,
-          end: adminMoveConfirm.newEnd,
-        }),
+      patchCachedBooking(adminMoveConfirm.bookingId, {
+        start: adminMoveConfirm.newStart,
+        end: adminMoveConfirm.newEnd,
       })
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string }
-        setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+      try {
+        const response = await fetch(`/api/booking/${adminMoveConfirm.bookingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "move",
+            start: adminMoveConfirm.newStart,
+            end: adminMoveConfirm.newEnd,
+          }),
+        })
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string }
+          setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+          patchCachedBooking(adminMoveConfirm.bookingId, {
+            start: adminMoveConfirm.oldStart,
+            end: adminMoveConfirm.oldEnd,
+          })
+          setAdminMoveConfirm(null)
+          return
+        }
         setAdminMoveConfirm(null)
-        return
+      } catch {
+        setActionError(mapErrorCodeToJa("unknown"))
+        patchCachedBooking(adminMoveConfirm.bookingId, {
+          start: adminMoveConfirm.oldStart,
+          end: adminMoveConfirm.oldEnd,
+        })
+        setAdminMoveConfirm(null)
       }
-      setAdminMoveConfirm(null)
-      refetchRemoteEvents(true)
     },
-    [adminMoveConfirm, refetchRemoteEvents],
+    [adminMoveConfirm, patchCachedBooking],
   )
 
   const handleFullCalendarViewDidMount = useCallback(() => {

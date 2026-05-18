@@ -38,7 +38,7 @@ function conflict(overrides: Partial<ConflictBooking> = {}): ConflictBooking {
       memo: null,
       contactName: "Satoshi",
       companyName: null,
-      contactEmail: null,
+      customerEmail: null,
       phone: null,
       dueDate: null,
       bufferBeforeHours: 1,

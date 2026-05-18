@@ -166,7 +166,6 @@ export async function PATCH(
     hours?: unknown
     projectTitle?: unknown
     contactName?: unknown
-    contactEmail?: unknown
     phone?: unknown
     companyName?: unknown
     memo?: unknown
@@ -181,7 +180,6 @@ export async function PATCH(
     const data: {
       projectTitle?: string
       contactName?: string
-      contactEmail?: string | null
       phone?: string | null
       companyName?: string | null
       memo?: string | null
@@ -200,7 +198,7 @@ export async function PATCH(
       }
       data.contactName = raw.contactName.trim()
     }
-    for (const key of ["contactEmail", "phone", "companyName", "memo", "dueDate"] as const) {
+    for (const key of ["phone", "companyName", "memo", "dueDate"] as const) {
       const value = raw[key]
       if (value !== undefined) {
         if (typeof value !== "string") return NextResponse.json({ error: "invalid_request" }, { status: 400 })
@@ -315,12 +313,12 @@ export async function PATCH(
     },
   })
 
-  if (booking.scope === "admin" && booking.details.customerUserId !== userId && booking.details.contactEmail) {
+  if (booking.scope === "admin" && booking.details.customerUserId !== userId && booking.details.customerEmail) {
     const oldSlot = booking.timeSlots.find((slot) => slot.id === id)
     if (oldSlot) {
       try {
         await sendBookingTimeChangedEmail({
-          to: booking.details.contactEmail,
+          to: booking.details.customerEmail,
           projectTitle: booking.details.projectTitle,
           oldStart: oldSlot.startTime,
           oldEnd: oldSlot.endTime,

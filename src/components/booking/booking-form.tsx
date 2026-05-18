@@ -127,11 +127,6 @@ export function BookingForm({
 
       <div className="booking-form__grid">
         <label className="booking-form__group">
-          <span className="booking-form__label">連絡用メール</span>
-          <input className="glass-input booking-form__control" type="email" {...register("contactEmail")} />
-          {errors.contactEmail ? <span className="booking-form__error">{errors.contactEmail.message}</span> : null}
-        </label>
-        <label className="booking-form__group">
           <span className="booking-form__label">
             電話番号
             <span className="booking-form__label-optional">(任意)</span>

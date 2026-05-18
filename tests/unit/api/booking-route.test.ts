@@ -71,7 +71,6 @@ function validBooking(overrides: Record<string, unknown> = {}) {
     companyName: "NCS",
     contactName: "Satoshi",
     sessionEmail: "satoshi@example.com",
-    contactEmail: "",
     phone: "",
     memo: "",
     agreed: true,
@@ -187,15 +186,15 @@ describe("POST /api/booking", () => {
     expect(mocks.invalidateCalendarFreeBusyCacheForUser).toHaveBeenCalledWith("user_1", "team_1")
   })
 
-  it("persists the submitted contact email on bookingGroup creation", async () => {
+  it("persists the authenticated user email on bookingGroup creation", async () => {
     mockHappyPath()
 
-    const response = await POST(request(validBooking({ contactEmail: "customer-contact@example.com" })))
+    const response = await POST(request(validBooking()))
 
     expect(response.status).toBe(200)
     expect(mocks.prisma.bookingGroup.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ contactEmail: "customer-contact@example.com" }),
+        data: expect.objectContaining({ customerEmail: "satoshi@example.com" }),
       }),
     )
   })
@@ -410,7 +409,7 @@ describe("/api/booking/[id]", () => {
         id: "group_1",
         projectTitle: "Color grading",
         contactName: "Satoshi",
-        contactEmail: "satoshi@example.com",
+        customerEmail: "satoshi@example.com",
         phone: null,
         companyName: null,
         memo: null,

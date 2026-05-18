@@ -31,7 +31,7 @@ function createSlot(input: SlotInput = {}) {
       id: "group_1",
       projectTitle: "Original Project",
       contactName: "Original Name",
-      contactEmail: "old@example.com",
+      customerEmail: "old@example.com",
       phone: null,
       companyName: "Original Company",
       memo: "Original Memo",
@@ -223,6 +223,7 @@ describe("/api/booking/[id] access control", () => {
       action: "update_details",
       projectTitle: "Updated Project",
       contactName: "Updated Name",
+      contactEmail: "ignored@example.com",
       memo: "Updated Memo",
     }), context())
 

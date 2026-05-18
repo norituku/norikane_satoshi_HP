@@ -7,20 +7,12 @@ export type BookingSlot = {
   end: string
 }
 
-const optionalEmail = z
-  .string()
-  .trim()
-  .refine((value) => value === "" || z.string().email().safeParse(value).success, {
-    message: "メールアドレスの形式で入力してください",
-  })
-
 export const bookingFormSchema = z.object({
   projectTitle: z.string().trim().min(1, "案件名を入力してください").max(100, "100 字以内で入力してください"),
   dueDate: z.string(),
   companyName: z.string().trim().max(100, "100 字以内で入力してください"),
   contactName: z.string().trim().min(1, "担当者氏名を入力してください").max(100, "100 字以内で入力してください"),
   sessionEmail: z.string().email("認証済みメールアドレスを確認できません"),
-  contactEmail: optionalEmail,
   phone: z.string().trim().max(50, "50 字以内で入力してください"),
   memo: z.string().trim().max(1000, "1000 字以内で入力してください"),
   agreed: z.boolean().refine((value) => value, {
@@ -37,7 +29,6 @@ export function createDefaultBookingFormData(sessionEmail: string): BookingFormD
     companyName: "",
     contactName: "",
     sessionEmail,
-    contactEmail: "",
     phone: "",
     memo: "",
     agreed: false,
@@ -53,7 +44,6 @@ export function mergeBookingFormData(
     ...current,
     ...next,
     sessionEmail,
-    contactEmail: next.contactEmail ?? current.contactEmail,
   }
 }
 

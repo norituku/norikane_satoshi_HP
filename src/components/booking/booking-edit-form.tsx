@@ -24,7 +24,7 @@ type DetailState = {
   projectTitle: string
   contactName: string
   companyName: string
-  contactEmail: string
+  customerEmail: string
   phone: string
   memo: string
   dueDate: string
@@ -53,7 +53,7 @@ export function toDetailsState(details: EditableBookingDetails): DetailState {
     projectTitle: details.projectTitle,
     contactName: details.contactName,
     companyName: details.companyName ?? "",
-    contactEmail: details.contactEmail ?? "",
+    customerEmail: details.customerEmail ?? "",
     phone: details.phone ?? "",
     memo: details.memo ?? "",
     dueDate: details.dueDate ?? "",
@@ -202,8 +202,8 @@ export function BookingEditForm({
             <input className="glass-input w-full px-4 py-3 text-sm" value={details.companyName} disabled={isReadOnly} onChange={(event) => updateDetail("companyName", event.target.value)} />
           </label>
           <label className="space-y-2 text-sm font-medium text-hp">
-            <span>連絡用メール</span>
-            <input className="glass-input w-full px-4 py-3 text-sm" type="email" value={details.contactEmail} disabled={isReadOnly} onChange={(event) => updateDetail("contactEmail", event.target.value)} />
+            <span>メールアドレス</span>
+            <input className="glass-input w-full px-4 py-3 text-sm opacity-70" type="email" value={details.customerEmail} readOnly disabled />
           </label>
           <label className="space-y-2 text-sm font-medium text-hp">
             <span>電話番号</span>

@@ -124,7 +124,7 @@ export async function createBookingForUser(
       status: "CONFIRMED",
       projectTitle: `${input.prefix} ${input.label}`,
       contactName: user.name ?? input.label,
-      contactEmail: user.email,
+      customerEmail: user.email,
       timeSlots: {
         create: {
           startTime: new Date(input.start),

@@ -5,7 +5,7 @@ export type BookingAccessScope = "owner" | "team" | "admin"
 export type EditableBookingDetails = {
   projectTitle: string
   contactName: string
-  contactEmail: string | null
+  customerEmail: string | null
   phone: string | null
   companyName: string | null
   memo: string | null
@@ -46,7 +46,7 @@ export async function findAccessibleSlot(
           id: true,
           projectTitle: true,
           contactName: true,
-          contactEmail: true,
+          customerEmail: true,
           phone: true,
           companyName: true,
           memo: true,
@@ -98,7 +98,7 @@ export async function findAccessibleSlot(
     details: {
       projectTitle: slot.bookingGroup.projectTitle,
       contactName: slot.bookingGroup.contactName,
-      contactEmail: slot.bookingGroup.contactEmail,
+      customerEmail: slot.bookingGroup.customerEmail,
       phone: slot.bookingGroup.phone,
       companyName: slot.bookingGroup.companyName,
       memo: slot.bookingGroup.memo,

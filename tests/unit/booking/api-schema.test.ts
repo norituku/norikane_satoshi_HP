@@ -9,7 +9,6 @@ function validBooking(overrides: Record<string, unknown> = {}) {
     companyName: "NCS",
     contactName: "Satoshi",
     sessionEmail: "satoshi@example.com",
-    contactEmail: "",
     phone: "",
     memo: "",
     agreed: true,
@@ -38,9 +37,8 @@ describe("bookingApiSchema", () => {
     if (parsed.success) expect(parsed.data.teamId).toBe("team_1")
   })
 
-  it("rejects blank project titles, invalid contact email, and empty team ids", () => {
+  it("rejects blank project titles and empty team ids", () => {
     expect(bookingApiSchema.safeParse(validBooking({ projectTitle: "" })).success).toBe(false)
-    expect(bookingApiSchema.safeParse(validBooking({ contactEmail: "not-an-email" })).success).toBe(false)
     expect(bookingApiSchema.safeParse(validBooking({ teamId: "" })).success).toBe(false)
   })
 

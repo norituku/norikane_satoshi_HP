@@ -138,7 +138,7 @@ model BookingGroup {
   memo         String?
   contactName  String
   companyName  String?
-  contactEmail String?
+  customerEmail String?
   phone        String?
   dueDate      String?
 
