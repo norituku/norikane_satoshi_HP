@@ -178,6 +178,7 @@ function toBusyEvent(slot: BusySlot, isCalendarAdmin: boolean): EventInput {
   const extendedProps: BusyEventProps = {
     kind: "busy",
     label,
+    canEdit: isCalendarAdmin,
   }
 
   return {
@@ -729,7 +730,7 @@ export function BookingCalendar({
           editable: false,
           startEditable: false,
           durationEditable: false,
-          extendedProps: { kind: "buffer" },
+          extendedProps: { kind: "buffer", canEdit: true },
         })
         bufferEvents.push({
           id: `busy-buffer-after-${slot.start}-${slot.end}`,
@@ -741,7 +742,7 @@ export function BookingCalendar({
           editable: false,
           startEditable: false,
           durationEditable: false,
-          extendedProps: { kind: "buffer" },
+          extendedProps: { kind: "buffer", canEdit: true },
         })
       }
     }
