@@ -121,6 +121,16 @@ type MoveCopyPopupState = {
   y: number
 } | null
 
+type AdminMoveConfirmState = {
+  bookingId: string
+  bookingGroupId: string
+  projectTitle: string
+  oldStart: string
+  oldEnd: string
+  newStart: string
+  newEnd: string
+} | null
+
 type InteractionType = "drag" | "resize" | "select" | null
 
 const VIEW_OPTIONS: { label: string; value: CalendarView }[] = [
@@ -226,7 +236,9 @@ function toBookingEvent(
   const isTeamMember = teamMemberUserIds.includes(booking.customerUserId)
   const canView = isCalendarAdmin || isOwner || isTeamMember
   const canEdit = isCalendarAdmin || isOwner
-  const isCalendarEditable = editable && canEdit && status !== "CONFIRMED"
+  const isCalendarEditable =
+    (editable && canEdit && status !== "CONFIRMED") ||
+    (isCalendarAdmin && status === "CONFIRMED")
   const extendedProps: BusyEventProps = {
     kind: "busy",
     label,
@@ -487,6 +499,7 @@ export function BookingCalendar({
   const [slotMinTime, setSlotMinTime] = useState("10:00:00")
   const [slotMaxTime, setSlotMaxTime] = useState("19:00:00")
   const [moveCopyPopup, setMoveCopyPopup] = useState<MoveCopyPopupState>(null)
+  const [adminMoveConfirm, setAdminMoveConfirm] = useState<AdminMoveConfirmState>(null)
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [actionPanelPosition, setActionPanelPosition] = useState<{ top: number; left: number } | null>(null)
@@ -1166,7 +1179,7 @@ export function BookingCalendar({
 
   const handleEventAllow = useCallback<AllowFunc>((span, movingEvent) => {
     const props = movingEvent?.extendedProps as AnyEventProps | undefined
-    if (props?.status === "CONFIRMED") return false
+    if (props?.status === "CONFIRMED" && !isCalendarAdmin) return false
     const allowed =
       !overlapsBlockedEvent(span.start, span.end, props?.bookingId) &&
       !overlapsConfirmedBufferZone(span.start, span.end, props?.bookingId)
@@ -1187,7 +1200,7 @@ export function BookingCalendar({
       }
     }
     return allowed
-  }, [applyDynamicTimeRangeBounds, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue])
+  }, [applyDynamicTimeRangeBounds, isCalendarAdmin, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue])
 
   const handleDateClick = useCallback(
     (arg: DateClickArg) => {
@@ -1240,6 +1253,24 @@ export function BookingCalendar({
       }
 
       if (props.kind === "busy" && props.bookingId) {
+        if (
+          isCalendarAdmin &&
+          props.status === "CONFIRMED" &&
+          props.bookingGroupId &&
+          props.projectTitle
+        ) {
+          arg.revert()
+          setAdminMoveConfirm({
+            bookingId: props.bookingId,
+            bookingGroupId: props.bookingGroupId,
+            projectTitle: props.projectTitle,
+            oldStart: arg.oldEvent.start?.toISOString() ?? props.label ?? "",
+            oldEnd: arg.oldEvent.end?.toISOString() ?? "",
+            newStart: newStart.toISOString(),
+            newEnd: newEnd.toISOString(),
+          })
+          return
+        }
         arg.revert()
         if (modeKind !== "adjust" || props.bookingGroupId !== adjustingGroupId) return
         setMoveCopyPopup({
@@ -1254,7 +1285,7 @@ export function BookingCalendar({
 
       arg.revert()
     },
-    [adjustingGroupId, modeKind, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange],
+    [adjustingGroupId, isCalendarAdmin, modeKind, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange],
   )
 
   const handleEventResize = useCallback((arg: EventResizeDoneArg) => {
@@ -1277,8 +1308,28 @@ export function BookingCalendar({
       setDraftPreviewValue(null)
       return
     }
+    if (
+      props.kind === "busy" &&
+      isCalendarAdmin &&
+      props.status === "CONFIRMED" &&
+      props.bookingId &&
+      props.bookingGroupId &&
+      props.projectTitle
+    ) {
+      arg.revert()
+      setAdminMoveConfirm({
+        bookingId: props.bookingId,
+        bookingGroupId: props.bookingGroupId,
+        projectTitle: props.projectTitle,
+        oldStart: arg.oldEvent.start?.toISOString() ?? "",
+        oldEnd: arg.oldEvent.end?.toISOString() ?? "",
+        newStart: newStart.toISOString(),
+        newEnd: newEnd.toISOString(),
+      })
+      return
+    }
     arg.revert()
-  }, [overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange])
+  }, [isCalendarAdmin, overlapsBlockedEvent, overlapsConfirmedBufferZone, setDraftPreviewValue, updateDraftRange])
 
   const dayCellClassNames = (arg: DayCellContentArg): string[] => {
     const classes: string[] = []
@@ -1472,6 +1523,30 @@ export function BookingCalendar({
       refetchRemoteEvents()
     },
     [moveCopyPopup, refetchRemoteEvents],
+  )
+
+  const executeAdminMove = useCallback(
+    async () => {
+      if (!adminMoveConfirm) return
+      const response = await fetch(`/api/booking/${adminMoveConfirm.bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "move",
+          start: adminMoveConfirm.newStart,
+          end: adminMoveConfirm.newEnd,
+        }),
+      })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        setActionError(mapErrorCodeToJa(payload.error ?? "unknown"))
+        setAdminMoveConfirm(null)
+        return
+      }
+      setAdminMoveConfirm(null)
+      refetchRemoteEvents()
+    },
+    [adminMoveConfirm, refetchRemoteEvents],
   )
 
   const handleFullCalendarViewDidMount = useCallback(() => {
@@ -1688,6 +1763,48 @@ export function BookingCalendar({
           </div>
         </div>
       </div>
+      {adminMoveConfirm ? (
+        <div
+          className="booking-calendar__modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="booking-admin-move-confirm-title"
+        >
+          <div className="booking-calendar__modal-card glass-flat">
+            <h2
+              id="booking-admin-move-confirm-title"
+              className="booking-calendar__modal-title"
+            >
+              お客様の予約時間を変更しますか？
+            </h2>
+            <p className="booking-calendar__modal-message">
+              案件名：{adminMoveConfirm.projectTitle}
+            </p>
+            <p className="booking-calendar__modal-message">
+              変更前：{formatRange(adminMoveConfirm.oldStart, adminMoveConfirm.oldEnd)}
+            </p>
+            <p className="booking-calendar__modal-message">
+              変更後：{formatRange(adminMoveConfirm.newStart, adminMoveConfirm.newEnd)}
+            </p>
+            <div className="booking-calendar__modal-actions">
+              <button
+                type="button"
+                className="booking-calendar__action-button"
+                onClick={() => setAdminMoveConfirm(null)}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                className="booking-calendar__action-button booking-calendar__action-button--primary"
+                onClick={() => void executeAdminMove()}
+              >
+                変更を確定
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {moveCopyPopup ? (
         <div
           className="booking-calendar__move-copy-popup glass-flat"
