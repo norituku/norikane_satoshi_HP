@@ -154,8 +154,12 @@ function isFullDayBusySlot(slot: BusySlot): boolean {
   return startsAtMidnight && endsAtMidnight && durationMs >= 24 * 60 * 60 * 1000
 }
 
-function getBusyLabel(slot: BusySlot): string {
+function getBusyLabel(slot: BusySlot, isCalendarAdmin: boolean): string {
   if (isFullDayBusySlot(slot)) return "終日"
+
+  if (isCalendarAdmin) {
+    return `${format(new Date(slot.start), "HH:mm")}-${format(new Date(slot.end), "HH:mm")}`
+  }
 
   const ms = toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS)
   const start = new Date(new Date(slot.start).getTime() - ms)
@@ -164,19 +168,20 @@ function getBusyLabel(slot: BusySlot): string {
   return `${format(start, "HH:mm")}-${format(end, "HH:mm")}`
 }
 
-function toBusyEvent(slot: BusySlot): EventInput {
+function toBusyEvent(slot: BusySlot, isCalendarAdmin: boolean): EventInput {
   const allDay = isFullDayBusySlot(slot)
-  const label = getBusyLabel(slot)
-  const ms = allDay ? 0 : toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS)
-  const start = allDay ? slot.start : new Date(new Date(slot.start).getTime() - ms).toISOString()
-  const end = allDay ? slot.end : new Date(new Date(slot.end).getTime() + ms).toISOString()
+  const label = getBusyLabel(slot, isCalendarAdmin)
+  const shouldMergeBuffer = !allDay && !isCalendarAdmin
+  const ms = shouldMergeBuffer ? toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS) : 0
+  const start = shouldMergeBuffer ? new Date(new Date(slot.start).getTime() - ms).toISOString() : slot.start
+  const end = shouldMergeBuffer ? new Date(new Date(slot.end).getTime() + ms).toISOString() : slot.end
   const extendedProps: BusyEventProps = {
     kind: "busy",
     label,
   }
 
   return {
-    id: `busy-merged-${slot.start}-${slot.end}`,
+    id: isCalendarAdmin && !allDay ? `busy-${slot.start}-${slot.end}` : `busy-merged-${slot.start}-${slot.end}`,
     title: "予約不可",
     start,
     end,
@@ -696,7 +701,7 @@ export function BookingCalendar({
       lastEmittedCodeRef.current = nextCode
       onCodeChange?.(nextCode)
     }
-    const busyEvents = (data.busy ?? []).map((slot) => toBusyEvent(slot))
+    const busyEvents = (data.busy ?? []).map((slot) => toBusyEvent(slot, isCalendarAdmin))
     const bookingEvents = (data.bookings ?? []).map((booking) =>
       toBookingEvent(
         booking,
@@ -707,6 +712,39 @@ export function BookingCalendar({
       ),
     )
     const bufferEvents: EventInput[] = []
+    if (isCalendarAdmin) {
+      for (const slot of data.busy ?? []) {
+        if (isFullDayBusySlot(slot)) continue
+        const hours = slot.bufferHours ?? BOOKING_BUFFER_HOURS
+        const ms = toBufferMs(hours)
+        const startMs = new Date(slot.start).getTime()
+        const endMs = new Date(slot.end).getTime()
+        bufferEvents.push({
+          id: `busy-buffer-before-${slot.start}-${slot.end}`,
+          title: `予定前後 ${hours} 時間は保護領域`,
+          start: new Date(startMs - ms).toISOString(),
+          end: slot.start,
+          display: "background",
+          classNames: ["booking-calendar__confirmed-buffer"],
+          editable: false,
+          startEditable: false,
+          durationEditable: false,
+          extendedProps: { kind: "buffer" },
+        })
+        bufferEvents.push({
+          id: `busy-buffer-after-${slot.start}-${slot.end}`,
+          title: `予定前後 ${hours} 時間は保護領域`,
+          start: slot.end,
+          end: new Date(endMs + ms).toISOString(),
+          display: "background",
+          classNames: ["booking-calendar__confirmed-buffer"],
+          editable: false,
+          startEditable: false,
+          durationEditable: false,
+          extendedProps: { kind: "buffer" },
+        })
+      }
+    }
     for (const booking of data.bookings ?? []) {
       if (booking.status !== "CONFIRMED") continue
       const startMs = new Date(booking.start).getTime()
