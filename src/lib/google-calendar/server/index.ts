@@ -22,6 +22,8 @@ export type CalendarBusySlot = {
 
 export type CalendarBusyEventWithBuffer = CalendarBusySlot & {
   bufferHours: number | null
+  bufferBeforeHours: number | null
+  bufferAfterHours: number | null
   summary: string | null
 }
 
@@ -218,10 +220,14 @@ export async function listBusyEventsWithBuffer(
       if (!start || !end) continue
 
       const parsedBuffer = Number(event.extendedProperties?.private?.bufferHours)
+      const parsedBefore = Number(event.extendedProperties?.private?.bufferBeforeHours)
+      const parsedAfter = Number(event.extendedProperties?.private?.bufferAfterHours)
       slots.push({
         start,
         end,
         bufferHours: Number.isFinite(parsedBuffer) ? parsedBuffer : null,
+        bufferBeforeHours: Number.isFinite(parsedBefore) && parsedBefore >= 0 ? parsedBefore : null,
+        bufferAfterHours: Number.isFinite(parsedAfter) && parsedAfter >= 0 ? parsedAfter : null,
         summary: event.summary ?? null,
       })
     }

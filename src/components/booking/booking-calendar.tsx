@@ -45,6 +45,8 @@ type BusySlot = {
   start: string
   end: string
   bufferHours?: number | null
+  bufferBeforeHours?: number | null
+  bufferAfterHours?: number | null
   summary?: string | null
 }
 
@@ -157,6 +159,12 @@ function isFullDayBusySlot(slot: BusySlot): boolean {
   return startsAtMidnight && endsAtMidnight && durationMs >= 24 * 60 * 60 * 1000
 }
 
+function resolveBusyBufferHours(slot: BusySlot): { before: number; after: number } {
+  const before = slot.bufferBeforeHours ?? slot.bufferHours ?? BOOKING_BUFFER_HOURS
+  const after = slot.bufferAfterHours ?? slot.bufferHours ?? BOOKING_BUFFER_HOURS
+  return { before, after }
+}
+
 function getBusyLabel(slot: BusySlot, isCalendarAdmin: boolean): string {
   if (isFullDayBusySlot(slot)) return "終日"
 
@@ -164,9 +172,9 @@ function getBusyLabel(slot: BusySlot, isCalendarAdmin: boolean): string {
     return `${format(new Date(slot.start), "HH:mm")}-${format(new Date(slot.end), "HH:mm")}`
   }
 
-  const ms = toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS)
-  const start = new Date(new Date(slot.start).getTime() - ms)
-  const end = new Date(new Date(slot.end).getTime() + ms)
+  const { before, after } = resolveBusyBufferHours(slot)
+  const start = new Date(new Date(slot.start).getTime() - toBufferMs(before))
+  const end = new Date(new Date(slot.end).getTime() + toBufferMs(after))
 
   return `${format(start, "HH:mm")}-${format(end, "HH:mm")}`
 }
@@ -175,9 +183,13 @@ function toBusyEvent(slot: BusySlot, isCalendarAdmin: boolean): EventInput {
   const allDay = isFullDayBusySlot(slot)
   const label = getBusyLabel(slot, isCalendarAdmin)
   const shouldMergeBuffer = !allDay && !isCalendarAdmin
-  const ms = shouldMergeBuffer ? toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS) : 0
-  const start = shouldMergeBuffer ? new Date(new Date(slot.start).getTime() - ms).toISOString() : slot.start
-  const end = shouldMergeBuffer ? new Date(new Date(slot.end).getTime() + ms).toISOString() : slot.end
+  const { before, after } = resolveBusyBufferHours(slot)
+  const start = shouldMergeBuffer
+    ? new Date(new Date(slot.start).getTime() - toBufferMs(before)).toISOString()
+    : slot.start
+  const end = shouldMergeBuffer
+    ? new Date(new Date(slot.end).getTime() + toBufferMs(after)).toISOString()
+    : slot.end
   const summary = slot.summary?.trim()
   const extendedProps: BusyEventProps = {
     kind: "busy",
@@ -321,7 +333,10 @@ function mergeResponses(responses: FreeBusyResponse[], startMs: number, endMs: n
     const filtered = filterResponseToRange(response, startMs, endMs)
     code ??= filtered.code
     for (const slot of filtered.busy ?? []) {
-      busy.set(`${slot.start}|${slot.end}|${slot.bufferHours ?? ""}`, slot)
+      busy.set(
+        `${slot.start}|${slot.end}|${slot.bufferHours ?? ""}|${slot.bufferBeforeHours ?? ""}|${slot.bufferAfterHours ?? ""}`,
+        slot,
+      )
     }
     for (const booking of filtered.bookings ?? []) {
       bookings.set(booking.id, booking)
@@ -721,14 +736,13 @@ export function BookingCalendar({
     if (isCalendarAdmin) {
       for (const slot of data.busy ?? []) {
         if (isFullDayBusySlot(slot)) continue
-        const hours = slot.bufferHours ?? BOOKING_BUFFER_HOURS
-        const ms = toBufferMs(hours)
+        const { before, after } = resolveBusyBufferHours(slot)
         const startMs = new Date(slot.start).getTime()
         const endMs = new Date(slot.end).getTime()
         bufferEvents.push({
           id: `busy-buffer-before-${slot.start}-${slot.end}`,
-          title: `予定前後 ${hours} 時間は保護領域`,
-          start: new Date(startMs - ms).toISOString(),
+          title: `予定前 ${before} 時間は保護領域`,
+          start: new Date(startMs - toBufferMs(before)).toISOString(),
           end: slot.start,
           display: "background",
           classNames: ["booking-calendar__confirmed-buffer"],
@@ -739,9 +753,9 @@ export function BookingCalendar({
         })
         bufferEvents.push({
           id: `busy-buffer-after-${slot.start}-${slot.end}`,
-          title: `予定前後 ${hours} 時間は保護領域`,
+          title: `予定後 ${after} 時間は保護領域`,
           start: slot.end,
-          end: new Date(endMs + ms).toISOString(),
+          end: new Date(endMs + toBufferMs(after)).toISOString(),
           display: "background",
           classNames: ["booking-calendar__confirmed-buffer"],
           editable: false,
@@ -909,9 +923,9 @@ export function BookingCalendar({
   const overlapsConfirmedBufferZone = useCallback((start: Date, end: Date, excludeBookingId?: string): boolean => {
     for (const data of fetchedRef.current.values()) {
       for (const slot of data.data.busy ?? []) {
-        const ms = toBufferMs(slot.bufferHours ?? BOOKING_BUFFER_HOURS)
-        const bufferStart = new Date(new Date(slot.start).getTime() - ms).toISOString()
-        const bufferEnd = new Date(new Date(slot.end).getTime() + ms).toISOString()
+        const { before, after } = resolveBusyBufferHours(slot)
+        const bufferStart = new Date(new Date(slot.start).getTime() - toBufferMs(before)).toISOString()
+        const bufferEnd = new Date(new Date(slot.end).getTime() + toBufferMs(after)).toISOString()
         if (rangesOverlap(start, end, bufferStart, bufferEnd)) return true
       }
       for (const booking of data.data.bookings ?? []) {

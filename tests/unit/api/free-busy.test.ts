@@ -68,6 +68,8 @@ function mockCalendar() {
       start: "2026-06-10T01:00:00.000Z",
       end: "2026-06-10T02:00:00.000Z",
       bufferHours: 1,
+      bufferBeforeHours: null,
+      bufferAfterHours: null,
       summary: null,
     },
   ])
