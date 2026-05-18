@@ -156,7 +156,7 @@ export async function PATCH(
     dueDate?: unknown
   } | null
 
-  if (!raw || (raw.action !== "move" && raw.action !== "copy" && raw.action !== "update_details")) {
+  if (!raw || (raw.action !== "move" && raw.action !== "update_details")) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 })
   }
 
@@ -205,54 +205,39 @@ export async function PATCH(
   if (!isValidDateRange(raw.start, raw.end)) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 })
   }
+  const start = raw.start
+  const end = raw.end as string
 
-  if (raw.action === "move") {
-    const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
-    if (booking.gcalEventId && calendarId) {
-      try {
-        const { token } = await getCachedCalendarAccessToken(CALENDAR_TOKEN_USER_ID)
-        await updateCalendarEvent({
-          calendarId,
-          eventId: booking.gcalEventId,
-          accessToken: token,
-          start: raw.start,
-          end: raw.end as string,
-        })
-      } catch (error) {
-        console.error(
-          `[booking move gcal update failed] bookingId=${id} eventId=${booking.gcalEventId} error=${error instanceof Error ? error.message : String(error)}`,
-        )
-        return NextResponse.json({ error: "calendar_update_failed" }, { status: 502 })
-      }
+  const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
+  if (booking.gcalEventId && calendarId) {
+    try {
+      const { token } = await getCachedCalendarAccessToken(CALENDAR_TOKEN_USER_ID)
+      await updateCalendarEvent({
+        calendarId,
+        eventId: booking.gcalEventId,
+        accessToken: token,
+        start,
+        end,
+      })
+    } catch (error) {
+      console.error(
+        `[booking move gcal update failed] bookingId=${id} eventId=${booking.gcalEventId} error=${error instanceof Error ? error.message : String(error)}`,
+      )
+      return NextResponse.json({ error: "calendar_update_failed" }, { status: 502 })
     }
-
-    const updated = await prisma.bookingTimeSlot.update({
-      where: { id },
-      data: {
-        startTime: new Date(raw.start),
-        endTime: new Date(raw.end as string),
-      },
-    })
-    return NextResponse.json({
-      status: "ok",
-      action: "move",
-      bookingId: updated.id,
-      bookingGroupId: updated.bookingGroupId,
-    })
   }
 
-  const created = await prisma.bookingTimeSlot.create({
+  const updated = await prisma.bookingTimeSlot.update({
+    where: { id },
     data: {
-      bookingGroupId: booking.bookingGroupId,
-      startTime: new Date(raw.start),
-      endTime: new Date(raw.end as string),
-      status: booking.details.status,
+      startTime: new Date(start),
+      endTime: new Date(end),
     },
   })
   return NextResponse.json({
     status: "ok",
-    action: "copy",
-    bookingId: created.id,
-    bookingGroupId: created.bookingGroupId,
+    action: "move",
+    bookingId: updated.id,
+    bookingGroupId: updated.bookingGroupId,
   })
 }

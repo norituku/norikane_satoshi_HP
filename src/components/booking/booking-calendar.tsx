@@ -1412,14 +1412,14 @@ export function BookingCalendar({
     [activeDraft, drafts, onCommit, preflighting, runPreflight],
   )
 
-  const executeMoveCopy = useCallback(
-    async (action: "move" | "copy") => {
+  const executeMove = useCallback(
+    async () => {
       if (!moveCopyPopup) return
       const response = await fetch(`/api/booking/${moveCopyPopup.bookingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action,
+          action: "move",
           start: moveCopyPopup.start,
           end: moveCopyPopup.end,
         }),
@@ -1656,11 +1656,8 @@ export function BookingCalendar({
           aria-modal="false"
           style={{ left: moveCopyPopup.x, top: moveCopyPopup.y }}
         >
-          <button type="button" className="booking-calendar__action-button" onClick={() => void executeMoveCopy("move")}>
+          <button type="button" className="booking-calendar__action-button" onClick={() => void executeMove()}>
             Move
-          </button>
-          <button type="button" className="booking-calendar__action-button" onClick={() => void executeMoveCopy("copy")}>
-            Copy
           </button>
           <button type="button" className="booking-calendar__action-button booking-calendar__action-button--ghost" onClick={() => setMoveCopyPopup(null)}>
             Cancel

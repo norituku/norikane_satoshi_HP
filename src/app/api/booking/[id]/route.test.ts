@@ -92,7 +92,6 @@ async function loadRoute(
         bookingGroupId: "group_1",
         ...data,
       })),
-      create: vi.fn().mockResolvedValue({ id: "slot_copy", bookingGroupId: "group_1" }),
     },
     bookingGroup: {
       update: vi.fn().mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data })),

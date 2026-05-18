@@ -490,30 +490,7 @@ describe("/api/booking/[id]", () => {
     expect(response.status).toBe(404)
   })
 
-  it("copies an owned slot", async () => {
-    mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
-    mocks.prisma.bookingTimeSlot.findUnique.mockResolvedValue(ownedSlot())
-    mocks.prisma.bookingTimeSlot.create.mockResolvedValue({ id: "slot_copy", bookingGroupId: "group_1" })
-
-    const response = await PATCH(
-      request({
-        action: "copy",
-        start: "2026-06-10T03:00:00.000Z",
-        end: "2026-06-10T04:00:00.000Z",
-      }),
-      context(),
-    )
-
-    expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
-      status: "ok",
-      action: "copy",
-      bookingId: "slot_copy",
-      bookingGroupId: "group_1",
-    })
-  })
-
-  it("rejects invalid move/copy payloads", async () => {
+  it("rejects invalid move payloads", async () => {
     mocks.auth.mockResolvedValue({ user: { id: "user_1" } })
     mocks.prisma.bookingTimeSlot.findUnique.mockResolvedValue(ownedSlot())
 
