@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { auth } from "@/auth"
 import { findAccessibleSlot, type AccessibleBooking } from "@/lib/booking/server/edit-access"
-import { deleteCalendarEvent } from "@/lib/google-calendar/server"
+import { getCachedCalendarAccessToken } from "@/lib/booking/server/calendar-free-busy/google-token-cache"
+import {
+  CALENDAR_TOKEN_USER_ID,
+  deleteCalendarEvent,
+  updateCalendarEvent,
+} from "@/lib/google-calendar/server"
 import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
@@ -202,6 +207,25 @@ export async function PATCH(
   }
 
   if (raw.action === "move") {
+    const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
+    if (booking.gcalEventId && calendarId) {
+      try {
+        const { token } = await getCachedCalendarAccessToken(CALENDAR_TOKEN_USER_ID)
+        await updateCalendarEvent({
+          calendarId,
+          eventId: booking.gcalEventId,
+          accessToken: token,
+          start: raw.start,
+          end: raw.end as string,
+        })
+      } catch (error) {
+        console.error(
+          `[booking move gcal update failed] bookingId=${id} eventId=${booking.gcalEventId} error=${error instanceof Error ? error.message : String(error)}`,
+        )
+        return NextResponse.json({ error: "calendar_update_failed" }, { status: 502 })
+      }
+    }
+
     const updated = await prisma.bookingTimeSlot.update({
       where: { id },
       data: {

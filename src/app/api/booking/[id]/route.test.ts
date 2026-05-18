@@ -38,7 +38,7 @@ function createSlot(input: SlotInput = {}) {
       dueDate: "2099-06-01",
       teamId: "team_1",
       status: "CONFIRMED",
-      gcalEventId: input.gcalEventId ?? "gcal_1",
+      gcalEventId: "gcalEventId" in input ? input.gcalEventId : "gcal_1",
       customer: {
         userId: input.customerUserId ?? "owner_user",
       },
@@ -65,12 +65,25 @@ function request(method: string, path = "/api/booking/slot_1", body?: unknown) {
   })
 }
 
-async function loadRoute(session: Session, slot: ReturnType<typeof createSlot> | null) {
+type LoadRouteOptions = {
+  updateCalendarEventImpl?: (...args: unknown[]) => Promise<unknown>
+}
+
+async function loadRoute(
+  session: Session,
+  slot: ReturnType<typeof createSlot> | null,
+  options: LoadRouteOptions = {},
+) {
   vi.resetModules()
   process.env.BOOKING_CALENDAR_ADMIN_EMAIL = "admin@example.com"
+  process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID = "calendar_id_test"
 
   const auth = vi.fn().mockResolvedValue(session)
   const deleteCalendarEvent = vi.fn().mockResolvedValue(undefined)
+  const updateCalendarEvent = options.updateCalendarEventImpl
+    ? vi.fn().mockImplementation(options.updateCalendarEventImpl)
+    : vi.fn().mockResolvedValue(undefined)
+  const getCachedCalendarAccessToken = vi.fn().mockResolvedValue({ token: "access_token", refreshMs: 0 })
   const prisma = {
     bookingTimeSlot: {
       findUnique: vi.fn().mockResolvedValue(slot),
@@ -89,10 +102,17 @@ async function loadRoute(session: Session, slot: ReturnType<typeof createSlot> |
 
   vi.doMock("@/auth", () => ({ auth }))
   vi.doMock("@/lib/prisma", () => ({ prisma }))
-  vi.doMock("@/lib/google-calendar/server", () => ({ deleteCalendarEvent }))
+  vi.doMock("@/lib/google-calendar/server", () => ({
+    CALENDAR_TOKEN_USER_ID: "satoshi-calendar-owner",
+    deleteCalendarEvent,
+    updateCalendarEvent,
+  }))
+  vi.doMock("@/lib/booking/server/calendar-free-busy/google-token-cache", () => ({
+    getCachedCalendarAccessToken,
+  }))
 
   const route = await import("./route")
-  return { ...route, prisma, deleteCalendarEvent }
+  return { ...route, prisma, deleteCalendarEvent, updateCalendarEvent, getCachedCalendarAccessToken }
 }
 
 function context(id = "slot_1") {
@@ -199,6 +219,89 @@ describe("/api/booking/[id] access control", () => {
         projectTitle: "Updated Project",
         contactName: "Updated Name",
         memo: "Updated Memo",
+      },
+    })
+  })
+
+  it("PATCH action=move updates GCal then DB when gcalEventId is set", async () => {
+    const route = await loadRoute(
+      { user: { id: "owner_user", email: "owner@example.com" } },
+      createSlot({ customerUserId: "owner_user", gcalEventId: "gcal_evt_1" }),
+    )
+
+    const response = await route.PATCH(
+      request("PATCH", "/api/booking/slot_1", {
+        action: "move",
+        start: "2099-05-18T02:00:00.000Z",
+        end: "2099-05-18T03:30:00.000Z",
+      }),
+      context(),
+    )
+
+    expect(response.status).toBe(200)
+    expect(route.getCachedCalendarAccessToken).toHaveBeenCalledWith("satoshi-calendar-owner")
+    expect(route.updateCalendarEvent).toHaveBeenCalledWith({
+      calendarId: "calendar_id_test",
+      eventId: "gcal_evt_1",
+      accessToken: "access_token",
+      start: "2099-05-18T02:00:00.000Z",
+      end: "2099-05-18T03:30:00.000Z",
+    })
+    expect(route.prisma.bookingTimeSlot.update).toHaveBeenCalledWith({
+      where: { id: "slot_1" },
+      data: {
+        startTime: new Date("2099-05-18T02:00:00.000Z"),
+        endTime: new Date("2099-05-18T03:30:00.000Z"),
+      },
+    })
+  })
+
+  it("PATCH action=move returns 502 and does not update DB when GCal update fails", async () => {
+    const route = await loadRoute(
+      { user: { id: "owner_user", email: "owner@example.com" } },
+      createSlot({ customerUserId: "owner_user", gcalEventId: "gcal_evt_1" }),
+      { updateCalendarEventImpl: () => Promise.reject(new Error("gcal_down")) },
+    )
+
+    const response = await route.PATCH(
+      request("PATCH", "/api/booking/slot_1", {
+        action: "move",
+        start: "2099-05-18T02:00:00.000Z",
+        end: "2099-05-18T03:30:00.000Z",
+      }),
+      context(),
+    )
+    const payload = await response.json()
+
+    expect(response.status).toBe(502)
+    expect(payload.error).toBe("calendar_update_failed")
+    expect(route.updateCalendarEvent).toHaveBeenCalledTimes(1)
+    expect(route.prisma.bookingTimeSlot.update).not.toHaveBeenCalled()
+  })
+
+  it("PATCH action=move skips GCal update when gcalEventId is null", async () => {
+    const route = await loadRoute(
+      { user: { id: "owner_user", email: "owner@example.com" } },
+      createSlot({ customerUserId: "owner_user", gcalEventId: null }),
+    )
+
+    const response = await route.PATCH(
+      request("PATCH", "/api/booking/slot_1", {
+        action: "move",
+        start: "2099-05-18T02:00:00.000Z",
+        end: "2099-05-18T03:30:00.000Z",
+      }),
+      context(),
+    )
+
+    expect(response.status).toBe(200)
+    expect(route.updateCalendarEvent).not.toHaveBeenCalled()
+    expect(route.getCachedCalendarAccessToken).not.toHaveBeenCalled()
+    expect(route.prisma.bookingTimeSlot.update).toHaveBeenCalledWith({
+      where: { id: "slot_1" },
+      data: {
+        startTime: new Date("2099-05-18T02:00:00.000Z"),
+        endTime: new Date("2099-05-18T03:30:00.000Z"),
       },
     })
   })

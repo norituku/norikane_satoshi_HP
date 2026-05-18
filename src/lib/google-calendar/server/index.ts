@@ -36,8 +36,12 @@ export type CalendarEventWriteInput = {
   companyName: string
 }
 
-export type CalendarEventUpdateInput = CalendarEventWriteInput & {
+export type CalendarEventUpdateInput = {
+  calendarId: string
   eventId: string
+  accessToken: string
+  start: string
+  end: string
 }
 
 export type RefreshedCalendarToken = {
@@ -274,15 +278,12 @@ export async function createCalendarEvent(input: CalendarEventWriteInput): Promi
   return { id: response.data.id }
 }
 
-export async function updateCalendarEvent(input: CalendarEventUpdateInput): Promise<{ id: string }> {
+export async function updateCalendarEvent(input: CalendarEventUpdateInput): Promise<void> {
   const calendar = createCalendarWriteClient(input.accessToken)
-  const response = await calendar.events.patch({
+  await calendar.events.patch({
     calendarId: input.calendarId,
     eventId: input.eventId,
     requestBody: {
-      summary: input.summary,
-      description: input.description,
-      colorId: input.colorId,
       start: {
         dateTime: input.start,
       },
@@ -291,12 +292,6 @@ export async function updateCalendarEvent(input: CalendarEventUpdateInput): Prom
       },
     },
   })
-
-  if (!response.data.id) {
-    throw new Error("Google Calendar event update did not return event id")
-  }
-
-  return { id: response.data.id }
 }
 
 export async function deleteCalendarEvent(eventId: string): Promise<void> {
