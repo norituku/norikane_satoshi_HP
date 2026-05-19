@@ -76,9 +76,9 @@ jobs:
               }
 
               Object.entries(summary)
-                .filter(([file]) => file.startsWith('src/app/api/booking/'))
+                .filter(([file]) => file !== 'total' && file.includes('/src/app/api/booking/'))
                 .sort(([a], [b]) => a.localeCompare(b))
-                .forEach(([file, metrics]) => addRow(file, metrics));
+                .forEach(([file, metrics]) => addRow(file.replace(/^.*?\/src\//, 'src/'), metrics));
             } catch (error) {
               rows.push(`| coverage/coverage-summary.json | unavailable: ${error.message.replace(/\|/g, '\\|')} | n/a |`);
             }
