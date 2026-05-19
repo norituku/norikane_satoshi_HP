@@ -120,6 +120,28 @@ type AnyEventProps = {
   bookingEnd?: string
 }
 
+type BufferEdgeAllowProps = Pick<AnyEventProps, "side" | "bookingStart" | "bookingEnd">
+
+type BufferEdgeAllowSpan = {
+  start: Date
+  end: Date
+}
+
+export function shouldAllowBufferEdge(
+  props: BufferEdgeAllowProps | undefined,
+  span: BufferEdgeAllowSpan,
+  isCalendarAdmin: boolean,
+) {
+  if (!isCalendarAdmin) return false
+  if (props?.side === "before" && props.bookingStart) {
+    return span.end.getTime() === new Date(props.bookingStart).getTime()
+  }
+  if (props?.side === "after" && props.bookingEnd) {
+    return span.start.getTime() === new Date(props.bookingEnd).getTime()
+  }
+  return true
+}
+
 type DraftEvent = {
   id: string
   start: string
@@ -884,7 +906,7 @@ export function BookingCalendar({
         classNames: ["booking-calendar__confirmed-buffer", "booking-calendar__confirmed-buffer--before"],
         editable: isCalendarAdmin,
         startEditable: isCalendarAdmin,
-        durationEditable: false,
+        durationEditable: isCalendarAdmin,
         extendedProps: beforeProps,
       })
       bufferEvents.push({
@@ -1266,7 +1288,7 @@ export function BookingCalendar({
 
   const handleEventAllow = useCallback<AllowFunc>((span, movingEvent) => {
     const props = movingEvent?.extendedProps as AnyEventProps | undefined
-    if (props?.kind === "buffer") return isCalendarAdmin
+    if (props?.kind === "buffer") return shouldAllowBufferEdge(props, span, isCalendarAdmin)
     if (props?.status === "CONFIRMED" && !isCalendarAdmin) return false
     const allowed =
       !overlapsBlockedEvent(span.start, span.end, props?.bookingId) &&
