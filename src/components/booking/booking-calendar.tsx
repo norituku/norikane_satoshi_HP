@@ -489,7 +489,7 @@ function timeOfDayMinutes(value: string): number | null {
   return date.getHours() * 60 + date.getMinutes()
 }
 
-function recomputeTimeRangeBounds(slots: { start: string; end: string }[]): { slotMinTime: string; slotMaxTime: string } {
+export function recomputeTimeRangeBounds(slots: { start: string; end: string }[]): { slotMinTime: string; slotMaxTime: string } {
   let minMinutes = BASE_SLOT_MIN_MINUTES
   let maxMinutes = BASE_SLOT_MAX_MINUTES
 
@@ -699,10 +699,24 @@ export function BookingCalendar({
 
   const getReservationTimeRangeSlots = useCallback((extraSlots: { start: string; end: string }[] = []) => {
     const remoteBookings = fetchedRef.current.flatMap((entry) =>
-      (entry.data.bookings ?? []).map((booking) => ({ start: booking.start, end: booking.end })),
+      (entry.data.bookings ?? []).map((booking) => ({
+        start: new Date(new Date(booking.start).getTime() - toBufferMs(booking.bufferBeforeHours)).toISOString(),
+        end: new Date(new Date(booking.end).getTime() + toBufferMs(booking.bufferAfterHours)).toISOString(),
+      })),
+    )
+    const remoteBusy = fetchedRef.current.flatMap((entry) =>
+      (entry.data.busy ?? [])
+        .filter((slot) => !isFullDayBusySlot(slot))
+        .map((slot) => {
+          const { before, after } = resolveBusyBufferHours(slot)
+          return {
+            start: new Date(new Date(slot.start).getTime() - toBufferMs(before)).toISOString(),
+            end: new Date(new Date(slot.end).getTime() + toBufferMs(after)).toISOString(),
+          }
+        }),
     )
     const focusedSlots = focusSlot ? [{ start: focusSlot.start, end: focusSlot.end }] : []
-    return [...drafts, ...remoteBookings, ...focusedSlots, ...extraSlots]
+    return [...drafts, ...remoteBookings, ...remoteBusy, ...focusedSlots, ...extraSlots]
   }, [drafts, focusSlot])
 
   const applyDynamicTimeRangeBounds = useCallback((extraSlots: { start: string; end: string }[] = []) => {
