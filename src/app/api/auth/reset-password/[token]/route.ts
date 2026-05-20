@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
+import { invalidateTokenVersion } from "@/lib/auth/server/token-version-cache"
 
 const BCRYPT_COST = 12
 
@@ -42,16 +43,23 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, BCRYPT_COST)
 
-  await prisma.$transaction([
-    prisma.user.update({
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
       where: { email: record.identifier },
-      data: { passwordHash, emailVerified: new Date() },
-    }),
-    prisma.passwordResetToken.delete({ where: { token } }),
-    prisma.session.deleteMany({
+      data: {
+        passwordHash,
+        emailVerified: new Date(),
+        tokenVersion: { increment: 1 },
+      },
+      select: { id: true },
+    })
+    await tx.passwordResetToken.delete({ where: { token } })
+    await tx.session.deleteMany({
       where: { user: { email: record.identifier } },
-    }),
-  ])
+    })
+    return updated
+  })
+  invalidateTokenVersion(result.id)
 
   return NextResponse.json({ ok: true })
 }

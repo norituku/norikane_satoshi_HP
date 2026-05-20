@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs"
 import { z } from "zod"
 import authConfig from "@/auth.config"
 import { prisma } from "@/lib/prisma"
+import { getTokenVersion } from "@/lib/auth/server/token-version-cache"
 
 class InvalidCredentialsError extends CredentialsSignin {
   code = "invalid_credentials"
@@ -65,6 +66,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name ?? undefined,
           image: user.image ?? undefined,
+          tokenVersion: user.tokenVersion,
         }
       },
     }),
@@ -85,12 +87,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async jwt({ token, user }) {
-      if (user?.id) token.sub = user.id
+    async jwt({ token, user, trigger }) {
+      if (user?.id) {
+        token.sub = user.id
+        token.tv = user.tokenVersion ?? 0
+      }
+      if (trigger === "update" && token.sub) {
+        token.tv = await getTokenVersion(token.sub)
+      }
       return token
     },
     async session({ session, token }) {
-      if (token.sub && session.user) session.user.id = token.sub
+      if (token.sub && session.user) {
+        session.user.id = token.sub
+        const currentTv = await getTokenVersion(token.sub)
+        const tokenTv = typeof token.tv === "number" ? token.tv : 0
+        if (currentTv !== tokenTv) return null as unknown as typeof session
+      }
       return session
     },
   },
