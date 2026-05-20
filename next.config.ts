@@ -10,6 +10,7 @@ const cspReportOnly = [
   "frame-ancestors 'none';",
   "base-uri 'self';",
   "form-action 'self';",
+  "report-uri /api/csp-report;",
   "object-src 'none'",
 ].join(" ");
 
