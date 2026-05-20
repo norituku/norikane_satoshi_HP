@@ -13,6 +13,7 @@ type RateLimitName =
   | "forgotPasswordEmail"
   | "verifyEmailIp"
   | "contactIp"
+  | "cspReportIp"
 
 type RateLimitConfig = {
   prefix: string
@@ -40,6 +41,7 @@ const RATE_LIMITS: Record<RateLimitName, RateLimitConfig> = {
   forgotPasswordEmail: { prefix: "auth:forgot-password:email", tokens: 3, window: "1 h" },
   verifyEmailIp: { prefix: "auth:verify-email:ip", tokens: 30, window: "10 m" },
   contactIp: { prefix: "contact:ip", tokens: 1, window: "5 m" },
+  cspReportIp: { prefix: "csp:report:ip", tokens: 60, window: "1 m" },
 }
 
 const redis =
@@ -110,7 +112,10 @@ export async function rateLimited(
 }
 
 export async function limitByIp(
-  limiterName: Extract<RateLimitName, "signupIp" | "forgotPasswordIp" | "verifyEmailIp" | "contactIp">,
+  limiterName: Extract<
+    RateLimitName,
+    "signupIp" | "forgotPasswordIp" | "verifyEmailIp" | "contactIp" | "cspReportIp"
+  >,
   request: Request,
   message?: string,
 ): Promise<RateLimitDecision> {

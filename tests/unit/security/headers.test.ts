@@ -19,7 +19,7 @@ const expectedSecurityHeaders = {
   "Permissions-Policy":
     "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), interest-cohort=()",
   "Content-Security-Policy-Report-Only":
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report; object-src 'none'",
 }
 
 const cacheControlValue = "no-store, no-cache, must-revalidate"
@@ -68,6 +68,7 @@ describe("security headers", () => {
     expect(csp).toContain("frame-ancestors 'none'")
     expect(csp).toContain("object-src 'none'")
     expect(csp).toContain("base-uri 'self'")
+    expect(csp).toContain("report-uri /api/csp-report")
   })
 
   it("disables caching for admin routes", async () => {
