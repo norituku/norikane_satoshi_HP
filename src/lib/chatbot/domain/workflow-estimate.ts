@@ -1,5 +1,14 @@
 export type WorkflowStage = "conform" | "prep" | "attended" | "final-check" | "delivery"
 
+export type JobKind =
+  | "cm-30s"
+  | "mv-5m"
+  | "feature-90m"
+  | "drama-first"
+  | "drama-follow-up"
+  | "vertical-60s"
+  | "live-60m"
+
 export type FinalMedium = "ott" | "cinema" | "tv-broadcast" | "live" | "web" | "vertical-sns" | "other"
 
 export type WorkSite = "satoshi-studio" | "remote-grading" | "on-site"
@@ -22,6 +31,7 @@ export type WorkflowEstimate = {
   totalMinDays: number
   totalMaxDays: number
   riskFlags: Array<"tight-deadline" | "heavy-retouch" | "strict-delivery" | "on-site-transfer">
+  requiresDirectContact?: boolean
 }
 
 export type CandidateWindow = {
@@ -32,9 +42,12 @@ export type CandidateWindow = {
 }
 
 export type JobContext = {
+  jobKind?: JobKind
   finalMedium: FinalMedium
   workSite: WorkSite
   documentaryAttachment: DocumentaryAttachment
+  retouchCutCount?: number
+  heavyRetouch?: boolean
   projectLengthMinutes?: number
   publicReleaseDate?: string
   preferredStartDate?: string

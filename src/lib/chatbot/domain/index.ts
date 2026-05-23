@@ -19,6 +19,7 @@ export type {
   DocumentaryAttachment,
   FinalMedium,
   JobContext,
+  JobKind,
   WorkflowEstimate,
   WorkflowStage,
   WorkSite,
