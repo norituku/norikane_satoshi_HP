@@ -29,3 +29,25 @@ export type ChatbotConversation = {
   context: ChatbotConversationContext
   messages: ChatbotMessage[]
 }
+
+export type ConversationState = {
+  hasFinalMedium: boolean
+  hasJobKind: boolean
+  hasAdditionalWork: boolean
+  hasDocumentaryAttachments: boolean
+  hasWorkSite: boolean
+  hasReferenceUrls: boolean
+  hasContactEmail: boolean
+  hasDesiredSchedule: boolean
+  turnCount: number
+  outOfScope?: boolean
+  technicalQuestion?: boolean
+  workReviewRequest?: boolean
+  vfxCgHeavy?: boolean
+  editingIncomplete?: boolean
+  lookDecomposerDetail?: boolean
+  daysUntilStart?: number
+  contactEmail?: string
+  customerName?: string
+  companyName?: string
+}

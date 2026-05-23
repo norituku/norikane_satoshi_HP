@@ -14,3 +14,5 @@ export {
   estimateWorkflow,
 } from "@/lib/chatbot/server/duration-estimator"
 export type { JobKind } from "@/lib/chatbot/server/duration-estimator"
+export { decideRoutingFallback } from "@/lib/chatbot/server/routing"
+export type { RoutingDecisionInput } from "@/lib/chatbot/server/routing"
