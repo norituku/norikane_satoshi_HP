@@ -28,7 +28,7 @@ export const additionalWorkChoices = {
   question: "カラグレ以外の追加作業はありますか",
   choices: [
     { id: "retouch", label: "消し物" },
-    { id: "background-cleanup", label: "背修正" },
+    { id: "skin-retouch", label: "肌修正" },
     { id: "other", label: "その他" },
     { id: "none", label: "なし" },
   ],

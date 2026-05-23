@@ -40,7 +40,7 @@ export type JobContext = {
   preferredStartDate?: string
   preferredAttendanceDates?: string[]
   referenceUrls?: string[]
-  additionalWork?: Array<"retouch" | "background-cleanup" | "other">
+  additionalWork?: Array<"retouch" | "skin-retouch" | "other">
   workflowEstimate?: WorkflowEstimate
 }
 
