@@ -3,9 +3,7 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { SITE_BRAND_NAME } from "@/lib/site-brand"
 
 const navItems = [
@@ -16,7 +14,6 @@ const navItems = [
 ]
 
 export function NavHeader() {
-  const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const openChatbot = () => {
@@ -58,7 +55,7 @@ export function NavHeader() {
         {/* Desktop nav */}
         <ul className="hidden md:flex items-center gap-1">
           {navItems.map((item) => {
-            const isActive = item.type === "link" && pathname === item.href
+            // Hash anchors are section jumps, so the header keeps nav state neutral.
             return (
               <li key={item.label}>
                 {item.type === "chatbot" ? (
@@ -72,23 +69,9 @@ export function NavHeader() {
                 ) : (
                   <Link
                     href={item.href}
-                    className={cn(
-                      "relative inline-flex items-center px-4 py-2 text-sm font-medium transition-colors",
-                      isActive
-                        ? "text-black"
-                        : "text-neutral-600 hover:text-black"
-                    )}
+                    className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:text-black"
                   >
                     {item.label}
-                    {isActive && (
-                      <span
-                        className="absolute left-1/2 h-1 w-1 -translate-x-1/2 rounded-full"
-                        style={{
-                          bottom: 2,
-                          background: "var(--accent-primary)",
-                        }}
-                      />
-                    )}
                   </Link>
                 )}
               </li>
@@ -114,7 +97,6 @@ export function NavHeader() {
             style={{ borderTop: "1px solid rgba(0, 0, 0, 0.06)" }}
           >
             {navItems.map((item) => {
-              const isActive = item.type === "link" && pathname === item.href
               return (
                 <li key={item.label}>
                   {item.type === "chatbot" ? (
@@ -129,19 +111,8 @@ export function NavHeader() {
                     <Link
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
-                      className={cn(
-                        "flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
-                        isActive
-                          ? "text-black"
-                          : "text-neutral-600 hover:text-black hover:bg-black/5"
-                      )}
+                      className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-neutral-600 transition-colors hover:bg-black/5 hover:text-black"
                     >
-                      {isActive && (
-                        <span
-                          className="h-1 w-1 rounded-full"
-                          style={{ background: "var(--accent-primary)" }}
-                        />
-                      )}
                       {item.label}
                     </Link>
                   )}

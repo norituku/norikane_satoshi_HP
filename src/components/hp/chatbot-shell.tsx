@@ -31,8 +31,7 @@ export function ChatbotShell() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--glass-border)] px-5 py-4">
             <div className="flex min-w-0 items-center gap-3">
               <span
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
-                style={{ background: "rgba(139, 127, 255, 0.12)", color: "var(--accent-primary)" }}
+                className="glass-badge flex h-10 w-10 shrink-0 items-center justify-center"
               >
                 <Sparkles className="h-5 w-5" aria-hidden="true" />
               </span>
