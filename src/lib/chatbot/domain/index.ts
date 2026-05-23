@@ -3,6 +3,7 @@ export type {
   ChatbotConversationContext,
   ChatbotMessage,
   ChatbotMessageRole,
+  ConversationState,
 } from "@/lib/chatbot/domain/conversation"
 export type { RoutingDecision } from "@/lib/chatbot/domain/routing-decision"
 export {
