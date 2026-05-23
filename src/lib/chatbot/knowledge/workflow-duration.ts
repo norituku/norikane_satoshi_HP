@@ -1,4 +1,4 @@
-import type { FinalMedium, WorkSite } from "@/lib/chatbot/domain/workflow-estimate"
+import type { FinalMedium, JobKind, WorkSite } from "@/lib/chatbot/domain/workflow-estimate"
 
 export type WorkflowDurationPreset = {
   id: string
@@ -17,12 +17,32 @@ export const workflowDurationPresets = [
   { id: "live-60m", label: "ライブ 60分", minDays: 7, maxDays: 8 },
 ] as const satisfies readonly WorkflowDurationPreset[]
 
+export const workflowDurationJobKindMap = {
+  "cm-30s": { presetId: "cm-30s", baselineMinutes: 0.5 },
+  "mv-5m": { presetId: "mv-5m", baselineMinutes: 5 },
+  "feature-90m": { presetId: "feature-90m", baselineMinutes: 90 },
+  "drama-first": { presetId: "drama-first", baselineMinutes: undefined },
+  "drama-follow-up": { presetId: "drama-follow-up", baselineMinutes: undefined },
+  "vertical-60s": { presetId: "vertical-60s", baselineMinutes: 1 },
+  "live-60m": { presetId: "live-60m", baselineMinutes: 60 },
+} as const satisfies Record<
+  JobKind,
+  {
+    presetId: (typeof workflowDurationPresets)[number]["id"]
+    baselineMinutes: number | undefined
+  }
+>
+
 export const additionalWorkDurationRules = {
+  noAdditionalDays: 0,
   retouchCutsPerDay: 70,
   documentaryAttachmentDaysPerVideo: 0.25,
+  defaultDocumentaryAttachmentCount: 1,
   strictMediumAdditionalDays: 1,
   heavyRetouchFlag: "heavy-retouch",
 } as const
+
+export const strictDeliveryMediums = ["ott", "cinema", "tv-broadcast"] as const satisfies readonly FinalMedium[]
 
 export const mediumStrictnessRank = [
   "ott",
