@@ -275,6 +275,22 @@ describe("Tier1ChromeNotionAiClient", () => {
     await expect(missingTargetClient.isHealthy()).resolves.toBe(false)
   })
 
+  it("does not require the Notion AI target URL to use the www host", async () => {
+    const session = sessionReturning([
+      {
+        spaceId: "space-id",
+        selectedModel: "notion-current-model",
+        availableModels: ["notion-current-model"],
+      },
+    ])
+    const client = new Tier1ChromeNotionAiClient({
+      fetchClient: cdpFetch([{ type: "page", url: "https://notion.so/ai" }]),
+      sessionFactory: async () => session,
+    })
+
+    await expect(client.isHealthy()).resolves.toBe(true)
+  })
+
   it("maps login redirects and missing space id to auth errors", async () => {
     const loginClient = new Tier1ChromeNotionAiClient({
       fetchClient: cdpFetch([{ type: "page", url: "https://www.notion.so/login" }]),

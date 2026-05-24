@@ -164,7 +164,7 @@ const emptyText = ""
 
 export const tier1ChromeNotionAiDefaults = {
   cdpBaseUrl: "http://127.0.0.1:9223",
-  targetUrlIncludes: "https://www.notion.so",
+  targetUrlIncludes: "notion.so",
   requestTimeoutMs: 90000,
   healthCheckTimeoutMs: 3000,
 } as const
@@ -639,6 +639,7 @@ const runtimeContextExpression = `(() => {
   const explicit = root.__notionAiChatbotRuntimeContext;
   if (explicit && typeof explicit === "object") return explicit;
 
+  // TODO: Verify the real Notion page context route for spaceId/model/workflowValue in smoke.
   const storageEntries = [];
   try {
     for (let index = 0; index < localStorage.length; index += 1) {
