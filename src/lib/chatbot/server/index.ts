@@ -24,10 +24,6 @@ export type {
   ChatbotLlmTier,
 } from "@/lib/chatbot/server/llm-client"
 export {
-  createTier1ChromeClaudeClient,
-  Tier1ChromeClaudeClient,
-} from "@/lib/chatbot/server/llm-clients/tier1-chrome-claude"
-export {
   createTier2OllamaDeepSeekClient,
   Tier2OllamaDeepSeekClient,
 } from "@/lib/chatbot/server/llm-clients/tier2-ollama-deepseek"
