@@ -36,6 +36,9 @@ type TimeoutTag = "timeout"
 
 type NotionAiRuntimeContext = {
   spaceId?: string
+  userId?: string
+  notionClientVersion?: string
+  contextPageId?: string
   selectedModel?: string
   finalModelName?: string
   availableModels?: string[]
@@ -134,9 +137,32 @@ type RunInferencePayload = {
   isSpaceSalesAssisted: boolean
 }
 
+type RunInferenceHeaders = {
+  Accept: string
+  "Content-Type": string
+  "notion-audit-log-platform": string
+  "notion-client-version": string
+  "x-notion-active-user-header": string
+  "x-notion-space-id": string
+}
+
 type NotionAiInferenceResult =
   | { ok: true; rawText: string; chunkCount: number }
   | { ok: false; status?: number; code: "auth" | "invalid-output" | "unknown"; message: string }
+
+export type ParsedInferenceNdjsonChunk = {
+  raw: unknown
+  isPartialTranscript: boolean
+  assistantText: string
+}
+
+export type ParsedInferenceNdjsonStream = {
+  chunks: ParsedInferenceNdjsonChunk[]
+  partialText: string
+  finalText: string
+  assistantText: string
+  chunkCount: number
+}
 
 type CdpTargetsResponse = NotionAiCdpTarget[]
 type CdpCommandResponse<T> = {
@@ -158,8 +184,10 @@ const jsonListPath = "/json/list"
 const jsonVersionPath = "/json/version"
 const httpGet = "GET"
 const targetTypePage = "page"
-const defaultCreatedSource = "hp-chatbot-tier-1"
+const observedNotionAiModel = "apricot-sorbet-high"
+const defaultCreatedSource = "assistant"
 const defaultThreadType = "workflow"
+const defaultNotionClientVersion = "unknown"
 const emptyText = ""
 
 export const tier1ChromeNotionAiDefaults = {
@@ -206,9 +234,10 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
         preferredModel: this.config.preferredModel,
         idFactory: this.idFactory,
       })
+      const headers = buildRunInferenceHeaders(runtimeContext)
       const result = await this.evaluate<NotionAiInferenceResult>(
         session,
-        buildRunInferenceExpression(payload),
+        buildRunInferenceExpression(payload, headers),
         this.config.requestTimeoutMs,
       )
 
@@ -393,9 +422,10 @@ export function buildRunInferencePayload(input: {
   runtimeContext: NotionAiRuntimeContext
   preferredModel?: string
   idFactory: IdFactory
+  contextPageId?: string
 }): RunInferencePayload {
-  const model = resolveModel(input.runtimeContext, input.preferredModel)
   const spaceId = input.runtimeContext.spaceId
+  const contextPageId = input.contextPageId ?? input.runtimeContext.contextPageId
 
   if (!spaceId) {
     throw new ChatbotLlmError({
@@ -406,6 +436,7 @@ export function buildRunInferencePayload(input: {
     })
   }
 
+  const model = resolveModel(input.runtimeContext, input.preferredModel)
   const workflowValue = buildWorkflowValue({
     model,
     modelFromUser: input.runtimeContext.modelFromUser ?? Boolean(input.runtimeContext.selectedModel),
@@ -419,9 +450,19 @@ export function buildRunInferencePayload(input: {
       { id: input.idFactory(), type: "config", value: workflowValue },
       {
         id: input.idFactory(),
+        type: "context",
+        value: {
+          type: "context",
+          currentDatetime: new Date().toISOString(),
+          contextPageId,
+        },
+      },
+      {
+        id: input.idFactory(),
         type: "user",
         value: {
           type: "text",
+          model,
           text: buildUserPrompt(input.request),
         },
       },
@@ -444,6 +485,28 @@ export function buildRunInferencePayload(input: {
     hasHeartbeat: false,
     isUserInAnySalesAssistedSpace: false,
     isSpaceSalesAssisted: false,
+  }
+}
+
+export function buildRunInferenceHeaders(runtimeContext: NotionAiRuntimeContext): RunInferenceHeaders {
+  const { spaceId, userId } = runtimeContext
+
+  if (!spaceId || !userId) {
+    throw new ChatbotLlmError({
+      message: "Notion AI runtime context does not expose space id and user id.",
+      code: "auth",
+      tier,
+      isRetryable: false,
+    })
+  }
+
+  return {
+    Accept: "application/x-ndjson",
+    "Content-Type": "application/json",
+    "notion-audit-log-platform": "web",
+    "notion-client-version": runtimeContext.notionClientVersion ?? defaultNotionClientVersion,
+    "x-notion-active-user-header": userId,
+    "x-notion-space-id": spaceId,
   }
 }
 
@@ -529,36 +592,59 @@ export function buildWorkflowValue(input: {
 }
 
 export function extractAssistantTextFromNdjson(ndjson: string): string {
-  return ndjson
+  return parseInferenceNdjsonStream(ndjson).assistantText
+}
+
+export function parseInferenceNdjsonStream(ndjson: string): ParsedInferenceNdjsonStream {
+  const chunks = ndjson
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
       try {
-        return collectText(JSON.parse(line))
+        const raw = JSON.parse(line) as unknown
+        return {
+          raw,
+          isPartialTranscript: isPartialInferenceChunk(raw),
+          assistantText: collectText(raw),
+        }
       } catch {
-        return emptyText
+        return undefined
       }
     })
-    .filter(Boolean)
+    .filter((chunk): chunk is ParsedInferenceNdjsonChunk => Boolean(chunk))
+
+  const partialText = chunks
+    .filter((chunk) => chunk.isPartialTranscript)
+    .map((chunk) => chunk.assistantText)
     .join(emptyText)
+  const finalText = chunks
+    .filter((chunk) => !chunk.isPartialTranscript)
+    .map((chunk) => chunk.assistantText)
+    .filter(Boolean)
+    .at(-1) ?? emptyText
+  const assistantText = finalText || partialText
+
+  return {
+    chunks,
+    partialText,
+    finalText,
+    assistantText,
+    chunkCount: chunks.length,
+  }
 }
 
 function resolveModel(runtimeContext: NotionAiRuntimeContext, preferredModel?: string): string {
   const availableModels = runtimeContext.availableModels
-  const selectedModel = runtimeContext.finalModelName ?? runtimeContext.selectedModel
+  const selectedModel = preferredModel ?? observedNotionAiModel
 
-  if (preferredModel) {
-    if (availableModels && !modelIsAvailable(preferredModel, availableModels)) {
-      throw new ChatbotLlmError({
-        message: "Preferred Notion AI model is not available in the current page context.",
-        code: "connection",
-        tier,
-        isRetryable: true,
-      })
-    }
-
-    return preferredModel
+  if (availableModels && !modelIsAvailable(selectedModel, availableModels)) {
+    throw new ChatbotLlmError({
+      message: "Preferred Notion AI model is not available in the current page context.",
+      code: "connection",
+      tier,
+      isRetryable: true,
+    })
   }
 
   if (selectedModel) return selectedModel
@@ -605,8 +691,8 @@ function findNotionLoginTarget(
   })
 }
 
-function buildRunInferenceExpression(payload: RunInferencePayload): string {
-  return `(${runInferenceInPage.toString()})(${JSON.stringify(payload)})`
+function buildRunInferenceExpression(payload: RunInferencePayload, headers: RunInferenceHeaders): string {
+  return `(${runInferenceInPage.toString()})(${JSON.stringify({ payload, headers })})`
 }
 
 function collectText(value: unknown): string {
@@ -634,40 +720,56 @@ function collectText(value: unknown): string {
     .join(emptyText)
 }
 
+function isPartialInferenceChunk(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  return record.isPartialTranscript === true || record.type === "partial"
+}
+
 const runtimeContextExpression = `(() => {
   const root = globalThis;
   const explicit = root.__notionAiChatbotRuntimeContext;
   if (explicit && typeof explicit === "object") return explicit;
 
-  // TODO: Verify the real Notion page context route for spaceId/model/workflowValue in smoke.
-  const storageEntries = [];
-  try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key) continue;
-      storageEntries.push([key, localStorage.getItem(key)]);
+  const readStorage = (key) => {
+    try {
+      const value = localStorage.getItem(key);
+      return typeof value === "string" && value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
     }
-  } catch {}
-
-  const modelEntry = storageEntries.find(([key, value]) =>
-    key.toLowerCase().includes("model") && typeof value === "string" && value.length > 0
-  );
-  const spaceEntry = storageEntries.find(([key, value]) =>
-    key.toLowerCase().includes("space") && typeof value === "string" && value.length > 0
-  );
+  };
+  const readMeta = (name) => {
+    const element =
+      document.querySelector(\`meta[name="\${name}"]\`) ||
+      document.querySelector(\`meta[property="\${name}"]\`);
+    const content = element && element.getAttribute("content");
+    return typeof content === "string" && content.length > 0 ? content : undefined;
+  };
+  const buildId =
+    typeof root.__NOTION_BUILD_ID__ === "string" && root.__NOTION_BUILD_ID__.length > 0
+      ? root.__NOTION_BUILD_ID__
+      : undefined;
 
   return {
-    spaceId: root.__notionAiSpaceId || (spaceEntry ? spaceEntry[1] : undefined),
-    selectedModel: root.__notionAiSelectedModel || (modelEntry ? modelEntry[1] : undefined),
+    spaceId: root.__notionAiSpaceId || readStorage("LRU:KeyValueStore2:lastVisitedRouteSpaceId"),
+    userId: root.__notionAiUserId || readStorage("LRU:KeyValueStore2:lastVisitedRouteUserId"),
+    notionClientVersion: root.__notionClientVersion || buildId || readMeta("notion-client-version"),
+    contextPageId: root.__notionAiContextPageId,
+    selectedModel: root.__notionAiSelectedModel || "${observedNotionAiModel}",
     finalModelName: root.__notionAiFinalModelName,
     availableModels: Array.isArray(root.__notionAiAvailableModels) ? root.__notionAiAvailableModels : undefined,
-    modelFromUser: Boolean(root.__notionAiSelectedModel || modelEntry),
+    modelFromUser: true,
     workflowValue: root.__notionAiWorkflowValue,
   };
 })()`
 
-async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionAiInferenceResult> {
+async function runInferenceInPage(input: {
+  payload: RunInferencePayload
+  headers: RunInferenceHeaders
+}): Promise<NotionAiInferenceResult> {
   const endpoint = "/api/v3/runInferenceTranscript"
+  const { payload, headers } = input
   const collectTextInPage = (value: unknown): string => {
     if (typeof value === "string") return value
     if (!value || typeof value !== "object") return ""
@@ -692,11 +794,15 @@ async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionA
       .map((entry) => collectTextInPage(entry))
       .join("")
   }
-  const extractLine = (line: string): string => {
+  const parseLine = (line: string): { isPartialTranscript: boolean; text: string } => {
     try {
-      return collectTextInPage(JSON.parse(line))
+      const raw = JSON.parse(line) as Record<string, unknown>
+      return {
+        isPartialTranscript: raw.isPartialTranscript === true || raw.type === "partial",
+        text: collectTextInPage(raw),
+      }
     } catch {
-      return ""
+      return { isPartialTranscript: false, text: "" }
     }
   }
 
@@ -704,11 +810,7 @@ async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionA
     const response = await fetch(endpoint, {
       method: "POST",
       credentials: "include",
-      headers: {
-        "content-type": "application/json",
-        "accept": "application/x-ndjson",
-        "x-notion-space-id": payload.spaceId,
-      },
+      headers,
       body: JSON.stringify(payload),
     })
 
@@ -741,7 +843,8 @@ async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionA
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let pending = ""
-    let rawText = ""
+    let partialText = ""
+    let finalText = ""
     let chunkCount = 0
 
     while (true) {
@@ -753,8 +856,11 @@ async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionA
       pending = lines.pop() ?? ""
 
       for (const line of lines) {
-        const text = extractLine(line)
-        if (text) rawText += text
+        const parsed = parseLine(line)
+        if (parsed.text) {
+          if (parsed.isPartialTranscript) partialText += parsed.text
+          else finalText = parsed.text
+        }
         chunkCount += 1
       }
     }
@@ -762,12 +868,15 @@ async function runInferenceInPage(payload: RunInferencePayload): Promise<NotionA
     const flushed = decoder.decode()
     if (flushed) pending += flushed
     if (pending.trim()) {
-      const text = extractLine(pending)
-      if (text) rawText += text
+      const parsed = parseLine(pending)
+      if (parsed.text) {
+        if (parsed.isPartialTranscript) partialText += parsed.text
+        else finalText = parsed.text
+      }
       chunkCount += 1
     }
 
-    return { ok: true, rawText, chunkCount }
+    return { ok: true, rawText: finalText || partialText, chunkCount }
   } catch (error) {
     return {
       ok: false,
