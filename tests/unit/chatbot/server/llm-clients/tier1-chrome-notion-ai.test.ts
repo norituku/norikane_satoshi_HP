@@ -4,10 +4,12 @@ import type { ConversationState, JobContext } from "@/lib/chatbot/domain"
 import type { ChatbotLlmRequest } from "@/lib/chatbot/server/llm-client"
 import { ChatbotLlmError } from "@/lib/chatbot/server/llm-client"
 import {
+  buildRunInferenceHeaders,
   buildRunInferencePayload,
   buildWorkflowValue,
   createTier1ChromeNotionAiClient,
   extractAssistantTextFromNdjson,
+  parseInferenceNdjsonStream,
   Tier1ChromeNotionAiClient,
 } from "@/lib/chatbot/server/llm-clients/tier1-chrome-notion-ai"
 import type {
@@ -105,17 +107,33 @@ describe("Tier1ChromeNotionAiClient", () => {
   })
 
   it("builds the observed runInferenceTranscript payload shape", () => {
-    const ids = ["trace-id", "config-id", "user-id", "thread-id"]
+    const ids = ["trace-id", "config-id", "context-id", "user-id", "thread-id"]
     const payload = buildRunInferencePayload({
       request: llmRequest(),
       runtimeContext: {
         spaceId: "space-id",
-        selectedModel: "notion-current-model",
-        availableModels: ["notion-current-model"],
+        userId: "user-id",
+        notionClientVersion: "23.13.20260523.0626",
+        contextPageId: "context-page-id",
+        selectedModel: "ignored-page-model",
+        availableModels: ["apricot-sorbet-high"],
         modelFromUser: true,
       },
       idFactory: () => ids.shift() ?? "extra-id",
     })
+    const normalizedPayload = {
+      ...payload,
+      transcript: payload.transcript.map((entry) => {
+        if (entry.type !== "context") return entry
+        return {
+          ...entry,
+          value: {
+            ...(entry.value as Record<string, unknown>),
+            currentDatetime: "<iso>",
+          },
+        }
+      }),
+    }
 
     expect(Object.keys(payload)).toEqual([
       "traceId",
@@ -140,8 +158,24 @@ describe("Tier1ChromeNotionAiClient", () => {
       type: "config",
       value: {
         type: "workflow",
-        model: "notion-current-model",
+        model: "apricot-sorbet-high",
         modelFromUser: true,
+      },
+    })
+    expect(payload.transcript[1]).toMatchObject({
+      id: "context-id",
+      type: "context",
+      value: {
+        type: "context",
+        contextPageId: "context-page-id",
+      },
+    })
+    expect(payload.transcript[2]).toMatchObject({
+      id: "user-id",
+      type: "user",
+      value: {
+        type: "text",
+        model: "apricot-sorbet-high",
       },
     })
     expect(payload.debugOverrides).toEqual({
@@ -149,6 +183,139 @@ describe("Tier1ChromeNotionAiClient", () => {
       cachedInferences: [],
       annotationInferences: [],
       emitInferences: true,
+    })
+    expect(normalizedPayload).toMatchInlineSnapshot(`
+      {
+        "asPatchResponse": false,
+        "createThread": true,
+        "createdSource": "assistant",
+        "debugOverrides": {
+          "annotationInferences": [],
+          "cachedInferences": [],
+          "emitAgentSearchExtractedResults": false,
+          "emitInferences": true,
+        },
+        "generateTitle": false,
+        "hasHeartbeat": false,
+        "isPartialTranscript": false,
+        "isSpaceSalesAssisted": false,
+        "isUserInAnySalesAssistedSpace": false,
+        "saveAllThreadOperations": true,
+        "setUnreadState": false,
+        "spaceId": "space-id",
+        "threadId": "thread-id",
+        "threadType": "workflow",
+        "traceId": "trace-id",
+        "transcript": [
+          {
+            "id": "config-id",
+            "type": "config",
+            "value": {
+              "agentShortUpdatePageResult": false,
+              "availableConnectors": [],
+              "databaseAgentConfigMode": null,
+              "enableAgentAskSurvey": false,
+              "enableAgentAutomations": false,
+              "enableAgentCardCustomization": false,
+              "enableAgentDiffs": false,
+              "enableAgentGenerateImage": false,
+              "enableAgentIntegrations": false,
+              "enableAgentSupportPropertyReorder": false,
+              "enableAgentThreadTools": false,
+              "enableAgentUpdatePagePatch": false,
+              "enableComputer": false,
+              "enableCrdtOperations": false,
+              "enableCreateAndRunThread": false,
+              "enableCsvAttachmentSupport": false,
+              "enableCustomAgents": false,
+              "enableDatabaseAgents": false,
+              "enableExperimentalIntegrations": false,
+              "enableLargeToolResultComputerOffload": false,
+              "enableMailAgentMultiProviderSupport": false,
+              "enableMailExplicitToolCalls": false,
+              "enableMailNotificationPreferences": false,
+              "enableMarkdownVNext": true,
+              "enableQueryCalendar": false,
+              "enableQueryMail": false,
+              "enableScriptAgent": false,
+              "enableScriptAgentAdvanced": false,
+              "enableScriptAgentCustomToolCalling": false,
+              "enableScriptAgentGoogleDriveInCustomAgent": false,
+              "enableScriptAgentGoogleDriveOAuthInCustomAgent": false,
+              "enableScriptAgentGtm": false,
+              "enableScriptAgentMcpServers": false,
+              "enableScriptAgentSearchConnectorsInCustomAgent": false,
+              "enableScriptAgentSlack": false,
+              "enableSoftwareFactoryPage": false,
+              "enableSpeculativeSearch": false,
+              "enableSystemPromptAsPage": false,
+              "enableUpdatePageAutofixer": false,
+              "enableUpdatePageOrderUpdates": false,
+              "enableUserSessionContext": false,
+              "isAgentResearchRequest": false,
+              "isCustomAgent": false,
+              "isCustomAgentBuilder": false,
+              "isHipaa": false,
+              "isMobile": false,
+              "isOnboardingAgent": false,
+              "isThreadStartedByAdmin": false,
+              "model": "apricot-sorbet-high",
+              "modelFromUser": true,
+              "searchScopes": [],
+              "showDatabaseAgentsDiscoverability": false,
+              "type": "workflow",
+              "updatePageStaleViewGuardEnabled": false,
+              "useContextualCoreDocsAutoLoad": false,
+              "useCustomAgentDraft": false,
+              "useDocPreviewsForCoreAutoLoad": false,
+              "useReadOnlyMode": true,
+              "useRulePrioritization": false,
+              "useSearchToolV2": false,
+              "useWebSearch": false,
+              "use_draft_actor_pointer": false,
+              "writerMode": false,
+              "yoloMode": false,
+            },
+          },
+          {
+            "id": "context-id",
+            "type": "context",
+            "value": {
+              "contextPageId": "context-page-id",
+              "currentDatetime": "<iso>",
+              "type": "context",
+            },
+          },
+          {
+            "id": "user-id",
+            "type": "user",
+            "value": {
+              "model": "apricot-sorbet-high",
+              "text": "Collect only new project intake details.
+      user: 来月のWeb CM案件です
+      user: 立ち会い候補を相談したいです",
+              "type": "text",
+            },
+          },
+        ],
+      }
+    `)
+  })
+
+  it("builds the observed browser fetch headers from runtime context", () => {
+    expect(
+      buildRunInferenceHeaders({
+        spaceId: "space-id",
+        userId: "user-id",
+        notionClientVersion: "23.13.20260523.0626",
+      }),
+    ).toEqual({
+      Accept: "application/x-ndjson",
+      "Content-Type": "application/json",
+      "notion-audit-log-platform": "web",
+      "notion-client-version": "23.13.20260523.0626",
+      "x-notion-active-user-header": "user-id",
+      "x-notion-space-id": "space-id",
     })
   })
 
@@ -226,12 +393,13 @@ describe("Tier1ChromeNotionAiClient", () => {
     ])
   })
 
-  it("uses current page model selection instead of a fixed model", async () => {
+  it("uses the observed Notion AI model codename in the browser request", async () => {
     const session = sessionReturning([
       {
         spaceId: "space-id",
+        userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["notion-current-model"],
+        availableModels: ["apricot-sorbet-high"],
         modelFromUser: true,
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
@@ -250,15 +418,16 @@ describe("Tier1ChromeNotionAiClient", () => {
     const evaluate = vi.mocked(session.evaluate)
     expect(evaluate).toHaveBeenCalledTimes(2)
     expect(evaluate.mock.calls[1][0]).toContain("/api/v3/runInferenceTranscript")
-    expect(evaluate.mock.calls[1][0]).toContain("notion-current-model")
+    expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
   })
 
   it("returns healthy only when CDP and Notion AI target context are available", async () => {
     const healthySession = sessionReturning([
       {
         spaceId: "space-id",
+        userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["notion-current-model"],
+        availableModels: ["apricot-sorbet-high"],
       },
     ])
     const missingTargetClient = new Tier1ChromeNotionAiClient({
@@ -268,7 +437,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     const healthyClient = new Tier1ChromeNotionAiClient({
       fetchClient: cdpFetch(),
       sessionFactory: async () => healthySession,
-      preferredModel: "notion-current-model",
+      preferredModel: "apricot-sorbet-high",
     })
 
     await expect(healthyClient.isHealthy()).resolves.toBe(true)
@@ -279,6 +448,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     const session = sessionReturning([
       {
         spaceId: "space-id",
+        userId: "user-id",
         selectedModel: "notion-current-model",
         availableModels: ["notion-current-model"],
       },
@@ -324,8 +494,9 @@ describe("Tier1ChromeNotionAiClient", () => {
         sessionReturning([
           {
             spaceId: "space-id",
+            userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["notion-current-model"],
+            availableModels: ["apricot-sorbet-high"],
           },
         ]),
       preferredModel: "preferred-policy-model",
@@ -344,8 +515,9 @@ describe("Tier1ChromeNotionAiClient", () => {
         sessionReturning([
           {
             spaceId: "space-id",
+            userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["notion-current-model"],
+            availableModels: ["apricot-sorbet-high"],
           },
           { ok: true, rawText: "", chunkCount: 1 },
         ]),
@@ -364,5 +536,21 @@ describe("Tier1ChromeNotionAiClient", () => {
     ].join("\n")
 
     expect(extractAssistantTextFromNdjson(ndjson)).toBe("候補日を確認しました。")
+  })
+
+  it("parses partial and final NDJSON transcript lines separately", () => {
+    const parsed = parseInferenceNdjsonStream(
+      [
+        JSON.stringify({ isPartialTranscript: true, value: { content: "候補日を" } }),
+        JSON.stringify({ isPartialTranscript: false, assistant: { message: "確認しました。" } }),
+      ].join("\n"),
+    )
+
+    expect(parsed).toMatchObject({
+      partialText: "候補日を",
+      finalText: "確認しました。",
+      assistantText: "確認しました。",
+      chunkCount: 2,
+    })
   })
 })
