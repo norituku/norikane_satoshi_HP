@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/reconcile-pending-gcal",
-      "schedule": "*/5 * * * *"
+      "schedule": "15 0 * * *"
     },
     {
       "path": "/api/cron/calendar-health-check",
