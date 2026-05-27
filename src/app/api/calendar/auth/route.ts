@@ -10,7 +10,7 @@ import { getCalendarAuthUrl } from "@/lib/google-calendar/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export const CALENDAR_OAUTH_STATE_COOKIE = "calendar_oauth_state"
+const CALENDAR_OAUTH_STATE_COOKIE = "calendar_oauth_state"
 const STATE_COOKIE_MAX_AGE_SEC = 600
 
 export async function GET() {

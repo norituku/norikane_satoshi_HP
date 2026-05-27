@@ -18,7 +18,7 @@ function messageForCode(code: string | null | undefined): string {
   return "ログインに失敗しました"
 }
 
-export function LoginCard() {
+function LoginCard() {
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || FALLBACK_CALLBACK_URL
 
