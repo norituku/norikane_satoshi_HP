@@ -50,6 +50,7 @@ function installLocalStorage() {
 
 describe("chatbot widget shell", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_ENABLE_CHATBOT = "true"
     installLocalStorage()
     window.localStorage.clear()
     window.location.hash = ""
@@ -62,13 +63,16 @@ describe("chatbot widget shell", () => {
     cleanup()
     vi.useRealTimers()
     vi.restoreAllMocks()
+    delete process.env.NEXT_PUBLIC_ENABLE_CHATBOT
     window.localStorage.clear()
     window.location.hash = ""
   })
 
-  it("keeps SSR output empty before hydration", () => {
+  it("keeps SSR output hidden before hydration", () => {
     const html = renderToStaticMarkup(React.createElement(ChatbotWidget))
-    expect(html).toBe("")
+    expect(html).toContain('aria-label="AI 相談窓口"')
+    expect(html).toContain("hidden")
+    expect(html).not.toContain("相談内容")
   })
 
   it("stays hidden after hydration until the scroll threshold is reached", async () => {

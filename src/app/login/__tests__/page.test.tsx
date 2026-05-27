@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { MAGIC_LINK_PROVIDER_ID } from "@/lib/auth/provider-ids"
-import { LoginCard } from "../page"
+import LoginPage from "../page"
 
 const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
@@ -31,7 +31,7 @@ describe("LoginCard", () => {
   it("keeps the credentials login on the credentials provider", async () => {
     mocks.signIn.mockResolvedValueOnce({ error: "CredentialsSignin", code: "invalid_credentials" })
 
-    render(<LoginCard />)
+    render(<LoginPage />)
     fireEvent.change(screen.getAllByLabelText(/メールアドレス/)[0], { target: { value: "user@example.com" } })
     fireEvent.change(screen.getByLabelText(/パスワード/), { target: { value: "password123" } })
     fireEvent.click(screen.getByRole("button", { name: "ログイン" }))
@@ -50,7 +50,7 @@ describe("LoginCard", () => {
     mocks.searchParams = new URLSearchParams("callbackUrl=%2Fbooking%2Fnew")
     mocks.signIn.mockResolvedValueOnce({})
 
-    render(<LoginCard />)
+    render(<LoginPage />)
     fireEvent.change(screen.getByLabelText("ログインリンク送信用メールアドレス"), {
       target: { value: " magic@example.com " },
     })
@@ -68,7 +68,7 @@ describe("LoginCard", () => {
   it("shows the magic link success message", async () => {
     mocks.signIn.mockResolvedValueOnce({})
 
-    render(<LoginCard />)
+    render(<LoginPage />)
     fireEvent.change(screen.getByLabelText("ログインリンク送信用メールアドレス"), {
       target: { value: "magic@example.com" },
     })
@@ -78,7 +78,7 @@ describe("LoginCard", () => {
   })
 
   it("does not submit a magic link when email is empty", () => {
-    render(<LoginCard />)
+    render(<LoginPage />)
     fireEvent.click(screen.getByRole("button", { name: "ログインリンクを送信" }))
 
     expect(mocks.signIn).not.toHaveBeenCalled()
