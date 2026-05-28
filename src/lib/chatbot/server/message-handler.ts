@@ -11,6 +11,7 @@ import {
   createLocalChatbotTierAttemptLogger,
   createConversation,
   createTier1ChromeNotionAiClient,
+  createTier2HostedChromeNotionAiClient,
   createTier3OllamaDeepSeekClient,
   createTier4FormFallbackClient,
   formatUserChatbotContextForPrompt,
@@ -166,6 +167,7 @@ function shouldIsolateExistingConversation(
 function createDefaultChatbotLlmOrchestrator(): ChatbotLlmTierOrchestrator {
   const clients: ChatbotLlmClient[] = [
     createTier1ChromeNotionAiClient({ preferredModel: tier1ObservedNotionAiModel }),
+    createTier2HostedChromeNotionAiClient(),
     createTier3OllamaDeepSeekClient(),
     createTier4FormFallbackClient(),
   ]
