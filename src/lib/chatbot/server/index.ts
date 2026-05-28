@@ -43,6 +43,11 @@ export type {
   TierAttemptEvent,
 } from "@/lib/chatbot/server/llm-orchestrator"
 export {
+  createLocalChatbotTierAttemptLogger,
+  formatChatbotTierAttemptLogEvent,
+} from "@/lib/chatbot/server/llm-tier-attempt-logger"
+export type { ChatbotTierAttemptLogEvent } from "@/lib/chatbot/server/llm-tier-attempt-logger"
+export {
   createTier1ChromeNotionAiClient,
   tier1ObservedNotionAiModel,
   Tier1ChromeNotionAiClient,

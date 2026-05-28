@@ -81,6 +81,8 @@ async function loadPost({
     linkConversationToUser,
     loadUserChatbotContext,
     formatUserChatbotContextForPrompt,
+    tier1ObservedNotionAiModel: "apricot-sorbet-high",
+    createLocalChatbotTierAttemptLogger: vi.fn(() => undefined),
     createTier1ChromeNotionAiClient: vi.fn(() => ({ tier: "tier-1-chrome-notion-ai" })),
     createTier2OllamaDeepSeekClient: vi.fn(() => ({ tier: "tier-2-ollama-deepseek" })),
     createTier4FormFallbackClient: vi.fn(() => ({ tier: "tier-4-form-fallback" })),

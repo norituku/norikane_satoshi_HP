@@ -220,6 +220,32 @@ describe("createChatbotLlmTierOrchestrator", () => {
     ])
   })
 
+  it("includes client health diagnostics when an unhealthy tier exposes them", async () => {
+    const healthError = llmError("tier-1-chrome-notion-ai", {
+      code: "connection",
+      message: "Chrome CDP discovery endpoint returned an unsuccessful response.",
+    })
+    const events: TierAttemptEvent[] = []
+    const tier1 = {
+      ...fakeClient("tier-1-chrome-notion-ai", { healthy: false }),
+      getLastHealthError: vi.fn(() => healthError),
+    }
+    const tier2 = fakeClient("tier-2-ollama-deepseek")
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier1, tier2],
+      onTierAttempt: (event) => events.push(event),
+    })
+
+    await orchestrator.generate(llmRequest())
+
+    expect(events[0]).toMatchObject({
+      tier: "tier-1-chrome-notion-ai",
+      phase: "health-check",
+      outcome: "unhealthy",
+      error: healthError,
+    })
+  })
+
   it("ignores onTierAttempt errors and keeps fallback behavior", async () => {
     const tier1 = fakeClient("tier-1-chrome-notion-ai", { healthy: false })
     const tier2 = fakeClient("tier-2-ollama-deepseek")
