@@ -30,10 +30,67 @@ export function sanitizeChatbotLlmText(rawText: string): string {
 }
 
 function stripThinkBlocksOutsideCodeFences(rawText: string): string {
-  const withoutClosedBlocks = rawText.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-  const unclosedThinkIndex = withoutClosedBlocks.search(/<think\b[^>]*>/i)
+  const output: string[] = []
+  let outsideFenceBuffer = ""
+  let inCodeFence = false
+  let fenceMarker = ""
+  let fenceLength = 0
 
-  return unclosedThinkIndex === -1 ? withoutClosedBlocks : withoutClosedBlocks.slice(0, unclosedThinkIndex)
+  const flushOutsideFenceBuffer = (): boolean => {
+    const withoutClosedBlocks = outsideFenceBuffer.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    const unclosedThinkIndex = withoutClosedBlocks.search(/<think\b[^>]*>/i)
+
+    output.push(
+      unclosedThinkIndex === -1 ? withoutClosedBlocks : withoutClosedBlocks.slice(0, unclosedThinkIndex),
+    )
+    outsideFenceBuffer = ""
+
+    return unclosedThinkIndex === -1
+  }
+
+  const lines = rawText.match(/[^\n]*(?:\n|$)/g) ?? []
+
+  for (const line of lines) {
+    if (line.length === 0) {
+      continue
+    }
+
+    const openingFence = line.match(/^\s*(`{3,}|~{3,})/)
+    const closingFence =
+      inCodeFence && line.match(new RegExp(`^\\s*\\${fenceMarker}{${fenceLength},}\\s*$`))
+
+    if (!inCodeFence && openingFence) {
+      if (!flushOutsideFenceBuffer()) {
+        break
+      }
+
+      inCodeFence = true
+      fenceMarker = openingFence[1][0]
+      fenceLength = openingFence[1].length
+      output.push(line)
+      continue
+    }
+
+    if (inCodeFence) {
+      output.push(line)
+
+      if (closingFence) {
+        inCodeFence = false
+        fenceMarker = ""
+        fenceLength = 0
+      }
+
+      continue
+    }
+
+    outsideFenceBuffer += line
+  }
+
+  if (outsideFenceBuffer.length > 0) {
+    flushOutsideFenceBuffer()
+  }
+
+  return output.join("")
 }
 
 function stripLeadingThoughtExplanation(text: string): string {

@@ -49,6 +49,14 @@ describe("normalizeChatbotLlmResponse", () => {
     )
   })
 
+  it("keeps think tags inside markdown code fences", () => {
+    expect(
+      sanitizeChatbotLlmText(
+        "共有されたタグ例です。\n\n```html\n<think>タグ例</think>\n```\n\n必要な範囲だけ確認します。",
+      ),
+    ).toBe("共有されたタグ例です。\n\n```html\n<think>タグ例</think>\n```\n\n必要な範囲だけ確認します。")
+  })
+
   it("uses fallback text when the whole response is a think block", () => {
     expect(sanitizeChatbotLlmText("<think>内部推論だけです。</think>")).toBe(fallbackChatbotAssistantContent)
   })
