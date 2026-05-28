@@ -8,6 +8,7 @@ import type {
 import {
   appendMessage,
   createChatbotLlmTierOrchestrator,
+  createLocalChatbotTierAttemptLogger,
   createConversation,
   createTier1ChromeNotionAiClient,
   createTier2OllamaDeepSeekClient,
@@ -22,6 +23,7 @@ import {
   type ChatbotLlmTierOrchestrator,
   type UserChatbotContext,
   normalizeChatbotLlmResponse,
+  tier1ObservedNotionAiModel,
 } from "@/lib/chatbot/server"
 
 type ChatbotMessageUi =
@@ -163,11 +165,14 @@ function shouldIsolateExistingConversation(
 
 function createDefaultChatbotLlmOrchestrator(): ChatbotLlmTierOrchestrator {
   const clients: ChatbotLlmClient[] = [
-    createTier1ChromeNotionAiClient(),
+    createTier1ChromeNotionAiClient({ preferredModel: tier1ObservedNotionAiModel }),
     createTier2OllamaDeepSeekClient(),
     createTier4FormFallbackClient(),
   ]
-  return createChatbotLlmTierOrchestrator({ clients })
+  return createChatbotLlmTierOrchestrator({
+    clients,
+    onTierAttempt: createLocalChatbotTierAttemptLogger(),
+  })
 }
 
 function buildChatbotSystemPrompt(

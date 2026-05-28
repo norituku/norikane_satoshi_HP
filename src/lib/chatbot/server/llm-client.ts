@@ -33,6 +33,7 @@ export interface ChatbotLlmClient {
   readonly tier: ChatbotLlmTier
   generate(request: ChatbotLlmRequest): Promise<ChatbotLlmResponse>
   isHealthy(): Promise<boolean>
+  getLastHealthError?(): ChatbotLlmError | Error | undefined
 }
 
 type ChatbotLlmErrorCode =

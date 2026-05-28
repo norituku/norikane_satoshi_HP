@@ -232,6 +232,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
   private readonly fetchClient: CdpFetchClient
   private readonly sessionFactory: NotionAiCdpSessionFactory
   private readonly idFactory: IdFactory
+  private lastHealthError?: ChatbotLlmError | Error
 
   constructor(options: Tier1ChromeNotionAiClientOptions = {}) {
     this.config = {
@@ -309,6 +310,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
     let session: NotionAiCdpSession | undefined
 
     try {
+      this.lastHealthError = undefined
       const opened = await this.openTargetSession(this.config.healthCheckTimeoutMs)
       session = opened.session
       const runtimeContext = await this.evaluate<NotionAiRuntimeContext>(
@@ -317,15 +319,35 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
         this.config.healthCheckTimeoutMs,
       )
 
-      if (!runtimeContext.spaceId) return false
+      if (!runtimeContext.spaceId) {
+        this.lastHealthError = this.toLlmError({
+          message: "Notion AI runtime context does not expose a space id.",
+          code: "auth",
+          isRetryable: false,
+        })
+        return false
+      }
       if (!this.config.preferredModel) return true
 
-      return modelIsAvailable(this.config.preferredModel, runtimeContext.availableModels)
-    } catch {
+      const modelAvailable = modelIsAvailable(this.config.preferredModel, runtimeContext.availableModels)
+      if (!modelAvailable) {
+        this.lastHealthError = this.toLlmError({
+          message: "Preferred Notion AI model is not available in the current page context.",
+          code: "connection",
+          isRetryable: true,
+        })
+      }
+      return modelAvailable
+    } catch (error) {
+      this.lastHealthError = error instanceof Error ? error : this.mapGenerateError(error)
       return false
     } finally {
       await session?.close()
     }
+  }
+
+  getLastHealthError(): ChatbotLlmError | Error | undefined {
+    return this.lastHealthError
   }
 
   async inspectRuntimeContext(): Promise<NotionAiRuntimeInspection> {

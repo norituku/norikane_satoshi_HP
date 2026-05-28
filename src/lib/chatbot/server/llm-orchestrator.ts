@@ -48,6 +48,7 @@ export function createChatbotLlmTierOrchestrator(
         tier: client.tier,
         phase: "health-check",
         outcome: healthy ? "healthy" : "unhealthy",
+        error: healthy ? undefined : client.getLastHealthError?.(),
         latencyMs: Date.now() - startedAt,
       })
       return healthy
