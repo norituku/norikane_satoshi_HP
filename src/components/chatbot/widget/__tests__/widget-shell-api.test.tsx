@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { WidgetShell } from "@/components/chatbot/widget/WidgetShell"
 import { finalMediumChoices } from "@/lib/chatbot/domain"
@@ -30,10 +30,30 @@ function submitMessage(text = "相談したいです") {
   fireEvent.click(screen.getByRole("button", { name: "送信" }))
 }
 
+function installLocalStorage() {
+  const values = new Map<string, string>()
+  const storage: Storage = {
+    get length() {
+      return values.size
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+  }
+  Object.defineProperty(window, "localStorage", { configurable: true, value: storage })
+}
+
 describe("WidgetShell API wiring", () => {
+  beforeEach(() => {
+    installLocalStorage()
+  })
+
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    window.localStorage.clear()
   })
 
   it("posts submitted chat text to /api/chatbot/message", async () => {
@@ -155,7 +175,7 @@ describe("WidgetShell API wiring", () => {
       email: "client@example.com",
       conversationId: "conv_1",
     })
-    expect(await screen.findByText("送信しました。担当者からの返信をお待ちください。")).toBeInTheDocument()
+    expect(await screen.findByText("送信しました。のりかね本人が確認して返信します。")).toBeInTheDocument()
   })
 
   it("shows a short system message on network error", async () => {
@@ -165,5 +185,86 @@ describe("WidgetShell API wiring", () => {
     submitMessage()
 
     expect(await screen.findByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).toBeInTheDocument()
+  })
+
+  it("shows a visible pending animation while waiting for the assistant response", async () => {
+    let resolveFetch: (value: ReturnType<typeof mockJsonResponse>) => void = () => undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise((resolve) => {
+        resolveFetch = resolve
+      })),
+    )
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("待機表示を確認します")
+
+    expect(await screen.findByRole("status", { name: "応答を作成中" })).toBeInTheDocument()
+    resolveFetch(mockJsonResponse({
+      conversationId: "conv_1",
+      assistantMessage,
+      tier: "tier-2-ollama-deepseek",
+      ui: { kind: "none" },
+    }))
+    await waitFor(() => expect(screen.queryByRole("status", { name: "応答を作成中" })).not.toBeInTheDocument())
+  })
+
+  it("restores messages and conversation id after the shell remounts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_restore",
+        assistantMessage,
+        tier: "tier-2-ollama-deepseek",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const rendered = render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("Web CM の相談です")
+    await screen.findByText("最終媒体を選んでください")
+    rendered.unmount()
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getByText("Web CM の相談です")).toBeInTheDocument()
+    submitMessage("続きです")
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      message: "続きです",
+      conversationId: "conv_restore",
+    })
+  })
+
+  it("renders a review summary before direct contact send and waits for the send button", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage: {
+            ...assistantMessage,
+            content: "のりかね本人が確認します。",
+          },
+          tier: "tier-2-ollama-deepseek",
+          ui: {
+            kind: "direct-contact-card",
+            reason: "pricing",
+            suggestedMessage: "のりかね本人が内容を確認します。",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ ok: true }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("料金確認です")
+
+    expect(await screen.findByLabelText("送信前の整理内容")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    fireEvent.change(screen.getByLabelText("メールアドレス"), { target: { value: "client@example.test" } })
+    fireEvent.click(screen.getByRole("button", { name: "この内容で送信" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   })
 })

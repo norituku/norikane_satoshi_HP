@@ -34,7 +34,7 @@ function validBody(overrides: Record<string, unknown> = {}) {
     jobType: "CM",
     duration: "30秒",
     desiredDeadline: "2026-06-30",
-    freeText: "LLM 障害時の問い合わせです",
+    freeText: "AI応答補助の問い合わせです",
     conversationId: "conv_1",
     ...overrides,
   }
@@ -68,7 +68,7 @@ describe("POST /api/chatbot/submit-inquiry", () => {
         from: "noreply@norikane.studio",
         to: "admin@example.com",
         replyTo: "client@example.com",
-        subject: expect.stringMatching(/^\[LLM 障害時フォーム\]/),
+        subject: expect.stringMatching(/^\[AI応答補助フォーム\]/),
       }),
     )
     expect(mocks.appendMessage).toHaveBeenCalledWith(

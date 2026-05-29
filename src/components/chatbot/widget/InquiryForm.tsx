@@ -16,7 +16,7 @@ type InquiryFormProps = {
 }
 
 /**
- * The "[LLM 障害時フォーム]" subject prefix is intentionally handled by the PR 10 API route.
+ * The "[AI応答補助フォーム]" subject prefix is intentionally handled by the PR 10 API route.
  */
 export function InquiryForm({ onSubmit }: InquiryFormProps) {
   const [input, setInput] = useState<InquiryFormInput>({

@@ -55,4 +55,4 @@ export const chatbotForbiddenTopics = [
 ] as const satisfies readonly ChatbotForbiddenTopic[]
 
 export const directContactPolicyMessage =
-  "のりかねさんに直接確認するので、連絡送りましょうか？メールアドレスもあわせて教えてください。"
+  "のりかね本人が内容を確認します。送信前に整理内容を確認して、必要なら連絡先を添えて送ってください。"

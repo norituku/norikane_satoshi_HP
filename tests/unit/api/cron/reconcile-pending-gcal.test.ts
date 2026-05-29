@@ -64,8 +64,8 @@ async function loadGet() {
 
 describe("GET /api/cron/reconcile-pending-gcal", () => {
   const chatbotCleanup = {
-    cutoffIso: "2026-05-25T00:00:00.000Z",
-    retentionDays: 1,
+    cutoffIso: "2026-05-19T00:00:00.000Z",
+    retentionDays: 7,
     scannedConversationCount: 0,
     deletedConversationCount: 0,
     deletedMessageCount: 0,

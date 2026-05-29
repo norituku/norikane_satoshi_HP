@@ -36,6 +36,9 @@ export function sanitizeChatbotLlmText(
   if (options.routingDecision?.kind === "to-direct-contact") {
     return directContactPolicyMessage
   }
+  if (options.routingDecision?.kind === "to-booking-inline") {
+    return "スケジュール感は把握しました。先に空き状況の候補を出します。細かい収録情報は分かる範囲で後からで大丈夫です。"
+  }
 
   const strippedThoughtBlocks = stripThinkBlocksOutsideCodeFences(rawText)
   const strippedLeadingThought = stripLeadingThoughtExplanation(strippedThoughtBlocks)

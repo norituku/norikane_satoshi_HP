@@ -59,6 +59,22 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
   if (conversationState.outOfScope) return directContact("out-of-scope")
   if (conversationState.turnCount >= complexConversationTurnThreshold) return directContact("complex")
 
+  if (shouldPrioritizeSchedule(jobContext, conversationState)) {
+    return {
+      kind: "to-booking-inline",
+      suggestedSlots: buildOneHourCandidateWindows(jobContext),
+      jobContext: {
+        ...jobContext,
+        workflowEstimate: jobContext.workflowEstimate ?? {
+          stages: [{ stage: "attended", minDays: 0.125, maxDays: 0.125, note: "1時間候補" }],
+          totalMinDays: 0.125,
+          totalMaxDays: 0.125,
+          riskFlags: [],
+        },
+      },
+    }
+  }
+
   if (
     conversationState.hasDesiredSchedule &&
     conversationState.hasFinalMedium &&
@@ -199,4 +215,43 @@ function buildOpenQuestions(conversationState: ConversationState): string[] {
     conversationState.hasReferenceUrls ? undefined : "参考URL未確認",
     conversationState.hasDesiredSchedule ? undefined : "作業・立ち会い日程未確認",
   ].filter((item): item is string => Boolean(item))
+}
+
+function shouldPrioritizeSchedule(
+  jobContext: JobContext,
+  conversationState: ConversationState,
+): boolean {
+  return (
+    conversationState.hasDesiredSchedule &&
+    conversationState.hasJobKind &&
+    (conversationState.hasFinalMedium || jobContext.finalMedium === "web") &&
+    isOneHourCandidateJob(jobContext)
+  )
+}
+
+function isOneHourCandidateJob(jobContext: JobContext): boolean {
+  return (
+    jobContext.finalMedium === "web" ||
+    jobContext.finalMedium === "vertical-sns" ||
+    jobContext.jobKind === "cm-30s" ||
+    jobContext.jobKind === "mv-5m" ||
+    jobContext.projectLengthMinutes !== undefined
+  )
+}
+
+function buildOneHourCandidateWindows(jobContext: JobContext) {
+  const startDate = jobContext.preferredStartDate ?? "2026-06-15"
+  const base = new Date(`${startDate}T10:00:00+09:00`)
+  const offsets = [0, 1, 2]
+
+  return offsets.map((offset) => {
+    const start = new Date(base.getTime() + offset * 24 * 60 * 60 * 1000)
+    const end = new Date(start.getTime() + 60 * 60 * 1000)
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      label: `${start.getMonth() + 1}月${start.getDate()}日 ${String(start.getHours()).padStart(2, "0")}:00`,
+      note: "1時間候補",
+    }
+  })
 }

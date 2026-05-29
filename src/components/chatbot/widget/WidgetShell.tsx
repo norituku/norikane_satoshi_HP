@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Minus, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
@@ -39,16 +39,86 @@ const initialMessage = {
 
 const noUi = { kind: "none" } satisfies WidgetUi
 const networkErrorMessage = "通信に失敗しました。少し時間をおいてもう一度お試しください。"
-const inquirySentMessage = "送信しました。担当者からの返信をお待ちください。"
+const inquirySentMessage = "送信しました。のりかね本人が確認して返信します。"
+const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
+const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+type StoredWidgetSession = {
+  messages: Array<Omit<WidgetMessage, "createdAt"> & { createdAt: string }>
+  conversationId?: string
+  activeUi: WidgetUi
+  lastResponseTier?: ChatbotResponseTier
+  expiresAt: string
+}
+
+function loadStoredWidgetSession(): {
+  messages: WidgetMessage[]
+  conversationId?: string
+  activeUi: WidgetUi
+  lastResponseTier?: ChatbotResponseTier
+} {
+  if (typeof window === "undefined") {
+    return { messages: [initialMessage], activeUi: noUi }
+  }
+
+  try {
+    const raw = window.localStorage.getItem(CHATBOT_SESSION_STORAGE_KEY)
+    if (!raw) return { messages: [initialMessage], activeUi: noUi }
+    const parsed = JSON.parse(raw) as Partial<StoredWidgetSession>
+    if (!parsed.expiresAt || new Date(parsed.expiresAt).getTime() <= Date.now()) {
+      window.localStorage.removeItem(CHATBOT_SESSION_STORAGE_KEY)
+      return { messages: [initialMessage], activeUi: noUi }
+    }
+    const messages = Array.isArray(parsed.messages)
+      ? parsed.messages
+          .filter((message) => message.role && typeof message.content === "string" && message.createdAt)
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+            createdAt: new Date(message.createdAt),
+          }))
+      : []
+
+    return {
+      messages: messages.length > 0 ? messages : [initialMessage],
+      conversationId: parsed.conversationId,
+      activeUi: parsed.activeUi ?? noUi,
+      lastResponseTier: parsed.lastResponseTier,
+    }
+  } catch {
+    window.localStorage.removeItem(CHATBOT_SESSION_STORAGE_KEY)
+    return { messages: [initialMessage], activeUi: noUi }
+  }
+}
 
 export function WidgetShell({ onMinimize }: WidgetShellProps) {
-  const [messages, setMessages] = useState<WidgetMessage[]>([initialMessage])
-  const [conversationId, setConversationId] = useState<string | undefined>()
-  const [activeUi, setActiveUi] = useState<WidgetUi>(noUi)
+  const [storedSession] = useState(loadStoredWidgetSession)
+  const [messages, setMessages] = useState<WidgetMessage[]>(storedSession.messages)
+  const [conversationId, setConversationId] = useState<string | undefined>(storedSession.conversationId)
+  const [activeUi, setActiveUi] = useState<WidgetUi>(storedSession.activeUi)
   const [submitting, setSubmitting] = useState(false)
-  const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>()
+  const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(storedSession.lastResponseTier)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugHostname(window.location.hostname)
+
+  useEffect(() => {
+    try {
+      const stored: StoredWidgetSession = {
+        messages: messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt.toISOString(),
+        })),
+        conversationId,
+        activeUi,
+        lastResponseTier,
+        expiresAt: new Date(Date.now() + CHATBOT_SESSION_TTL_MS).toISOString(),
+      }
+      window.localStorage.setItem(CHATBOT_SESSION_STORAGE_KEY, JSON.stringify(stored))
+    } catch {
+      // localStorage may be unavailable in private or restricted contexts.
+    }
+  }, [activeUi, conversationId, lastResponseTier, messages])
 
   const appendMessage = (message: WidgetMessage) => {
     setMessages((currentMessages) => [...currentMessages, message])
@@ -147,12 +217,31 @@ export function WidgetShell({ onMinimize }: WidgetShellProps) {
               createdAt={message.createdAt}
             />
           ))}
+          {submitting ? <TypingIndicator /> : null}
         </div>
         <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
       </div>
 
       <ChatInput onSubmit={handleSubmit} disabled={submitting} />
     </section>
+  )
+}
+
+function TypingIndicator() {
+  return (
+    <div
+      className="glass-inset mr-auto inline-flex items-center gap-2 px-4 py-3 text-sm text-hp-muted"
+      role="status"
+      aria-live="polite"
+      aria-label="応答を作成中"
+    >
+      <span className="flex gap-1" aria-hidden="true">
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)] [animation-delay:-0.2s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)] [animation-delay:-0.1s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)]" />
+      </span>
+      応答を作成中
+    </div>
   )
 }
 

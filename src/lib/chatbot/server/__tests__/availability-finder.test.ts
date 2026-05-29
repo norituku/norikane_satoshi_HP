@@ -83,7 +83,7 @@ describe("findCandidateWindows", () => {
     expect(windows[0]?.label).toBe("2026-10-06 - 2026-10-06")
   })
 
-  it("uses Free/Busy as soft scoring instead of a hard exclusion", async () => {
+  it("uses existing calendar blocks as soft scoring instead of a hard exclusion", async () => {
     const windows = await findCandidateWindows({
       jobContext: jobContext(),
       workflowEstimate: workflowEstimate(1),

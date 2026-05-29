@@ -121,10 +121,12 @@ describe("chatbot fallback router", () => {
       conversationState: conversationState(),
     })
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       kind: "to-booking-inline",
-      suggestedSlots: [],
-      jobContext: context,
+      suggestedSlots: expect.arrayContaining([
+        expect.objectContaining({ note: "1時間候補" }),
+      ]),
+      jobContext: expect.objectContaining(context),
     })
   })
 

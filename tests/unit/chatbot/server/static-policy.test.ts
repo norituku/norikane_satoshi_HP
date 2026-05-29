@@ -4,7 +4,7 @@ import {
   approvedSourceNotes,
   buildChatbotStaticPolicyPrompt,
   candidateWindowGranularityByJobKind,
-  conversationRetentionHours,
+  conversationRetentionDays,
   maxQuestionsPerAssistantResponse,
 } from "@/lib/chatbot/knowledge"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
@@ -27,12 +27,12 @@ describe("chatbot static policy knowledge", () => {
       "カラーグレーディングの因数分解 ── 「映画っぽく」と言われて、手が止まった日から",
       "フィルムルックについてわかっていること ── 市販のLUTでも届かない「フィルムっぽく」の正体を、自分のネガで追った日から",
     ])
-    expect(buildChatbotStaticPolicyPrompt()).toContain("Notionページを実行時にRAG参照せず")
+    expect(buildChatbotStaticPolicyPrompt()).toContain("Notionページを実行時に追加参照せず")
   })
 
   it("keeps response, schedule granularity, and retention constraints explicit", () => {
     expect(maxQuestionsPerAssistantResponse).toBe(3)
-    expect(conversationRetentionHours).toBe(24)
+    expect(conversationRetentionDays).toBe(7)
     expect(candidateWindowGranularityByJobKind).toMatchObject({
       "cm-30s": "1時間単位",
       "mv-5m": "1時間単位",

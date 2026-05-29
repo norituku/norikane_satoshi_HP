@@ -17,11 +17,12 @@ export {
   buildChatbotStaticPolicyPrompt,
   chatbotPersonaPolicy,
   containsPriceQuote,
-  conversationRetentionHours,
+  conversationRetentionDays,
   enforceAssistantQuestionLimit,
   initialIntakeQuestions,
   maxQuestionsPerAssistantResponse,
   removeForbiddenAssistantSurface,
+  stripInternalAssistantMarkup,
 } from "@/lib/chatbot/knowledge/response-policy"
 export {
   additionalWorkDurationRules,
