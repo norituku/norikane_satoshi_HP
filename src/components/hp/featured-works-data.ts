@@ -3,6 +3,12 @@ export type FeaturedWork = {
   client: string
   youtubeId?: string
   officialUrl: string
+  links: FeaturedWorkLink[]
+}
+
+export type FeaturedWorkLink = {
+  label: string
+  url: string
 }
 
 export const FEATURED_WORKS: FeaturedWork[] = [
@@ -11,24 +17,76 @@ export const FEATURED_WORKS: FeaturedWork[] = [
     client: "NHK100周年記念ドラマ",
     officialUrl:
       "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
+    links: [
+      {
+        label: "ショット集1",
+        url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
+      },
+      {
+        label: "ショット集2",
+        url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pXy8Aa9ab2/",
+      },
+      {
+        label: "ショット集3",
+        url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pZKwLbXAbZ/",
+      },
+      {
+        label: "作品HP",
+        url: "https://www.nhk.jp/g/ts/54KJPL1QGM/",
+      },
+      {
+        label: "YouTube",
+        url: "https://www.youtube.com/watch?v=IQb3beIbE1I",
+      },
+    ],
   },
   {
     title: "十角館の殺人 / 時計館の殺人",
     client: "hulu",
     youtubeId: "-2kSMEiw0wA",
     officialUrl: "https://www.hulu.jp/static/tokeikannosatsujin/",
+    links: [
+      {
+        label: "公式HP",
+        url: "https://www.hulu.jp/static/tokeikannosatsujin/",
+      },
+      {
+        label: "YouTube",
+        url: "https://www.youtube.com/watch?v=-2kSMEiw0wA",
+      },
+    ],
   },
   {
     title: "福山雅治ライブフィルム「言霊の幸わう夏」「月光」",
     client: "松竹配給",
     youtubeId: "aiPpSEcNLTk",
     officialUrl: "https://www.fukuyamamasaharu-livefilm.com/gekko/",
+    links: [
+      {
+        label: "公式HP",
+        url: "https://www.fukuyamamasaharu-livefilm.com/gekko/",
+      },
+      {
+        label: "YouTube",
+        url: "https://www.youtube.com/watch?v=aiPpSEcNLTk",
+      },
+    ],
   },
   {
     title: "ゲキ×シネシリーズ",
     client: "ヴィレッヂ",
     youtubeId: "GiqkQel2CeU",
     officialUrl: "https://www.geki-cine.jp/",
+    links: [
+      {
+        label: "公式HP",
+        url: "https://www.geki-cine.jp/",
+      },
+      {
+        label: "YouTube",
+        url: "https://www.youtube.com/watch?v=GiqkQel2CeU",
+      },
+    ],
   },
 ]
 

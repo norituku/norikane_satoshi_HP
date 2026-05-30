@@ -13,21 +13,73 @@ describe("featured works data", () => {
         title: "火星の女王",
         officialUrl:
           "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
+        links: [
+          {
+            label: "ショット集1",
+            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
+          },
+          {
+            label: "ショット集2",
+            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pXy8Aa9ab2/",
+          },
+          {
+            label: "ショット集3",
+            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pZKwLbXAbZ/",
+          },
+          {
+            label: "作品HP",
+            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/",
+          },
+          {
+            label: "YouTube",
+            url: "https://www.youtube.com/watch?v=IQb3beIbE1I",
+          },
+        ],
       }),
       expect.objectContaining({
         title: "十角館の殺人 / 時計館の殺人",
         youtubeId: "-2kSMEiw0wA",
         officialUrl: "https://www.hulu.jp/static/tokeikannosatsujin/",
+        links: [
+          {
+            label: "公式HP",
+            url: "https://www.hulu.jp/static/tokeikannosatsujin/",
+          },
+          {
+            label: "YouTube",
+            url: "https://www.youtube.com/watch?v=-2kSMEiw0wA",
+          },
+        ],
       }),
       expect.objectContaining({
         title: "福山雅治ライブフィルム「言霊の幸わう夏」「月光」",
         youtubeId: "aiPpSEcNLTk",
         officialUrl: "https://www.fukuyamamasaharu-livefilm.com/gekko/",
+        links: [
+          {
+            label: "公式HP",
+            url: "https://www.fukuyamamasaharu-livefilm.com/gekko/",
+          },
+          {
+            label: "YouTube",
+            url: "https://www.youtube.com/watch?v=aiPpSEcNLTk",
+          },
+        ],
       }),
       expect.objectContaining({
         title: "ゲキ×シネシリーズ",
         youtubeId: "GiqkQel2CeU",
         officialUrl: "https://www.geki-cine.jp/",
+        links: [
+          {
+            label: "公式HP",
+            url: "https://www.geki-cine.jp/",
+          },
+          {
+            label: "YouTube",
+            url: "https://www.youtube.com/watch?v=GiqkQel2CeU",
+          },
+        ],
       }),
     ])
     expect(FEATURED_WORKS[0]).not.toHaveProperty("youtubeId")

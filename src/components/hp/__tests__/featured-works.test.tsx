@@ -26,19 +26,27 @@ describe("FeaturedWorks", () => {
     vi.restoreAllMocks()
   })
 
-  it("links each official work card to its official page", () => {
+  it("renders non-navigating work cards with only badge links", () => {
     render(<FeaturedWorks />)
 
     for (const work of FEATURED_WORKS) {
-      expect(
-        screen.getByRole("link", {
-          name: `${work.title} 公式ページを新しいタブで開く`,
-        }),
-      ).toHaveAttribute("href", work.officialUrl)
+      const card = screen.getByLabelText(`${work.title} 代表作品カード`)
+      expect(card).toBeInTheDocument()
+      expect(card.tagName).toBe("DIV")
+      expect(card).not.toHaveAttribute("href")
+
+      for (const link of work.links) {
+        const badge = screen.getByRole("link", {
+          name: `${work.title} ${link.label}を新しいタブで開く`,
+        })
+        expect(badge).toHaveAttribute("href", link.url)
+        expect(badge).toHaveAttribute("target", "_blank")
+        expect(badge).toHaveAttribute("rel", "noopener noreferrer")
+      }
     }
   })
 
-  it("renders the live reel card without a link", () => {
+  it("renders the live reel card without badge links", () => {
     render(<FeaturedWorks />)
 
     expect(screen.getByLabelText("ライブ映像作品多数のランダムループ再生カード")).toBeInTheDocument()
@@ -75,8 +83,11 @@ describe("FeaturedWorks", () => {
     expect(scaledMedia).toHaveLength(0)
     expect(thumbnailCovers).toHaveLength(embeddedWorkCount + 1)
     expect(neutralPlaceholders).toHaveLength(1)
-    expect(container.innerHTML).not.toContain("IQb3beIbE1I")
     expect(container.innerHTML).not.toContain("i.ytimg.com/vi/IQb3beIbE1I")
+
+    const marsCard = screen.getByLabelText("火星の女王 代表作品カード")
+    expect(marsCard.querySelector('[data-featured-work-preview-media]')).toBeNull()
+    expect(marsCard.querySelector("img")).toBeNull()
 
     for (const frame of previewFrames) {
       expect(frame).toHaveClass("aspect-video")

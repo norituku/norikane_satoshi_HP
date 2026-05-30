@@ -11,6 +11,7 @@ import {
   shuffleVideoIds,
   type ClipWindow,
   type FeaturedWork,
+  type FeaturedWorkLink,
 } from "@/components/hp/featured-works-data"
 
 type YouTubePlayerStateChangeEvent = {
@@ -166,14 +167,37 @@ function PreviewThumbnail({
 function NeutralWorkPreview({ title, client }: { title: string; client: string }) {
   return (
     <div
-      className="absolute inset-0 z-20 flex h-full w-full flex-col justify-end rounded-[11px] bg-[radial-gradient(circle_at_18%_18%,rgba(139,127,255,0.28),transparent_34%),radial-gradient(circle_at_82%_22%,rgba(121,199,199,0.25),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.62),rgba(255,255,255,0.28))] p-4"
+      className="absolute inset-0 z-20 flex h-full w-full flex-col justify-start rounded-[11px] bg-[radial-gradient(circle_at_18%_18%,rgba(139,127,255,0.28),transparent_34%),radial-gradient(circle_at_82%_22%,rgba(121,199,199,0.25),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.62),rgba(255,255,255,0.28))] p-3 pb-20"
       data-featured-work-neutral-placeholder="visible"
     >
-      <span className="w-fit rounded-full border border-white/60 bg-white/45 px-3 py-1 text-[0.68rem] font-semibold text-hp">
-        公式ページ
-      </span>
-      <span className="mt-3 text-sm font-semibold leading-snug text-hp">{title}</span>
-      <span className="mt-1 text-xs text-hp-muted">{client}</span>
+      <span className="text-xs font-semibold leading-snug text-hp">{title}</span>
+      <span className="mt-1 text-[0.68rem] leading-tight text-hp-muted">{client}</span>
+    </div>
+  )
+}
+
+function WorkLinkBadges({
+  links,
+  workTitle,
+}: {
+  links: FeaturedWorkLink[]
+  workTitle: string
+}) {
+  return (
+    <div className="absolute inset-x-2 bottom-2 z-30 flex flex-wrap gap-1.5">
+      {links.map((link) => (
+        <a
+          key={`${link.label}:${link.url}`}
+          href={link.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="glass-badge px-2.5 py-1 text-[0.64rem] leading-none transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)]"
+          aria-label={`${workTitle} ${link.label}を新しいタブで開く`}
+          data-featured-work-link-badge={link.label}
+        >
+          {link.label}
+        </a>
+      ))}
     </div>
   )
 }
@@ -310,17 +334,15 @@ function FeaturedWorkCard({
   work: FeaturedWork
   prefersReducedMotion: boolean
 }) {
-  const [cardRef, isInViewport] = useInViewport<HTMLAnchorElement>()
+  const [cardRef, isInViewport] = useInViewport<HTMLDivElement>()
 
   return (
-    <a
+    <div
       ref={cardRef}
-      href={work.officialUrl}
-      target="_blank"
-      rel="noopener noreferrer"
       className="group flex shrink-0 snap-start flex-col glass-card-sm p-4 transition-transform hover:-translate-y-0.5 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
-      aria-label={`${work.title} 公式ページを新しいタブで開く`}
+      aria-label={`${work.title} 代表作品カード`}
+      data-featured-work-card={work.title}
     >
       <PreviewFrame>
         {work.youtubeId ? (
@@ -333,12 +355,13 @@ function FeaturedWorkCard({
         ) : (
           <NeutralWorkPreview title={work.title} client={work.client} />
         )}
+        <WorkLinkBadges links={work.links} workTitle={work.title} />
       </PreviewFrame>
       <p className="mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
         {work.title}
       </p>
       <p className="mt-auto pt-3 text-xs text-hp-muted md:text-sm">{work.client}</p>
-    </a>
+    </div>
   )
 }
 
@@ -416,9 +439,10 @@ function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean 
       const player = event.target
       const existingClip = clipRef.current
       const duration = player.getDuration()
+      const playableDuration = Number.isFinite(duration) ? Math.max(duration, 30) : 30
       const clip =
         existingClip ??
-        calculateClipWindow(Number.isFinite(duration) ? duration : 30, Math.random, 30)
+        calculateClipWindow(playableDuration, Math.random, 30)
       clipRef.current = clip
 
       if (!existingClip && clip.startSeconds > 0) {
