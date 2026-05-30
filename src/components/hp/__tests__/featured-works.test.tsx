@@ -8,6 +8,13 @@ import { FeaturedWorks } from "@/components/hp/featured-works"
 
 describe("FeaturedWorks", () => {
   const embeddedWorkCount = FEATURED_WORKS.filter((work) => work.youtubeId).length
+  const getPrimarySegment = (container: HTMLElement) => {
+    const segment = container.querySelector(
+      '[data-featured-work-marquee-segment="primary"]',
+    )
+    expect(segment).toBeInTheDocument()
+    return segment as HTMLElement
+  }
 
   beforeEach(() => {
     Object.defineProperty(window, "matchMedia", {
@@ -30,7 +37,7 @@ describe("FeaturedWorks", () => {
     render(<FeaturedWorks />)
 
     for (const work of FEATURED_WORKS) {
-      const card = screen.getByLabelText(`${work.title} 代表作品カード`)
+      const card = screen.getByLabelText(`${work.title} 作品カード`)
       expect(card).toBeInTheDocument()
       expect(card.tagName).toBe("DIV")
       expect(card).not.toHaveAttribute("href")
@@ -44,6 +51,65 @@ describe("FeaturedWorks", () => {
         expect(badge).toHaveAttribute("rel", "noopener noreferrer")
       }
     }
+  })
+
+  it("uses only the Featured Works label and renders a seamless marquee shell", () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    })
+
+    const { container } = render(<FeaturedWorks />)
+
+    expect(screen.getByText("Featured Works")).toBeInTheDocument()
+    expect(screen.queryByText("代表作品")).not.toBeInTheDocument()
+    expect(container.innerHTML).not.toContain(">代表作品<")
+
+    const viewport = container.querySelector(
+      '[data-featured-work-marquee-viewport="true"]',
+    )
+    const track = container.querySelector(
+      '[data-featured-work-marquee-track="continuous"]',
+    )
+    const primary = getPrimarySegment(container)
+    const clone = container.querySelector(
+      '[data-featured-work-marquee-segment="clone"]',
+    )
+
+    expect(viewport).toHaveClass("overflow-hidden")
+    expect(track).toHaveClass("w-max")
+    expect(track).toHaveClass("will-change-transform")
+    expect(track?.textContent).toContain("火星の女王")
+    expect(primary.querySelectorAll("[data-featured-work-card]")).toHaveLength(
+      FEATURED_WORKS.length,
+    )
+    expect(clone).toHaveAttribute("aria-hidden", "true")
+    expect(clone?.querySelectorAll("[data-featured-work-card]")).toHaveLength(
+      FEATURED_WORKS.length,
+    )
+    expect(container.querySelector("style")?.textContent).toContain(
+      "featured-works-marquee 72s linear infinite",
+    )
+    expect(container.querySelector("style")?.textContent).toContain(
+      "prefers-reduced-motion: reduce",
+    )
+  })
+
+  it("does not render the clone track when reduced motion is requested", () => {
+    const { container } = render(<FeaturedWorks />)
+
+    expect(screen.getByText("Featured Works")).toBeInTheDocument()
+    expect(
+      container.querySelector('[data-featured-work-marquee-segment="primary"]'),
+    ).toBeInTheDocument()
+    expect(
+      container.querySelector('[data-featured-work-marquee-segment="clone"]'),
+    ).not.toBeInTheDocument()
   })
 
   it("renders the live reel card without badge links", () => {
@@ -66,19 +132,20 @@ describe("FeaturedWorks", () => {
 
     const { container } = render(<FeaturedWorks />)
 
-    const previewFrames = container.querySelectorAll(".aspect-video")
-    const cropFrames = container.querySelectorAll("[data-featured-work-preview-crop]")
-    const scaledMedia = container.querySelectorAll(
+    const primary = getPrimarySegment(container)
+    const previewFrames = primary.querySelectorAll(".aspect-video")
+    const cropFrames = primary.querySelectorAll("[data-featured-work-preview-crop]")
+    const scaledMedia = primary.querySelectorAll(
       '[data-featured-work-preview-media="youtube-scale"]',
     )
-    const thumbnailCovers = container.querySelectorAll(
+    const thumbnailCovers = primary.querySelectorAll(
       '[data-featured-work-preview-thumbnail="visible"]',
     )
-    const mediaCovers = container.querySelectorAll("[data-featured-work-preview-media]")
-    const abstractCovers = container.querySelectorAll(
+    const mediaCovers = primary.querySelectorAll("[data-featured-work-preview-media]")
+    const abstractCovers = primary.querySelectorAll(
       '[data-featured-work-abstract-cover="true"]',
     )
-    const neutralPlaceholders = container.querySelectorAll(
+    const neutralPlaceholders = primary.querySelectorAll(
       "[data-featured-work-neutral-placeholder]",
     )
 
@@ -91,7 +158,7 @@ describe("FeaturedWorks", () => {
     expect(neutralPlaceholders).toHaveLength(0)
     expect(container.innerHTML).not.toContain("i.ytimg.com/vi/IQb3beIbE1I")
 
-    const marsCard = screen.getByLabelText("火星の女王 代表作品カード")
+    const marsCard = screen.getByLabelText("火星の女王 作品カード")
     const marsFrame = marsCard.querySelector('[data-featured-work-abstract-cover="true"]')
     expect(marsFrame).toHaveClass("aspect-video")
     expect(marsCard.querySelector('[data-featured-work-preview-media]')).toBeNull()
@@ -119,7 +186,7 @@ describe("FeaturedWorks", () => {
     }
 
     for (const work of FEATURED_WORKS) {
-      expect(screen.getByLabelText(`${work.title} 代表作品カード`)).toHaveClass(
+      expect(screen.getByLabelText(`${work.title} 作品カード`)).toHaveClass(
         "overflow-hidden",
       )
     }
@@ -132,7 +199,7 @@ describe("FeaturedWorks", () => {
     const { container } = render(<FeaturedWorks />)
 
     for (const work of FEATURED_WORKS.filter((item) => item.youtubeId)) {
-      const card = screen.getByLabelText(`${work.title} 代表作品カード`)
+      const card = screen.getByLabelText(`${work.title} 作品カード`)
       const badges = card.querySelector('[data-featured-work-link-badges="inline"]')
       expect(badges).toBeInTheDocument()
       expect(badges).toHaveClass("flex")
@@ -158,7 +225,8 @@ describe("FeaturedWorks", () => {
       expect(metaRow).toHaveClass("flex")
     }
 
-    const badgeGroups = container.querySelectorAll("[data-featured-work-link-badges]")
+    const primary = getPrimarySegment(container)
+    const badgeGroups = primary.querySelectorAll("[data-featured-work-link-badges]")
     expect(badgeGroups).toHaveLength(FEATURED_WORKS.length)
     expect(
       screen
@@ -172,7 +240,7 @@ describe("FeaturedWorks", () => {
     const mars = FEATURED_WORKS.find((work) => work.title === "火星の女王")
     expect(mars).toBeDefined()
 
-    const card = screen.getByLabelText("火星の女王 代表作品カード")
+    const card = screen.getByLabelText("火星の女王 作品カード")
     const abstractCover = card.querySelector(
       '[data-featured-work-abstract-cover="true"]',
     )
@@ -216,7 +284,9 @@ describe("FeaturedWorks", () => {
     }
 
     expect(
-      container.querySelectorAll('[data-featured-work-abstract-cover="true"]'),
+      getPrimarySegment(container).querySelectorAll(
+        '[data-featured-work-abstract-cover="true"]',
+      ),
     ).toHaveLength(1)
   })
 
@@ -233,7 +303,7 @@ describe("FeaturedWorks", () => {
 
     render(<FeaturedWorks />)
 
-    const card = screen.getByLabelText("リラックマと遊園地 代表作品カード")
+    const card = screen.getByLabelText("リラックマと遊園地 作品カード")
     const title = Array.from(card.querySelectorAll("p")).find(
       (element) => element.textContent === "リラックマと遊園地",
     )
@@ -291,10 +361,11 @@ describe("FeaturedWorks", () => {
 
     const { container } = render(<FeaturedWorks />)
 
-    const preparingMedia = container.querySelectorAll(
+    const primary = getPrimarySegment(container)
+    const preparingMedia = primary.querySelectorAll(
       '[data-featured-work-preview-media="preparing"]',
     )
-    const thumbnailCovers = container.querySelectorAll(
+    const thumbnailCovers = primary.querySelectorAll(
       '[data-featured-work-preview-thumbnail="visible"]',
     )
 

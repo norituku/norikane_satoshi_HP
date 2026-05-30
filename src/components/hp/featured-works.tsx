@@ -108,9 +108,9 @@ function usePrefersReducedMotion() {
   return prefersReducedMotion
 }
 
-function useInViewport<T extends HTMLElement>() {
+function useHasEnteredViewport<T extends HTMLElement>() {
   const ref = useRef<T | null>(null)
-  const [isInViewport, setIsInViewport] = useState(
+  const [hasEnteredViewport, setHasEnteredViewport] = useState(
     () => typeof window !== "undefined" && !("IntersectionObserver" in window),
   )
 
@@ -125,14 +125,19 @@ function useInViewport<T extends HTMLElement>() {
     }
 
     const observer = new IntersectionObserver(
-      ([entry]) => setIsInViewport(entry.isIntersecting),
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasEnteredViewport(true)
+          observer.disconnect()
+        }
+      },
       { rootMargin: "160px 0px", threshold: 0.18 },
     )
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
 
-  return [ref, isInViewport] as const
+  return [ref, hasEnteredViewport] as const
 }
 
 function PreviewFrame({
@@ -176,9 +181,11 @@ function PreviewThumbnail({
 function WorkLinkBadges({
   links,
   workTitle,
+  clone = false,
 }: {
   links: FeaturedWorkLink[]
   workTitle: string
+  clone?: boolean
 }) {
   return (
     <div
@@ -191,8 +198,9 @@ function WorkLinkBadges({
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"
+          tabIndex={clone ? -1 : undefined}
           className="glass-badge px-2.5 py-1 text-[0.64rem] leading-none transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)]"
-          aria-label={`${workTitle} ${link.label}を新しいタブで開く`}
+          aria-label={clone ? undefined : `${workTitle} ${link.label}を新しいタブで開く`}
           data-featured-work-link-badge={link.label}
         >
           {link.label}
@@ -329,19 +337,20 @@ function VideoSurface({
 
 function FeaturedWorkCard({
   work,
+  shouldStartVideo,
   prefersReducedMotion,
+  clone = false,
 }: {
   work: FeaturedWork
+  shouldStartVideo: boolean
   prefersReducedMotion: boolean
+  clone?: boolean
 }) {
-  const [cardRef, isInViewport] = useInViewport<HTMLDivElement>()
-
   return (
     <div
-      ref={cardRef}
-      className="group flex shrink-0 snap-start flex-col overflow-hidden glass-card-sm p-4 transition-transform hover:-translate-y-0.5 md:p-5"
+      className="group flex shrink-0 flex-col overflow-hidden glass-card-sm p-4 transition-transform hover:-translate-y-0.5 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
-      aria-label={`${work.title} 代表作品カード`}
+      aria-label={clone ? undefined : `${work.title} 作品カード`}
       data-featured-work-card={work.title}
     >
       {work.youtubeId ? (
@@ -349,7 +358,7 @@ function FeaturedWorkCard({
           <VideoSurface
             videoId={work.youtubeId}
             title={work.title}
-            isActive={isInViewport}
+            isActive={shouldStartVideo}
             prefersReducedMotion={prefersReducedMotion}
           />
         </PreviewFrame>
@@ -358,7 +367,7 @@ function FeaturedWorkCard({
           <div className="absolute inset-0 bg-[radial-gradient(130%_130%_at_18%_12%,#C9BCFF_0%,var(--accent-primary)_48%,#3B2A9E_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(90%_90%_at_86%_84%,rgba(121,199,199,0.42)_0%,rgba(255,255,255,0)_62%)]" />
           <div className="absolute inset-0 z-10 flex flex-wrap content-end items-end justify-end gap-1.5 p-3 md:p-4">
-            <WorkLinkBadges links={work.links} workTitle={work.title} />
+            <WorkLinkBadges links={work.links} workTitle={work.title} clone={clone} />
           </div>
         </PreviewFrame>
       )}
@@ -368,15 +377,22 @@ function FeaturedWorkCard({
       <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-3">
         <p className="text-xs text-hp-muted md:text-sm">{work.client}</p>
         {work.youtubeId ? (
-          <WorkLinkBadges links={work.links} workTitle={work.title} />
+          <WorkLinkBadges links={work.links} workTitle={work.title} clone={clone} />
         ) : null}
       </div>
     </div>
   )
 }
 
-function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean }) {
-  const [cardRef, isInViewport] = useInViewport<HTMLDivElement>()
+function LiveReelCard({
+  shouldStartVideo,
+  prefersReducedMotion,
+  clone = false,
+}: {
+  shouldStartVideo: boolean
+  prefersReducedMotion: boolean
+  clone?: boolean
+}) {
   const playerHostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<YouTubePlayer | null>(null)
   const queueRef = useRef<string[]>([])
@@ -401,7 +417,7 @@ function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean 
       }
     }
 
-    if (!isInViewport || prefersReducedMotion) {
+    if (!shouldStartVideo || prefersReducedMotion) {
       clearNextTimer()
       clearCoverTimer()
       window.setTimeout(() => setIsCoverVisible(true), 0)
@@ -504,7 +520,7 @@ function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean 
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [isInViewport, prefersReducedMotion])
+  }, [shouldStartVideo, prefersReducedMotion])
 
   useEffect(() => {
     return () => {
@@ -520,13 +536,12 @@ function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean 
 
   return (
     <div
-      ref={cardRef}
-      className="flex shrink-0 snap-start flex-col overflow-hidden glass-card-sm p-4 md:p-5"
+      className="flex shrink-0 flex-col overflow-hidden glass-card-sm p-4 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
-      aria-label="ライブ映像作品多数のランダムループ再生カード"
+      aria-label={clone ? undefined : "ライブ映像作品多数のランダムループ再生カード"}
     >
       <PreviewFrame>
-        {isInViewport && !prefersReducedMotion ? (
+        {shouldStartVideo && !prefersReducedMotion ? (
           <div
             className={`pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
               isCoverVisible ? "opacity-0" : "opacity-100"
@@ -550,24 +565,83 @@ function LiveReelCard({ prefersReducedMotion }: { prefersReducedMotion: boolean 
 
 export function FeaturedWorks() {
   const prefersReducedMotion = usePrefersReducedMotion()
+  const [marqueeRef, hasEnteredViewport] = useHasEnteredViewport<HTMLDivElement>()
+  const shouldRenderCloneTrack = !prefersReducedMotion
+
+  const renderCards = (clone = false) => (
+    <>
+      {FEATURED_WORKS.map((work) => (
+        <FeaturedWorkCard
+          key={`${clone ? "clone" : "primary"}-${work.youtubeId ?? work.officialUrl}`}
+          work={work}
+          shouldStartVideo={hasEnteredViewport}
+          prefersReducedMotion={prefersReducedMotion}
+          clone={clone}
+        />
+      ))}
+      <LiveReelCard
+        shouldStartVideo={hasEnteredViewport}
+        prefersReducedMotion={prefersReducedMotion}
+        clone={clone}
+      />
+    </>
+  )
 
   return (
     <div className="mt-10 md:mt-12">
+      <style>{`
+        @keyframes featured-works-marquee {
+          from {
+            transform: translate3d(0, 0, 0);
+          }
+          to {
+            transform: translate3d(-50%, 0, 0);
+          }
+        }
+
+        [data-featured-work-marquee-track="continuous"] {
+          animation: featured-works-marquee 72s linear infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          [data-featured-work-marquee-viewport="true"] {
+            overflow-x: auto;
+          }
+
+          [data-featured-work-marquee-track="continuous"] {
+            animation: none;
+            transform: none;
+          }
+        }
+      `}</style>
       <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
         Featured Works
       </p>
-      <h3 className="mt-2 text-base font-semibold text-hp md:text-lg">代表作品</h3>
 
-      <div className="mt-6 -mx-8 overflow-x-auto md:-mx-10 xl:-mx-12">
-        <div className="flex snap-x snap-mandatory gap-4 px-8 pb-4 md:gap-5 md:px-10 xl:px-12">
-          {FEATURED_WORKS.map((work) => (
-            <FeaturedWorkCard
-              key={work.youtubeId ?? work.officialUrl}
-              work={work}
-              prefersReducedMotion={prefersReducedMotion}
-            />
-          ))}
-          <LiveReelCard prefersReducedMotion={prefersReducedMotion} />
+      <div
+        ref={marqueeRef}
+        className="mt-6 -mx-8 overflow-hidden md:-mx-10 xl:-mx-12"
+        data-featured-work-marquee-viewport="true"
+      >
+        <div
+          className="flex w-max will-change-transform [animation-play-state:running] hover:[animation-play-state:paused] focus-within:[animation-play-state:paused]"
+          data-featured-work-marquee-track="continuous"
+        >
+          <div
+            className="flex shrink-0 gap-4 px-8 pb-4 md:gap-5 md:px-10 xl:px-12"
+            data-featured-work-marquee-segment="primary"
+          >
+            {renderCards()}
+          </div>
+          {shouldRenderCloneTrack ? (
+            <div
+              className="flex shrink-0 gap-4 px-8 pb-4 md:gap-5 md:px-10 xl:px-12"
+              aria-hidden="true"
+              data-featured-work-marquee-segment="clone"
+            >
+              {renderCards(true)}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
