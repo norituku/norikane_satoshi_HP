@@ -90,7 +90,7 @@ function setup(overrides: {
   }
   const generate = vi.fn().mockResolvedValue({
     rawText: "返信です",
-    tier: "tier-2-ollama-deepseek",
+    tier: "tier-3-ollama-deepseek",
     proposedRoutingDecision: { kind: "continue", nextQuestion: "次の質問" },
   })
   const userContextLoader = vi.fn().mockResolvedValue(userContext())
@@ -160,7 +160,7 @@ describe("handleChatbotMessage user context", () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({
       rawText: "<think>内部推論です。</think>\n\n最終媒体と尺を教えてください。",
-      tier: "tier-2-ollama-deepseek",
+      tier: "tier-3-ollama-deepseek",
       proposedRoutingDecision: { kind: "continue", nextQuestion: "次の質問" },
     })
 
