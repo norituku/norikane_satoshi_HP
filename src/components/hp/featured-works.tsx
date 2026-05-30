@@ -167,20 +167,14 @@ function PreviewThumbnail({
 function WorkLinkBadges({
   links,
   workTitle,
-  placement = "overlay",
 }: {
   links: FeaturedWorkLink[]
   workTitle: string
-  placement?: "overlay" | "inline"
 }) {
   return (
     <div
-      className={
-        placement === "overlay"
-          ? "absolute bottom-2 right-2 z-30 flex max-w-[calc(100%-1rem)] flex-wrap justify-end gap-1.5"
-          : "mt-4 flex flex-wrap gap-1.5"
-      }
-      data-featured-work-link-badges={placement}
+      className="mt-3 flex flex-wrap gap-1.5"
+      data-featured-work-link-badges="inline"
     >
       {links.map((link) => (
         <a
@@ -349,20 +343,13 @@ function FeaturedWorkCard({
             isActive={isInViewport}
             prefersReducedMotion={prefersReducedMotion}
           />
-          <WorkLinkBadges links={work.links} workTitle={work.title} />
         </PreviewFrame>
       ) : null}
       <p className="mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
         {work.title}
       </p>
+      <WorkLinkBadges links={work.links} workTitle={work.title} />
       <p className="mt-auto pt-3 text-xs text-hp-muted md:text-sm">{work.client}</p>
-      {!work.youtubeId ? (
-        <WorkLinkBadges
-          links={work.links}
-          workTitle={work.title}
-          placement="inline"
-        />
-      ) : null}
     </div>
   )
 }

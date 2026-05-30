@@ -95,30 +95,33 @@ describe("FeaturedWorks", () => {
     }
   })
 
-  it("pins video work badges to the preview frame bottom right", () => {
+  it("places every featured work badge group inline below the title", () => {
     const { container } = render(<FeaturedWorks />)
 
-    const marsCard = screen.getByLabelText("火星の女王 代表作品カード")
-    const marsBadges = marsCard.querySelector('[data-featured-work-link-badges="inline"]')
-    expect(marsBadges).toBeInTheDocument()
-    expect(marsBadges).toHaveClass("mt-4")
-    expect(marsBadges).not.toHaveClass("absolute")
-
-    const videoWorks = FEATURED_WORKS.filter((work) => work.youtubeId)
-    for (const work of videoWorks) {
+    for (const work of FEATURED_WORKS) {
       const card = screen.getByLabelText(`${work.title} 代表作品カード`)
-      const badges = card.querySelector('[data-featured-work-link-badges="overlay"]')
+      const badges = card.querySelector('[data-featured-work-link-badges="inline"]')
       expect(badges).toBeInTheDocument()
-      expect(badges).toHaveClass("absolute")
-      expect(badges).toHaveClass("bottom-2")
-      expect(badges).toHaveClass("right-2")
-      expect(badges).toHaveClass("justify-end")
-      expect(badges).toHaveClass("z-30")
-      expect(badges).not.toHaveClass("inset-x-2")
+      expect(badges).toHaveClass("mt-3")
+      expect(badges).not.toHaveClass("absolute")
+      expect(badges).not.toHaveClass("bottom-2")
+      expect(badges).not.toHaveClass("right-2")
+      expect(badges).not.toHaveClass("justify-end")
+      expect(badges).not.toHaveClass("z-30")
+
+      const title = screen.getByText(work.title)
+      const client = screen.getByText(work.client)
+      expect(title.nextElementSibling).toBe(badges)
+      expect(badges?.nextElementSibling).toBe(client)
     }
 
     const badgeGroups = container.querySelectorAll("[data-featured-work-link-badges]")
     expect(badgeGroups).toHaveLength(FEATURED_WORKS.length)
+    expect(
+      screen
+        .getByLabelText("ライブ映像作品多数のランダムループ再生カード")
+        .querySelector("[data-featured-work-link-badges]"),
+    ).toBeNull()
   })
 
   it("prepares YouTube API players behind thumbnail covers", () => {
