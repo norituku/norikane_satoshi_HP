@@ -55,7 +55,7 @@ declare global {
 
 let youtubeApiPromise: Promise<void> | null = null
 const CINEMASCOPE_ASPECT_RATIO = "2.39 / 1"
-const YOUTUBE_CHROME_CROP_SCALE = 2.2
+const YOUTUBE_CHROME_CROP_SCALE = 2.8
 const YOUTUBE_NATIVE_WIDTH_IN_CINEMASCOPE_FRAME = "calc(100% * 16 / 9 / 2.39)"
 
 function loadYouTubeIframeApi() {

@@ -75,7 +75,7 @@ describe("FeaturedWorks", () => {
     for (const media of scaledMedia) {
       expect((media as HTMLElement).style.aspectRatio).toBe("16 / 9")
       expect((media as HTMLElement).style.transform).toBe(
-        "translate(-50%, -50%) scale(2.2)",
+        "translate(-50%, -50%) scale(2.8)",
       )
     }
   })
