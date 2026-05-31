@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
-
-export PATH="/opt/homebrew/bin:/usr/bin:/bin"
-
-PNPM="$(command -v pnpm)"
+: "${HOME:=$(eval echo "~$(id -un)")}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+PNPM="$(command -v pnpm || true)"
+if [ -z "$PNPM" ]; then
+  echo "pnpm not found under PATH=$PATH" >&2
+  exit 1
+fi
 exec "$PNPM" run chatbot:tier1:ensure-chrome
