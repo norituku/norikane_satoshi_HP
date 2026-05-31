@@ -173,8 +173,21 @@ function createDefaultChatbotLlmOrchestrator(): ChatbotLlmTierOrchestrator {
   ]
   return createChatbotLlmTierOrchestrator({
     clients,
+    healthCheckTimeoutMs: getLlmHealthCheckTimeoutMs(),
     onTierAttempt: createLocalChatbotTierAttemptLogger(),
   })
+}
+
+function getLlmHealthCheckTimeoutMs(
+  env: { CHATBOT_LLM_HEALTH_CHECK_TIMEOUT_MS?: string } = process.env as {
+    CHATBOT_LLM_HEALTH_CHECK_TIMEOUT_MS?: string
+  },
+): number | undefined {
+  const value = env.CHATBOT_LLM_HEALTH_CHECK_TIMEOUT_MS?.trim()
+  if (!value) return undefined
+
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
 function buildChatbotSystemPrompt(

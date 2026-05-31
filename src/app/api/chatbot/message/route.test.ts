@@ -127,6 +127,7 @@ async function loadPost({
 afterEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  vi.unstubAllEnvs()
 })
 
 describe("POST /api/chatbot/message", () => {
@@ -183,6 +184,7 @@ describe("POST /api/chatbot/message", () => {
   })
 
   it("wires the default LLM clients in tier 1, tier 2 Hosted, tier 3, tier 4 order", async () => {
+    vi.stubEnv("CHATBOT_LLM_HEALTH_CHECK_TIMEOUT_MS", "10000")
     const route = await loadPost()
 
     const response = await route.POST(request({ message: "媒体を選びます" }, "chatbot_session_id=session_1"))
@@ -196,6 +198,7 @@ describe("POST /api/chatbot/message", () => {
           { tier: "tier-3-ollama-deepseek" },
           { tier: "tier-4-form-fallback" },
         ],
+        healthCheckTimeoutMs: 10000,
       }),
     )
     expect(route.createTier2HostedChromeNotionAiClient).toHaveBeenCalledOnce()

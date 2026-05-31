@@ -16,6 +16,7 @@ import {
   tier1ChromeNotionAiDefaults,
 } from "@/lib/chatbot/server/llm-clients/tier1-chrome-notion-ai"
 import {
+  getTier1ChromeNotionAiCdpBaseUrl,
   getNotionAiChatbotThreadUrl,
   notionAiChatbotThreadId,
   notionAiChatbotThreadUrl,
@@ -128,6 +129,14 @@ describe("Tier1ChromeNotionAiClient", () => {
           "https://www.notion.so/chat?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       }),
     ).toBe("https://www.notion.so/chat?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    expect(getTier1ChromeNotionAiCdpBaseUrl({ CHATBOT_TIER1_CDP_BASE_URL: "" })).toBe(
+      "http://127.0.0.1:9223",
+    )
+    expect(
+      getTier1ChromeNotionAiCdpBaseUrl({
+        CHATBOT_TIER1_CDP_BASE_URL: "http://127.0.0.1:9",
+      }),
+    ).toBe("http://127.0.0.1:9")
   })
 
   it("builds the observed runInferenceTranscript payload shape", () => {

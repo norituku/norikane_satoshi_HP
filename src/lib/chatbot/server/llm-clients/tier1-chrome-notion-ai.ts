@@ -1,6 +1,9 @@
 import type { ChatbotLlmClient, ChatbotLlmRequest, ChatbotLlmResponse } from "@/lib/chatbot/server/llm-client"
 import { ChatbotLlmError } from "@/lib/chatbot/server/llm-client"
-import { getNotionAiChatbotThreadUrl } from "@/lib/chatbot/server/llm-clients/tier1-chrome-notion-ai-config"
+import {
+  getNotionAiChatbotThreadUrl,
+  getTier1ChromeNotionAiCdpBaseUrl,
+} from "@/lib/chatbot/server/llm-clients/tier1-chrome-notion-ai-config"
 
 type Tier1ChromeNotionAiClientConfig = {
   cdpBaseUrl: string
@@ -220,7 +223,7 @@ const defaultNotionClientVersion = "unknown"
 const emptyText = ""
 
 export const tier1ChromeNotionAiDefaults = {
-  cdpBaseUrl: "http://127.0.0.1:9223",
+  cdpBaseUrl: getTier1ChromeNotionAiCdpBaseUrl(),
   targetUrlIncludes: getNotionAiChatbotThreadUrl(),
   requestTimeoutMs: 180000,
   healthCheckTimeoutMs: 3000,
