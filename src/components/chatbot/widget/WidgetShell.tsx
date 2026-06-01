@@ -104,7 +104,7 @@ export function WidgetShell({ onMinimize }: WidgetShellProps) {
 
   return (
     <section
-      className="glass-card pointer-events-auto flex h-[min(560px,calc(100dvh-2rem))] w-full max-w-[384px] animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col overflow-hidden rounded-t-[20px] md:rounded-[20px]"
+      className="glass-card glass-card--chat-frost pointer-events-auto flex h-[min(560px,calc(100dvh-2rem))] w-full max-w-[384px] animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col overflow-hidden rounded-t-[20px] md:rounded-[20px]"
       aria-label="AI 相談窓口"
     >
       <div className="flex items-center justify-between gap-3 border-b border-[var(--glass-border)] px-5 py-4">
