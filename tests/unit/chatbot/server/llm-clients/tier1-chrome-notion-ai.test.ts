@@ -116,6 +116,10 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(client.tier).toBe("tier-1-chrome-notion-ai")
   })
 
+  it("keeps the default request timeout short enough to reach fallback tiers", () => {
+    expect(tier1ChromeNotionAiDefaults.requestTimeoutMs).toBe(12000)
+  })
+
   it("keeps the default target scoped to the chatbot-only Notion AI thread", () => {
     expect(notionAiChatbotThreadId).toBe("36b13ee3-141a-8073-885d-00a99ebb676c")
     expect(tier1ChromeNotionAiDefaults.targetUrlIncludes).toBe(notionAiChatbotThreadUrl)

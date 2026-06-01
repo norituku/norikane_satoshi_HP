@@ -222,7 +222,7 @@ const emptyText = ""
 export const tier1ChromeNotionAiDefaults = {
   cdpBaseUrl: "http://127.0.0.1:9223",
   targetUrlIncludes: getNotionAiChatbotThreadUrl(),
-  requestTimeoutMs: 180000,
+  requestTimeoutMs: 12000,
   healthCheckTimeoutMs: 3000,
 } as const
 
