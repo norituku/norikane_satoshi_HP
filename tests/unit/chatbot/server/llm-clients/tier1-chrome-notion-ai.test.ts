@@ -476,6 +476,11 @@ describe("Tier1ChromeNotionAiClient", () => {
 
     await expect(healthyClient.isHealthy()).resolves.toBe(true)
     await expect(missingTargetClient.isHealthy()).resolves.toBe(false)
+
+    const evaluate = vi.mocked(healthySession.evaluate)
+    expect(evaluate.mock.calls[0][0]).toContain("LRU:KeyValueStore2:current-user-id")
+    expect(evaluate.mock.calls[0][0]).toContain("LRU:KeyValueStore2:spaceIdToShortId")
+    expect(evaluate.mock.calls[0][0]).toContain("notion-sidebar-sidebar-state")
   })
 
   it("does not require the chatbot Notion AI target URL to use the www host", async () => {
