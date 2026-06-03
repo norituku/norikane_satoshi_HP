@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Noto_Sans_JP, Inter, Geist_Mono } from "next/font/google";
+import { Noto_Sans_JP, Inter, Geist_Mono, Playfair_Display } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import "@/components/booking/booking-calendar.css";
@@ -27,6 +27,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const playfairDisplay = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "700"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://norikane.studio"),
   title: SITE_TITLE,
@@ -49,7 +56,7 @@ export default function RootLayout({
   return (
     <html
       lang="ja"
-      className={`${notoSansJP.variable} ${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${notoSansJP.variable} ${inter.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <NavHeader />

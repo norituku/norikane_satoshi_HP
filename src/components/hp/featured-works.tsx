@@ -538,8 +538,8 @@ function FeaturedWorkCard({
         </PreviewFrame>
       ) : (
         <PreviewFrame abstractCover>
-          <div className="absolute inset-0 bg-[radial-gradient(130%_130%_at_18%_12%,#C9BCFF_0%,var(--accent-primary)_48%,#3B2A9E_100%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(90%_90%_at_86%_84%,rgba(121,199,199,0.42)_0%,rgba(255,255,255,0)_62%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(130%_130%_at_18%_12%,#D4D0E8_0%,#7568D6_54%,#302B55_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(90%_90%_at_86%_84%,rgba(213,196,224,0.24)_0%,rgba(255,255,255,0)_66%)]" />
           <div className="absolute inset-0 z-10 flex flex-wrap content-end items-end justify-end gap-1.5 p-3 md:p-4">
             <WorkLinkBadges links={work.links} workTitle={work.title} clone={clone} />
           </div>

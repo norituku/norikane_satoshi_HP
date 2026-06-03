@@ -42,12 +42,12 @@ Do not invent parallel tokens unless the user explicitly asks for a design-syste
 | Token | Value | Role |
 |---|---:|---|
 | `--bg-base` | `#F8F6FF` | Page background base |
-| `--accent-primary` | `#8B7FFF` | Primary accent, active dots, glyphs, subtle highlights |
+| `--accent-primary` | `#7568D6` | Primary accent, active dots, glyphs, subtle highlights |
 | `--text-primary` | `#1C0F6E` | Main text color |
 | `--text-muted` | `#6B5FA8` | Secondary text color |
-| `--glass-bg` | `rgba(255, 255, 255, 0.55)` | Standard glass card fill |
-| `--glass-border` | `rgba(139, 127, 255, 0.22)` | Standard glass card border |
-| `--glass-shadow` | `0 8px 32px rgba(139, 127, 255, 0.15)` | Standard glass card shadow |
+| `--glass-bg` | `rgba(255, 255, 255, 0.62)` | Standard glass card fill |
+| `--glass-border` | `rgba(117, 104, 214, 0.18)` | Standard glass card border |
+| `--glass-shadow` | `0 10px 34px rgba(54, 44, 108, 0.11)` | Standard glass card shadow |
 | `--hp-radius-sm` | `12px` | Small cards, inputs, tags, buttons |
 | `--hp-radius` | `16px` | Standard cards and figure shells |
 | `--hp-radius-lg` | `20px` | Larger cards |
@@ -56,18 +56,18 @@ Do not invent parallel tokens unless the user explicitly asks for a design-syste
 
 | Token | Value | Role |
 |---|---:|---|
-| `--aurora-purple` | `rgba(139, 127, 255, 0.28)` | Main lavender glow |
-| `--aurora-pink` | `rgba(255, 143, 171, 0.20)` | Warm soft glow |
-| `--aurora-sky` | `rgba(125, 211, 252, 0.20)` | Cool soft glow |
+| `--aurora-purple` | `rgba(93, 84, 171, 0.16)` | Main lavender glow |
+| `--aurora-pink` | `rgba(178, 112, 150, 0.11)` | Warm soft glow |
+| `--aurora-sky` | `rgba(106, 138, 172, 0.10)` | Cool soft glow |
 
 The body background is:
 
 ```css
 background-color: var(--bg-base);
 background-image:
-  radial-gradient(ellipse at 15% 40%, var(--aurora-purple) 0%, transparent 55%),
-  radial-gradient(ellipse at 85% 15%, var(--aurora-pink) 0%, transparent 45%),
-  radial-gradient(ellipse at 55% 85%, var(--aurora-sky) 0%, transparent 45%);
+  radial-gradient(ellipse 78% 58% at 12% 38%, var(--aurora-purple) 0%, transparent 68%),
+  radial-gradient(ellipse 66% 52% at 86% 16%, var(--aurora-pink) 0%, transparent 62%),
+  radial-gradient(ellipse 72% 54% at 58% 88%, var(--aurora-sky) 0%, transparent 64%);
 background-attachment: fixed;
 ```
 
@@ -83,6 +83,9 @@ Fonts are loaded in `src/app/layout.tsx`.
 | Japanese / default UI | Noto Sans JP | `--font-sans` | 400, 600, 700 |
 | Latin brand / numeric emphasis | Inter | `--font-inter` | 400, 600, 700 |
 | Code / counters / small technical labels | Geist Mono | `--font-geist-mono` | default |
+| Large pure Latin display | Playfair Display | `--font-display` | 400, 700 |
+
+`--font-display` is only for pure Latin headings at 28px or larger, such as the hero English display line. It must not be used for Japanese text, mixed Japanese/Latin headings, body copy, navigation, captions, buttons, forms, or compact labels. Automated tests guard objective font boundaries and color/contrast constraints; final visual quality remains Satoshi's local visual gate.
 
 ### 3.1 Japanese UI rules
 
@@ -127,15 +130,19 @@ box-shadow: var(--glass-shadow);
 border-radius: var(--hp-radius);
 ```
 
+#### `.glass-card--showcase`
+
+Use only with `.glass-card` on signature surfaces such as the profile identity block. It adds edge highlight, inner light, and shallow specular depth through pseudo-elements and inset shadows. Do not use it on calendar month grids, note lists, featured-work marquee cards, forms, tables, or other dense repeated surfaces.
+
 #### `.glass-card-sm`
 
 Use for smaller secondary cards inside a main section.
 
 ```css
-background: rgba(255, 255, 255, 0.35);
+background: rgba(255, 255, 255, 0.52);
 backdrop-filter: blur(8px);
-border: 1px solid rgba(255, 255, 255, 0.52);
-box-shadow: 0 4px 16px rgba(139, 127, 255, 0.10);
+border: 1px solid rgba(255, 255, 255, 0.58);
+box-shadow: 0 4px 14px rgba(54, 44, 108, 0.07);
 border-radius: var(--hp-radius-sm);
 ```
 
@@ -172,7 +179,7 @@ Do not create new button colors for primary/secondary states unless a full token
 Use for input and textarea fields.
 
 Focus ring must be subtle and purple-tinted:
-`0 0 0 3px rgba(139, 127, 255, 0.12)`.
+`0 0 0 3px rgba(117, 104, 214, 0.10)`.
 
 #### `.glass-badge`
 
@@ -320,7 +327,7 @@ Only add a new layout if the structure truly cannot be represented by the existi
 ### 7.4 Diagram visual style
 
 - Image base: `#F8F6FF`
-- Accent: `#8B7FFF`
+- Accent: `#7568D6`
 - Glow colors: `--aurora-purple`, `--aurora-pink`, `--aurora-sky`
 - Density: spacious, readable in 5 seconds
 - Forbidden: dark noir, cinematic black, neon, orange/teal extra aurora, text baked into image
@@ -339,7 +346,7 @@ A UI change fails L1 if any of these are true:
 - Uses Tailwind default heavy shadows such as `shadow-lg`, `shadow-xl` for primary surfaces
 - Adds dark sections outside the hero
 - Breaks the canonical width/padding shell
-- Uses fonts other than Noto Sans JP, Inter, Geist Mono
+- Uses fonts other than Noto Sans JP, Inter, Geist Mono, or the large pure-Latin-only Playfair Display role
 - Bakes text into diagram images
 - Makes Japanese body text cramped
 
@@ -385,7 +392,7 @@ L3 should not mean more effects. For this site, L3 means clarity, restraint, and
 - Do not add new aurora colors.
 - Do not use thick borders or default Tailwind heavy shadows.
 - Do not nest blur-heavy cards.
-- Do not introduce new fonts.
+- Do not introduce additional fonts beyond the large pure-Latin-only Playfair Display role.
 - Do not make Japanese body copy tight or overly letter-spaced.
 - Do not rely on color alone for meaning.
 - Do not turn the portfolio into a loud SaaS landing page.
@@ -418,4 +425,4 @@ When asking an AI agent to build UI in this repo, use:
 
 For diagrams:
 
-> Follow the diagram contract in `DESIGN.md`. Generate only soft background imagery; put all labels, numbers, cards, and glyphs in React/CSS through `note-diagram.tsx`. Use `#F8F6FF`, `#8B7FFF`, and the three aurora colors only. No baked-in text or arrows.
+> Follow the diagram contract in `DESIGN.md`. Generate only soft background imagery; put all labels, numbers, cards, and glyphs in React/CSS through `note-diagram.tsx`. Use `#F8F6FF`, `#7568D6`, and the three aurora colors only. No baked-in text or arrows.

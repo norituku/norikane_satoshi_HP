@@ -123,7 +123,7 @@ export default async function HomePage() {
               <Link
                 key={note.id}
                 href={`/notes/${note.slug}`}
-                className="group flex shrink-0 snap-start flex-col glass-card p-6 md:p-7"
+                className="group flex shrink-0 snap-start flex-col glass-card-sm p-6 md:p-7"
                 style={{ width: "min(84vw, 340px)", minHeight: 200 }}
               >
                 <div className="flex items-baseline gap-3">
@@ -151,7 +151,7 @@ export default async function HomePage() {
         id="profile"
         className="mx-auto w-full max-w-[1440px] px-6 md:px-10 xl:px-14 scroll-mt-24 md:scroll-mt-28"
       >
-        <div className="glass-card p-8 md:p-10 xl:p-12">
+        <div className="glass-card glass-card--showcase p-8 md:p-10 xl:p-12">
           <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">Profile</p>
           <h2 className="hp-heading mt-2 text-2xl font-semibold text-hp md:text-3xl">
             プロフィール
