@@ -66,4 +66,47 @@ describe("normalizeChatbotLlmResponse", () => {
       sanitizeChatbotLlmText("思考: ユーザーの意図を整理する。\n\n最終媒体と公開時期を教えてください。"),
     ).toBe("最終媒体と公開時期を教えてください。")
   })
+
+  it("limits assistant questions to three", () => {
+    expect(
+      sanitizeChatbotLlmText(
+        "案件種類は何ですか？スケジュールは決まっていますか？お名前・会社名は何ですか？参考URLはありますか？",
+      ),
+    ).toBe("案件種類は何ですか？スケジュールは決まっていますか？お名前・会社名は何ですか？")
+  })
+
+  it("replaces price quotes with the direct-contact policy message", () => {
+    expect(sanitizeChatbotLlmText("概算で10万円です。")).not.toMatch(/\d+万円/u)
+    expect(sanitizeChatbotLlmText("概算で10万円です。")).toContain("のりかね本人")
+  })
+
+  it("does not expose private method names", () => {
+    const privateMethodName = [["L", "OOK"].join(""), ["De", "composer"].join("")].join(" ")
+
+    expect(sanitizeChatbotLlmText(`${privateMethodName} v2 の詳細はこうです。`)).not.toContain(
+      privateMethodName,
+    )
+  })
+
+  it("removes internal language tags and publicizes calendar wording", () => {
+    expect(sanitizeChatbotLlmText('<lang primary="ja-JP"/>busy 時間帯を確認します。')).toBe(
+      "予約が埋まっている時間帯を確認します。",
+    )
+  })
+
+  it("uses schedule-first copy for booking-inline routing", () => {
+    expect(
+      sanitizeChatbotLlmText("カメラ種類を教えてください。", {
+        routingDecision: {
+          kind: "to-booking-inline",
+          suggestedSlots: [],
+          jobContext: {
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
+    ).toContain("先に空き状況")
+  })
 })

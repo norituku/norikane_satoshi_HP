@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useState } from "react"
+import { FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react"
 import { Send } from "lucide-react"
 
 type ChatInputProps = {
@@ -11,25 +11,47 @@ type ChatInputProps = {
 
 export function ChatInput({ onSubmit, disabled = false, placeholder = "案件内容を書く" }: ChatInputProps) {
   const [text, setText] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = "0px"
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`
+  }, [text])
+
+  const submitCurrentText = () => {
+    const trimmedText = text.trim()
+    if (disabled || !trimmedText) return false
+    onSubmit(trimmedText)
+    setText("")
+    return true
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmedText = text.trim()
-    if (disabled || !trimmedText) return
-    onSubmit(trimmedText)
-    setText("")
+    submitCurrentText()
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return
+    event.preventDefault()
+    submitCurrentText()
   }
 
   return (
     <form className="border-t border-[var(--glass-border)] p-4" onSubmit={handleSubmit}>
-      <div className="glass-card-sm flex items-center gap-2 px-3 py-2 focus-within:border-[var(--accent-primary)]">
-        <input
-          className="min-w-0 flex-1 bg-transparent text-sm text-hp outline-none placeholder:text-hp-muted"
+      <div className="glass-card-sm flex items-end gap-2 px-3 py-2 focus-within:border-[var(--accent-primary)]">
+        <textarea
+          ref={textareaRef}
+          className="max-h-40 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm leading-5 text-hp outline-none placeholder:text-hp-muted"
           placeholder={placeholder}
           aria-label="相談内容"
           value={text}
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
+          onKeyDown={handleKeyDown}
+          rows={1}
         />
         <button
           type="submit"

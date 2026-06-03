@@ -128,6 +128,10 @@ describe("handleChatbotMessage user context", () => {
         systemPrompt: expect.stringContaining("本人だけの過去要約"),
       }),
     )
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("Notionページを実行時に追加参照せず")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("1510399661d64891aee912320df39b91")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("案件種類")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("1返答で質問は最大3問")
   })
 
   it("does not load user context for unauthenticated requests", async () => {
@@ -175,6 +179,63 @@ describe("handleChatbotMessage user context", () => {
       content: "最終媒体と尺を教えてください。",
     })
     expect(result.assistantMessage.content).toBe("最終媒体と尺を教えてください。")
+  })
+
+  it("overrides pricing output with direct contact policy", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "概算で10万円です。",
+      tier: "tier-2-ollama-deepseek",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "次の質問" },
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "料金はいくらですか" },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-direct-contact",
+      reason: "pricing",
+    })
+    expect(result.assistantMessage.content).toContain("のりかね本人")
+    expect(result.assistantMessage.content).not.toMatch(/\d+万円|¥|￥/u)
+  })
+
+  it("infers acquired Web CM context and routes approximate schedules to one-hour candidates first", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "Web CMです。尺4分、ABタイプ2本で、6月中旬に作業、6月20日までに納品希望です。会社名と名前、納品形式、打ち合わせ希望、作業場所、連絡先も共有済みです。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0]).toMatchObject({
+      conversationState: expect.objectContaining({
+        hasJobKind: true,
+        hasDesiredSchedule: true,
+        hasCustomerIdentity: true,
+      }),
+      jobContext: expect.objectContaining({
+        finalMedium: "web",
+        jobKind: "cm-30s",
+        projectLengthMinutes: 4,
+        preferredStartDate: "2026-06-15",
+        publicReleaseDate: "2026-06-20",
+      }),
+    })
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-booking-inline",
+      suggestedSlots: expect.arrayContaining([
+        expect.objectContaining({ label: "6月15日 10:00", note: "1時間候補" }),
+      ]),
+    })
+    expect(result.assistantMessage.content).toContain("先に空き状況")
   })
 
   it("isolates a previous user's conversation when the authenticated user changes", async () => {

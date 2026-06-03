@@ -71,6 +71,10 @@ async function loadPost({
   })
   const formatUserChatbotContextForPrompt = vi.fn(() => "本人文脈:\n- 既存の本人文脈はありません。")
   const generate = vi.fn().mockResolvedValue(llmResponse)
+  const decideRoutingFallback = vi.fn(() => llmResponse.proposedRoutingDecision ?? {
+    kind: "continue" as const,
+    nextQuestion: "最終媒体を教えてください",
+  })
 
   vi.doMock("@/auth", () => ({ auth }))
   vi.doMock("@/lib/chatbot/server", () => ({
@@ -81,6 +85,7 @@ async function loadPost({
     linkConversationToUser,
     loadUserChatbotContext,
     formatUserChatbotContextForPrompt,
+    decideRoutingFallback,
     tier1ObservedNotionAiModel: "apricot-sorbet-high",
     createLocalChatbotTierAttemptLogger: vi.fn(() => undefined),
     createTier1ChromeNotionAiClient: vi.fn(() => ({ tier: "tier-1-chrome-notion-ai" })),
@@ -126,6 +131,7 @@ describe("POST /api/chatbot/message", () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get("set-cookie")).toContain("chatbot_session_id=")
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=604800")
     expect(response.headers.get("set-cookie")).toContain("HttpOnly")
     expect(route.createConversation).toHaveBeenCalledWith({
       sessionId: expect.any(String),
@@ -152,6 +158,8 @@ describe("POST /api/chatbot/message", () => {
       userId: "user_1",
       currentConversationId: "conv_1",
     })
+    expect(response.headers.get("set-cookie")).toContain("chatbot_session_id=session_1")
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=604800")
   })
 
   it("returns assistant message and choice-panel ui on orchestrator success", async () => {

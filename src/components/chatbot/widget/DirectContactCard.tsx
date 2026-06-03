@@ -21,6 +21,11 @@ const reasonLabels: Record<DirectContactReason, string> = {
   "raw-edit-included": "編集反映あり",
   "heavy-retouch": "重めの修正",
   "plugin-detail": "詳細確認",
+  pricing: "料金確認",
+  "contract-decision": "契約確認",
+  "personal-life": "個人情報",
+  "other-client": "他案件情報",
+  "confidential-technique": "非公開情報",
   complex: "個別確認",
 }
 
@@ -41,6 +46,11 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
       <div>
         <p className="text-sm font-semibold text-hp">{reasonLabels[reason]}</p>
         <p className="mt-2 text-sm leading-relaxed text-hp-muted">{suggestedMessage}</p>
+      </div>
+      <div className="glass-card-sm space-y-1 px-3 py-3 text-xs leading-relaxed text-hp-muted" aria-label="送信前の整理内容">
+        <p className="font-semibold text-hp">送信前の整理内容</p>
+        <p>確認が必要な内容として、入力された相談内容と連絡先をのりかね本人へ送ります。</p>
+        <p>送信ボタンを押すまでメールは送信されません。</p>
       </div>
       <form className="space-y-3" onSubmit={handleSubmit}>
         <label className="block space-y-1 text-xs font-semibold text-hp">
@@ -75,7 +85,7 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
           </label>
         </div>
         <button type="submit" className="glass-btn px-4 py-2 text-sm font-semibold text-hp">
-          連絡内容を送る
+          この内容で送信
         </button>
       </form>
     </section>

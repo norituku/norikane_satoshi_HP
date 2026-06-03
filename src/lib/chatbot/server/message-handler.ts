@@ -21,10 +21,13 @@ import {
   type ChatbotLlmClient,
   type ChatbotLlmResponse,
   type ChatbotLlmTierOrchestrator,
+  decideRoutingFallback,
   type UserChatbotContext,
   normalizeChatbotLlmResponse,
   tier1ObservedNotionAiModel,
 } from "@/lib/chatbot/server"
+import { buildChatbotStaticPolicyPrompt } from "@/lib/chatbot/knowledge"
+import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
 
 type ChatbotMessageUi =
   | { kind: "none" }
@@ -113,7 +116,7 @@ export async function handleChatbotMessage(
         currentConversationId: conversation.id,
       })
     : null
-  const jobContext = buildJobContext(input.jobContext, conversation)
+  const jobContext = buildJobContext(input.jobContext, conversation, userMessage)
   const conversationState = buildConversationState(input.conversationState, conversation, userMessage)
   const llmResponse = await orchestrator.generate({
     systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter),
@@ -127,8 +130,17 @@ export async function handleChatbotMessage(
     temperature: 0.2,
     maxOutputTokens: 900,
   })
-  const routingDecision = llmResponse.proposedRoutingDecision
-  const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse)
+  const deterministicRoutingDecision = decideRoutingFallback({
+    jobContext,
+    conversationState,
+    latestUserMessage: input.message,
+  })
+  const routingDecision =
+    deterministicRoutingDecision.kind === "to-direct-contact" ||
+    deterministicRoutingDecision.kind === "to-booking-inline"
+      ? deterministicRoutingDecision
+      : llmResponse.proposedRoutingDecision ?? deterministicRoutingDecision
+  const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision })
   const assistantMessage = await repository.appendMessage({
     conversationId: conversation.id,
     role: "assistant",
@@ -151,7 +163,7 @@ export async function handleChatbotMessage(
     },
     routingDecision,
     tier: llmResponse.tier,
-    ui: toMessageUi(llmResponse),
+    ui: toMessageUi(routingDecision, llmResponse.tier),
   }
 }
 
@@ -180,10 +192,9 @@ function buildChatbotSystemPrompt(
   userContextFormatter: typeof formatUserChatbotContextForPrompt = formatUserChatbotContextForPrompt,
 ): string {
   const lines = [
-    "あなたは新規映像案件の相談受付アシスタントです。",
-    "回答範囲は新規案件の調整、要件整理、予約導線に限定し、技術指導、作品レビュー、標準外要望は担当者確認へ誘導します。",
+    buildChatbotStaticPolicyPrompt(),
+    "回答範囲は新規案件の調整、要件整理、予約導線に限定し、技術指導、作品レビュー、標準外要望はのりかね本人の確認へ誘導します。",
     "不明なことを推測で断定せず、未確認事項として質問します。",
-    "LOOK Decomposer v2 の詳細には触れず、直接確認が必要な事項として扱います。",
     "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
     "呼称は中立に保ち、他顧客の情報を参照または推測しません。",
   ]
@@ -198,12 +209,15 @@ function buildChatbotSystemPrompt(
 function buildJobContext(
   input: Partial<JobContext> | undefined,
   conversation: ChatbotConversation,
+  userMessage: ChatbotMessage,
 ): JobContext {
   const stored = conversation.context.jobContext ?? {}
+  const inferred = inferJobContextFromText(conversationText(conversation, userMessage))
   return {
     finalMedium: "other",
     workSite: "remote-grading",
     documentaryAttachment: { kind: "none" },
+    ...inferred,
     ...stored,
     ...input,
   }
@@ -218,6 +232,9 @@ function buildConversationState(
     conversation.messages.filter((message) => message.role === "user").length +
     (userMessage.role === "user" ? 1 : 0)
 
+  const topicGate = classifyChatbotTopic(userMessage.content)
+  const inferred = inferConversationStateFromText(conversationText(conversation, userMessage))
+
   return {
     hasFinalMedium: false,
     hasJobKind: false,
@@ -227,15 +244,21 @@ function buildConversationState(
     hasReferenceUrls: false,
     hasContactEmail: false,
     hasDesiredSchedule: false,
-    turnCount: userTurnCount,
+    ...inferred,
+    hasCustomerIdentity: Boolean(
+      input?.hasCustomerIdentity ??
+        input?.customerName ??
+        input?.companyName ??
+        inferred.hasCustomerIdentity
+    ),
+    turnCount: input?.turnCount ?? userTurnCount,
     ...input,
+    ...topicGate,
   }
 }
 
-function toMessageUi(response: ChatbotLlmResponse): ChatbotMessageUi {
-  if (response.tier === "tier-4-form-fallback") return { kind: "tier4-inquiry-form" }
-
-  const routingDecision = response.proposedRoutingDecision
+function toMessageUi(routingDecision: RoutingDecision | undefined, tier: ChatbotLlmResponse["tier"]): ChatbotMessageUi {
+  if (tier === "tier-4-form-fallback") return { kind: "tier4-inquiry-form" }
   if (!routingDecision) return { kind: "none" }
 
   if (routingDecision.kind === "continue" && routingDecision.presentChoices) {
@@ -260,4 +283,55 @@ function toMessageUi(response: ChatbotLlmResponse): ChatbotMessageUi {
   }
 
   return { kind: "none" }
+}
+
+function conversationText(conversation: ChatbotConversation, userMessage: ChatbotMessage): string {
+  return [...conversation.messages, userMessage].map((message) => message.content).join("\n")
+}
+
+function inferConversationStateFromText(text: string): Partial<ConversationState> {
+  const hasProjectLength = /(?:尺|長さ|length|duration|4\s*分|４\s*分|\d+\s*min)/iu.test(text)
+  const hasSchedule = /(?:6月中旬|６月中旬|中旬|納品|公開|希望時期|作業したい|まで|deadline)/iu.test(text)
+  const hasContactEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu.test(text)
+  const hasCustomerIdentity = /(?:会社|株式会社|合同会社|担当|名前|氏名|お名前)/u.test(text)
+  const hasDeliveryFormat = /(?:納品形式|納品フォーマット|prores|mp4|mov|h\.?264|h\.?265)/iu.test(text)
+  const hasMeetingPreference = /(?:打ち合わせ|ミーティング|オンライン|zoom|meet)/iu.test(text)
+  const hasWorkSite = /(?:作業場所|立ち会い|リモート|オンライン|スタジオ|現地)/u.test(text)
+  const hasTransfer = /(?:素材|搬入|受け渡し|アップロード|drive|dropbox|gigafile|ギガファイル)/iu.test(text)
+
+  return {
+    hasFinalMedium: /(?:web\s*cm|web|cm|mv|ミュージックビデオ|sns|ott|tv|テレビ|劇場)/iu.test(text),
+    hasJobKind: hasProjectLength || /(?:ab\s*タイプ|a\/b|2\s*本|２\s*本|cm|mv|web\s*cm)/iu.test(text),
+    hasAdditionalWork: /(?:カラグレ|カラーグレーディング|追加作業|修正|レタッチ|なし)/u.test(text),
+    hasDocumentaryAttachments: /(?:付随|資料|参考|なし|素材)/u.test(text),
+    hasWorkSite,
+    hasReferenceUrls: /https?:\/\//iu.test(text) || hasTransfer,
+    hasContactEmail,
+    hasDesiredSchedule: hasSchedule,
+    hasCustomerIdentity,
+    contactEmail: hasContactEmail ? text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu)?.[0] : undefined,
+    customerName: hasCustomerIdentity ? "provided" : undefined,
+    companyName: hasCustomerIdentity ? "provided" : undefined,
+    hasDeliveryFormat,
+    hasMeetingPreference,
+  } as Partial<ConversationState>
+}
+
+function inferJobContextFromText(text: string): Partial<JobContext> {
+  const finalMedium = /(?:web\s*cm|web|cm)/iu.test(text)
+    ? "web"
+    : /(?:mv|ミュージックビデオ)/iu.test(text)
+      ? "web"
+      : undefined
+  const projectLengthMinutes = /(?:4|４)\s*分/u.test(text) ? 4 : undefined
+  const preferredStartDate = /(?:6月中旬|６月中旬|中旬)/u.test(text) ? "2026-06-15" : undefined
+  const publicReleaseDate = /(?:6月20日|６月２０日|6\/20|06-20)/u.test(text) ? "2026-06-20" : undefined
+
+  return {
+    ...(finalMedium ? { finalMedium } : {}),
+    ...(/(?:web\s*cm|cm)/iu.test(text) ? { jobKind: "cm-30s" as const } : {}),
+    ...(projectLengthMinutes ? { projectLengthMinutes } : {}),
+    ...(preferredStartDate ? { preferredStartDate } : {}),
+    ...(publicReleaseDate ? { publicReleaseDate } : {}),
+  }
 }

@@ -39,13 +39,19 @@ export type ConversationState = {
   hasReferenceUrls: boolean
   hasContactEmail: boolean
   hasDesiredSchedule: boolean
+  hasCustomerIdentity?: boolean
   turnCount: number
   outOfScope?: boolean
   technicalQuestion?: boolean
   workReviewRequest?: boolean
   vfxCgHeavy?: boolean
   editingIncomplete?: boolean
-  lookDecomposerDetail?: boolean
+  asksPricing?: boolean
+  contractDecision?: boolean
+  personalQuestion?: boolean
+  otherClientInformation?: boolean
+  confidentialTechniqueQuestion?: boolean
+  privateMethodNameExposure?: boolean
   daysUntilStart?: number
   contactEmail?: string
   customerName?: string

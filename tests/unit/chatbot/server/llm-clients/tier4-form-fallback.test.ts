@@ -66,8 +66,10 @@ describe("Tier4FormFallbackClient", () => {
       tier: "tier-4-form-fallback",
       proposedRoutingDecision: {
         kind: "to-booking-inline",
-        suggestedSlots: [],
-        jobContext: jobContext(),
+        suggestedSlots: expect.arrayContaining([
+          expect.objectContaining({ note: "1時間候補" }),
+        ]),
+        jobContext: expect.objectContaining(jobContext()),
       },
     })
   })

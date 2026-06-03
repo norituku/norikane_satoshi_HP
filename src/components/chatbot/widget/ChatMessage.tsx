@@ -1,6 +1,7 @@
 "use client"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
+import { stripInternalAssistantMarkup } from "@/lib/chatbot/knowledge"
 
 type ChatMessageProps = {
   role: ChatbotMessageRole
@@ -17,6 +18,7 @@ const roleLabel: Record<ChatbotMessageRole, string> = {
 export function ChatMessage({ role, content, createdAt }: ChatMessageProps) {
   const isUser = role === "user"
   const isSystem = role === "system"
+  const visibleContent = stripInternalAssistantMarkup(content)
 
   return (
     <article
@@ -40,7 +42,7 @@ export function ChatMessage({ role, content, createdAt }: ChatMessageProps) {
           </time>
         ) : null}
       </div>
-      <p className="whitespace-pre-wrap">{content}</p>
+      <p className="whitespace-pre-wrap">{visibleContent}</p>
     </article>
   )
 }

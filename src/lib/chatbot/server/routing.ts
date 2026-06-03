@@ -5,12 +5,14 @@ import {
   finalMediumChoices,
   workSiteChoices,
 } from "@/lib/chatbot/domain"
+import { directContactPolicyMessage } from "@/lib/chatbot/knowledge/forbidden-topics"
 import {
   complexConversationTurnThreshold,
   settledConversationTurnThreshold,
   tightDeadlineThresholdDays,
   tightishDeadlineMaxDays,
 } from "@/lib/chatbot/knowledge/workflow-duration"
+import { initialIntakeQuestions } from "@/lib/chatbot/knowledge/response-policy"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
 
 export type RoutingDecisionInput = {
@@ -44,11 +46,33 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
 
   if (conversationState.vfxCgHeavy) return directContact("vfx-cg-heavy")
   if (conversationState.editingIncomplete) return directContact("raw-edit-included")
-  if (conversationState.lookDecomposerDetail) return directContact("plugin-detail")
+  if (conversationState.asksPricing) return directContact("pricing")
+  if (conversationState.contractDecision) return directContact("contract-decision")
+  if (conversationState.personalQuestion) return directContact("personal-life")
+  if (conversationState.otherClientInformation) return directContact("other-client")
+  if (conversationState.confidentialTechniqueQuestion || conversationState.privateMethodNameExposure) {
+    return directContact("confidential-technique")
+  }
   if (conversationState.technicalQuestion) return directContact("tech-question")
   if (conversationState.workReviewRequest) return directContact("review-request")
   if (conversationState.outOfScope) return directContact("out-of-scope")
   if (conversationState.turnCount >= complexConversationTurnThreshold) return directContact("complex")
+
+  if (shouldPrioritizeSchedule(jobContext, conversationState)) {
+    return {
+      kind: "to-booking-inline",
+      suggestedSlots: buildOneHourCandidateWindows(jobContext),
+      jobContext: {
+        ...jobContext,
+        workflowEstimate: jobContext.workflowEstimate ?? {
+          stages: [{ stage: "attended", minDays: 0.125, maxDays: 0.125, note: "1時間候補" }],
+          totalMinDays: 0.125,
+          totalMaxDays: 0.125,
+          riskFlags: [],
+        },
+      },
+    }
+  }
 
   if (
     conversationState.hasDesiredSchedule &&
@@ -90,12 +114,30 @@ function directContact(reason: Extract<RoutingDecision, { kind: "to-direct-conta
     kind: "to-direct-contact",
     reason,
     requireEmail: true,
-    suggestedMessage:
-      "のりかね映像設計室の担当者が直接ご対応いたしますので、ご連絡先を共有いただけますか？",
+    suggestedMessage: directContactPolicyMessage,
   } as const
 }
 
 function continueDecision(conversationState: ConversationState): RoutingDecision {
+  if (
+    conversationState.turnCount <= 1 &&
+    (!conversationState.hasJobKind ||
+      !conversationState.hasDesiredSchedule ||
+      !conversationState.hasCustomerIdentity)
+  ) {
+    return {
+      kind: "continue",
+      nextQuestion: `まず ${initialIntakeQuestions.join(" / ")} を教えてください。`,
+    }
+  }
+
+  if (!conversationState.hasCustomerIdentity) {
+    return {
+      kind: "continue",
+      nextQuestion: "お名前と会社名を教えてください。",
+    }
+  }
+
   if (!conversationState.hasFinalMedium) {
     return {
       kind: "continue",
@@ -172,4 +214,57 @@ function buildOpenQuestions(conversationState: ConversationState): string[] {
     conversationState.hasReferenceUrls ? undefined : "参考URL未確認",
     conversationState.hasDesiredSchedule ? undefined : "作業・立ち会い日程未確認",
   ].filter((item): item is string => Boolean(item))
+}
+
+function shouldPrioritizeSchedule(
+  jobContext: JobContext,
+  conversationState: ConversationState,
+): boolean {
+  return (
+    conversationState.hasDesiredSchedule &&
+    conversationState.hasJobKind &&
+    (conversationState.hasFinalMedium || jobContext.finalMedium === "web") &&
+    isOneHourCandidateJob(jobContext)
+  )
+}
+
+function isOneHourCandidateJob(jobContext: JobContext): boolean {
+  return (
+    jobContext.finalMedium === "web" ||
+    jobContext.finalMedium === "vertical-sns" ||
+    jobContext.jobKind === "cm-30s" ||
+    jobContext.jobKind === "mv-5m" ||
+    jobContext.projectLengthMinutes !== undefined
+  )
+}
+
+function buildOneHourCandidateWindows(jobContext: JobContext) {
+  const startDate = jobContext.preferredStartDate ?? "2026-06-15"
+  const base = new Date(`${startDate}T10:00:00+09:00`)
+  const offsets = [0, 1, 2]
+
+  return offsets.map((offset) => {
+    const start = new Date(base.getTime() + offset * 24 * 60 * 60 * 1000)
+    const end = new Date(start.getTime() + 60 * 60 * 1000)
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      label: formatJstOneHourCandidateLabel(start),
+      note: "1時間候補",
+    }
+  })
+}
+
+function formatJstOneHourCandidateLabel(date: Date): string {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ""
+
+  return `${value("month")}月${value("day")}日 ${value("hour")}:00`
 }

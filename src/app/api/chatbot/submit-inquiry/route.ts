@@ -9,7 +9,7 @@ import { appendMessage } from "@/lib/chatbot/server/repository"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const inquirySubjectPrefix = "[LLM 障害時フォーム]"
+const inquirySubjectPrefix = "[AI応答補助フォーム]"
 
 const inquiryRequestSchema = z.object({
   name: z.string().trim().min(1).max(80),
