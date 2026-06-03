@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { WidgetShell } from "@/components/chatbot/widget/WidgetShell"
@@ -67,6 +67,7 @@ describe("WidgetShell API wiring", () => {
     cleanup()
     vi.unstubAllGlobals()
     window.localStorage.clear()
+    vi.useRealTimers()
   })
 
   it("posts submitted chat text to /api/chatbot/message", async () => {
@@ -96,6 +97,57 @@ describe("WidgetShell API wiring", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       message: "相談したいです",
     })
+  })
+
+  it("shows the thinking indicator while waiting for a chatbot response", async () => {
+    let resolveFetch: (response: ReturnType<typeof mockJsonResponse>) => void = () => undefined
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof mockJsonResponse>>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderWidgetShell()
+    submitMessage()
+
+    expect(await screen.findByText("考え中")).toBeInTheDocument()
+    expect(screen.getByLabelText("相談内容")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "送信" })).toBeDisabled()
+
+    resolveFetch(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage,
+        tier: "tier-2-ollama-deepseek",
+        ui: { kind: "none" },
+      }),
+    )
+
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
+    expect(screen.getByLabelText("相談内容")).toBeEnabled()
+  })
+
+  it("adds a delay notice after six seconds while the response is pending", async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)))
+
+    renderWidgetShell()
+
+    act(() => {
+      submitMessage()
+    })
+
+    expect(screen.getByText("考え中")).toBeInTheDocument()
+    expect(screen.queryByText("少々お時間をいただいています…")).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000)
+    })
+
+    expect(screen.getByText("少々お時間をいただいています…")).toBeInTheDocument()
   })
 
   it("renders ChoicePanel for choice-panel responses", async () => {

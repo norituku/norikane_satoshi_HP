@@ -20,6 +20,7 @@ import { DirectContactCard } from "./DirectContactCard"
 import { InquiryForm } from "./InquiryForm"
 import { formatChatbotTierDebugLabel, isLocalChatbotTierDebugHostname } from "./local-tier-debug"
 import { SecurityNote } from "./SecurityNote"
+import { ThinkingIndicator } from "./ThinkingIndicator"
 import {
   CHATBOT_WIDGET_MIN_HEIGHT,
   CHATBOT_WIDGET_MIN_WIDTH,
@@ -56,6 +57,7 @@ const networkErrorMessage = "通信に失敗しました。少し時間をおい
 const inquirySentMessage = "送信しました。のりかね本人が確認して返信します。"
 const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const thinkingDelayNoticeMs = 6000
 const FOCUS_RING_CLASS =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)]"
 const FLOATING_RESIZE_CORNERS = [
@@ -134,6 +136,7 @@ export function WidgetShell({
   const [activeUi, setActiveUi] = useState<WidgetUi>(storedSession.activeUi)
   const [submitting, setSubmitting] = useState(false)
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(storedSession.lastResponseTier)
+  const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const shellRef = useRef<HTMLElement | null>(null)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugHostname(window.location.hostname)
@@ -250,6 +253,16 @@ export function WidgetShell({
     setMessages((currentMessages) => [...currentMessages, message])
   }
 
+  useEffect(() => {
+    if (!submitting) return
+
+    const timeoutId = window.setTimeout(() => {
+      setShowThinkingDelayNotice(true)
+    }, thinkingDelayNoticeMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [submitting])
+
   const handleSubmit = async (text: string) => {
     const createdAt = new Date()
     setMessages((currentMessages) => [
@@ -257,6 +270,7 @@ export function WidgetShell({
       { role: "user", content: text, createdAt },
     ])
     setActiveUi(noUi)
+    setShowThinkingDelayNotice(false)
     setSubmitting(true)
 
     try {
@@ -276,6 +290,7 @@ export function WidgetShell({
         createdAt: new Date(),
       })
     } finally {
+      setShowThinkingDelayNotice(false)
       setSubmitting(false)
     }
   }
@@ -387,31 +402,13 @@ export function WidgetShell({
               createdAt={message.createdAt}
             />
           ))}
-          {submitting ? <TypingIndicator /> : null}
+          {submitting ? <ThinkingIndicator showDelayNotice={showThinkingDelayNotice} /> : null}
         </div>
         <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
       </div>
 
       <ChatInput onSubmit={handleSubmit} disabled={submitting} />
     </section>
-  )
-}
-
-function TypingIndicator() {
-  return (
-    <div
-      className="glass-inset mr-auto inline-flex items-center gap-2 px-4 py-3 text-sm text-hp-muted"
-      role="status"
-      aria-live="polite"
-      aria-label="応答を作成中"
-    >
-      <span className="flex gap-1" aria-hidden="true">
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)] [animation-delay:-0.2s]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)] [animation-delay:-0.1s]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--accent-primary)]" />
-      </span>
-      応答を作成中
-    </div>
   )
 }
 
