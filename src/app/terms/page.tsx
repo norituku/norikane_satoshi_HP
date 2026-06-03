@@ -58,6 +58,13 @@ export default function TermsPage() {
           </section>
 
           <section>
+            <h2 className="text-lg font-semibold text-hp">制作物の権利確認と品質体制</h2>
+            <p className="mt-3 text-hp-muted">
+              当方は、納品物を商用利用できる形に整えるため、制作の各段階で品質と権利を確認しています。具体的には、商用利用が認められた手段を選んで制作し、お預かりした素材は利用できる範囲を確認したうえで取り扱い、必要に応じて弁護士など専門家の確認を受けられる体制を設け、案件ごとに使用したツールと確認の記録を保管します。ただし、これらは権利侵害が一切生じないことを保証するものではなく、リスクを下げるための確認の取り組みです。
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-lg font-semibold text-hp">秘密保持</h2>
             <p className="mt-3 text-hp-muted">
               送信内容は案件対応目的で取り扱います。ただし、チャット入力には、案件整理に不要な機密情報、
