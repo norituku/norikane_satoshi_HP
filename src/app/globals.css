@@ -97,12 +97,16 @@
   --hp-radius-sm: 12px;
   --hp-radius: 16px;
   --hp-radius-lg: 20px;
-  --hp-refracted-shadow-opacity: 0.72;
-  --hp-refracted-shadow-blur: 24px;
-  --hp-refracted-shadow-x: 0px;
-  --hp-refracted-shadow-y: 16px;
-  --hp-refracted-shadow-spread: 14px;
-  --hp-refracted-shadow-overlap: 10px;
+  --hp-element-shadow-x: 0px;
+  --hp-element-shadow-y: 9px;
+  --hp-element-shadow-blur: 15px;
+  --hp-element-shadow-color: rgba(30, 34, 42, 0.16);
+  --hp-element-text-shadow-y: 3px;
+  --hp-element-text-shadow-blur: 9px;
+  --hp-featured-shadow-x: 0px;
+  --hp-featured-shadow-y: 7px;
+  --hp-featured-shadow-blur: 14px;
+  --hp-featured-shadow-color: rgba(30, 34, 42, 0.18);
 }
 
 @layer base {
@@ -308,48 +312,62 @@
     position: relative;
     z-index: 1;
   }
-  .hp-refracted-shadow-card {
+  .hp-shadow-sync-surface {
     isolation: isolate;
+    overflow: visible;
     position: relative;
   }
-  .hp-refracted-shadow-card.glass-distortion-surface {
-    overflow: visible;
+  .hp-shadow-sync-foreground {
+    position: relative;
+    z-index: 1;
   }
-  .hp-refracted-shadow-card__shadow {
-    animation: hp-refracted-shadow-breathe 12s ease-in-out infinite alternate;
-    background: rgba(30, 34, 42, 0.24);
-    border-radius: inherit;
-    bottom: calc(var(--hp-refracted-shadow-spread) * -1);
-    content: "";
-    filter: blur(var(--hp-refracted-shadow-blur));
-    left: calc(var(--hp-refracted-shadow-spread) * -1);
-    opacity: var(--hp-refracted-shadow-opacity);
-    pointer-events: none;
-    position: absolute;
-    right: calc(var(--hp-refracted-shadow-spread) * -1);
-    top: var(--hp-refracted-shadow-overlap);
-    transform: translate3d(var(--hp-refracted-shadow-x), var(--hp-refracted-shadow-y), 0);
-    z-index: -1;
+  .hp-shadow-sync-element {
+    filter: drop-shadow(var(--hp-element-shadow-x) var(--hp-element-shadow-y) var(--hp-element-shadow-blur) var(--hp-element-shadow-color));
   }
-  .hp-refracted-shadow-card--note {
-    --hp-refracted-shadow-opacity: 0.54;
-    --hp-refracted-shadow-y: 12px;
-    --hp-refracted-shadow-spread: 10px;
-    --hp-refracted-shadow-overlap: 8px;
+  .hp-shadow-sync-text {
+    text-shadow: var(--hp-element-shadow-x) var(--hp-element-text-shadow-y) var(--hp-element-text-shadow-blur) var(--hp-element-shadow-color);
   }
-  .hp-refracted-shadow-card--profile {
-    --hp-refracted-shadow-opacity: 0.62;
-    --hp-refracted-shadow-blur: 28px;
-    --hp-refracted-shadow-y: 20px;
-    --hp-refracted-shadow-spread: 18px;
-    --hp-refracted-shadow-overlap: 12px;
+  .hp-shadow-sync-surface--note {
+    --hp-element-shadow-y: 8px;
+    --hp-element-shadow-blur: 13px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.13);
+    --hp-element-text-shadow-y: 2px;
+    --hp-element-text-shadow-blur: 7px;
   }
-  .hp-refracted-shadow-card--schedule {
-    --hp-refracted-shadow-opacity: 0.60;
-    --hp-refracted-shadow-blur: 26px;
-    --hp-refracted-shadow-y: 18px;
-    --hp-refracted-shadow-spread: 16px;
-    --hp-refracted-shadow-overlap: 10px;
+  .hp-shadow-sync-surface--profile {
+    --hp-element-shadow-y: 10px;
+    --hp-element-shadow-blur: 16px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.15);
+    --hp-element-text-shadow-y: 3px;
+    --hp-element-text-shadow-blur: 9px;
+  }
+  .hp-shadow-sync-surface--schedule {
+    --hp-element-shadow-y: 10px;
+    --hp-element-shadow-blur: 16px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.14);
+    --hp-element-text-shadow-y: 3px;
+    --hp-element-text-shadow-blur: 9px;
+  }
+  .hp-profile-photo-shadow {
+    --hp-element-shadow-y: 12px;
+    --hp-element-shadow-blur: 22px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.20);
+  }
+  .hp-note-icon-shadow {
+    --hp-element-shadow-y: 5px;
+    --hp-element-shadow-blur: 10px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.18);
+  }
+  .hp-schedule-widget-shadow {
+    --hp-element-shadow-y: 8px;
+    --hp-element-shadow-blur: 14px;
+    --hp-element-shadow-color: rgba(30, 34, 42, 0.12);
+  }
+  .hp-featured-shadow-media {
+    filter: drop-shadow(var(--hp-featured-shadow-x) var(--hp-featured-shadow-y) var(--hp-featured-shadow-blur) var(--hp-featured-shadow-color));
+  }
+  .hp-featured-shadow-text {
+    text-shadow: var(--hp-featured-shadow-x) 2px 7px var(--hp-featured-shadow-color);
   }
   @supports ((backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px)) or (-webkit-backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px))) {
     .hp-liquid-glass-enabled .glass-distortion-surface::before {
@@ -574,7 +592,9 @@
     }
     .glass-distortion-surface::before,
     .hp-liquid-glass-enabled .glass-distortion-surface::before,
-    .hp-refracted-shadow-card__shadow {
+    .hp-shadow-sync-element,
+    .hp-featured-shadow-media,
+    .featured-work-transparent-card:hover {
       animation: none;
       transform: none;
     }
@@ -611,14 +631,5 @@
   }
   100% {
     transform: translate3d(2%, 1%, 0) scale(1.03);
-  }
-}
-
-@keyframes hp-refracted-shadow-breathe {
-  0% {
-    opacity: calc(var(--hp-refracted-shadow-opacity) * 0.82);
-  }
-  100% {
-    opacity: var(--hp-refracted-shadow-opacity);
   }
 }

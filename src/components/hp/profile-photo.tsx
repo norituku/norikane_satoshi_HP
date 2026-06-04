@@ -28,11 +28,10 @@ export function ProfilePhoto() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="relative block shrink-0 overflow-hidden rounded-2xl transition-transform hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-4"
+        className="hp-shadow-sync-element hp-profile-photo-shadow relative block shrink-0 overflow-hidden rounded-2xl transition-transform hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-4"
         style={{
           width: 220,
           height: 220,
-          boxShadow: "0 12px 40px rgba(28, 15, 110, 0.22)",
         }}
         aria-label="プロフィール写真を拡大表示"
       >

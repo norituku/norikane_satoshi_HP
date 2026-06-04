@@ -123,22 +123,21 @@ export default async function HomePage() {
               <Link
                 key={note.id}
                 href={`/notes/${note.slug}`}
-                className="group flex shrink-0 snap-start flex-col glass-card-sm glass-card-sm--hp-note hp-refracted-shadow-card hp-refracted-shadow-card--note glass-refraction-edge glass-distortion-surface p-6 md:p-7"
+                className="group flex shrink-0 snap-start flex-col glass-card-sm glass-card-sm--hp-note hp-shadow-sync-surface hp-shadow-sync-surface--note glass-refraction-edge glass-distortion-surface p-6 md:p-7"
                 style={{ width: "min(84vw, 340px)", minHeight: 200 }}
               >
-                <span aria-hidden="true" className="hp-refracted-shadow-card__shadow" />
-                <div className="glass-distortion-foreground flex min-h-0 flex-1 flex-col">
+                <div className="glass-distortion-foreground hp-shadow-sync-foreground flex min-h-0 flex-1 flex-col">
                   <div className="flex items-baseline gap-3">
-                    <span className="font-[var(--font-inter)] text-[11px] font-semibold uppercase tracking-[0.18em] text-hp-muted">
+                    <span className="hp-shadow-sync-text hp-note-text-shadow font-[var(--font-inter)] text-[11px] font-semibold uppercase tracking-[0.18em] text-hp-muted">
                       {`Note ${String(idx + 1).padStart(2, "0")}`}
                     </span>
                   </div>
-                  <h3 className="hp-heading mt-3 text-base md:text-lg font-semibold text-hp">
+                  <h3 className="hp-shadow-sync-text hp-note-text-shadow hp-heading mt-3 text-base md:text-lg font-semibold text-hp">
                     {note.title}
                   </h3>
                   <div className="mt-auto pt-6 flex justify-end">
                     <ArrowRight
-                      className="h-5 w-5 transition-transform group-hover:translate-x-1"
+                      className="hp-shadow-sync-element hp-note-icon-shadow h-5 w-5 transition-transform group-hover:translate-x-1"
                       style={{ color: "var(--accent-primary)" }}
                     />
                   </div>
@@ -154,11 +153,10 @@ export default async function HomePage() {
         id="profile"
         className="mx-auto w-full max-w-[1440px] px-6 md:px-10 xl:px-14 scroll-mt-24 md:scroll-mt-28"
       >
-        <div className="glass-card glass-card--showcase glass-card--hp-profile hp-refracted-shadow-card hp-refracted-shadow-card--profile glass-distortion-surface p-8 md:p-10 xl:p-12">
-          <span aria-hidden="true" className="hp-refracted-shadow-card__shadow" />
-          <div className="glass-distortion-foreground">
-            <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">Profile</p>
-            <h2 className="hp-heading mt-2 text-2xl font-semibold text-hp md:text-3xl">
+        <div className="glass-card glass-card--showcase glass-card--hp-profile hp-shadow-sync-surface hp-shadow-sync-surface--profile glass-distortion-surface p-8 md:p-10 xl:p-12">
+          <div className="glass-distortion-foreground hp-shadow-sync-foreground">
+            <p className="hp-shadow-sync-text hp-profile-text-shadow text-xs uppercase tracking-[0.22em] text-hp-muted">Profile</p>
+            <h2 className="hp-shadow-sync-text hp-profile-text-shadow hp-heading mt-2 text-2xl font-semibold text-hp md:text-3xl">
               プロフィール
             </h2>
 
@@ -167,8 +165,8 @@ export default async function HomePage() {
               <div className="flex flex-col items-center gap-5 md:items-start">
                 <ProfilePhoto />
                 <div className="text-center md:text-left">
-                  <p className="text-sm text-hp-muted">則兼 智志</p>
-                  <p className="hp-compact-text mt-1 text-base font-semibold text-hp md:text-lg">
+                  <p className="hp-shadow-sync-text hp-profile-text-shadow text-sm text-hp-muted">則兼 智志</p>
+                  <p className="hp-shadow-sync-text hp-profile-text-shadow hp-compact-text mt-1 text-base font-semibold text-hp md:text-lg">
                     フリーランスカラリスト
                   </p>
                 </div>
@@ -176,7 +174,7 @@ export default async function HomePage() {
                   {tools.map((tool) => (
                     <span
                       key={tool}
-                      className="glass-badge glass-badge--profile-tool px-3 py-1 text-xs font-medium"
+                      className="glass-badge glass-badge--profile-tool hp-shadow-sync-element px-3 py-1 text-xs font-medium"
                     >
                       {tool}
                     </span>
@@ -190,7 +188,7 @@ export default async function HomePage() {
                       href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="glass-btn glass-btn--profile-social flex h-10 w-10 items-center justify-center text-hp"
+                      className="glass-btn glass-btn--profile-social hp-shadow-sync-element flex h-10 w-10 items-center justify-center text-hp"
                       aria-label={label}
                     >
                       <Icon className="h-4 w-4" />
@@ -201,7 +199,7 @@ export default async function HomePage() {
 
               {/* Right: career timeline */}
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
+                <p className="hp-shadow-sync-text hp-profile-text-shadow text-xs uppercase tracking-[0.22em] text-hp-muted">
                   Career
                 </p>
                 <div className="mt-5 space-y-6 md:space-y-7">
@@ -211,16 +209,16 @@ export default async function HomePage() {
                       className="grid grid-cols-[3rem_minmax(0,1fr)] items-baseline gap-3 md:gap-4"
                     >
                       <span
-                        className="font-[var(--font-inter)] text-sm font-bold"
+                        className="hp-shadow-sync-text hp-profile-text-shadow font-[var(--font-inter)] text-sm font-bold"
                         style={{ color: "var(--accent-primary)" }}
                       >
                         {item.year}
                       </span>
                       <div>
-                        <p className="hp-compact-text text-sm font-semibold text-hp md:text-base">
+                        <p className="hp-shadow-sync-text hp-profile-text-shadow hp-compact-text text-sm font-semibold text-hp md:text-base">
                           {item.event}
                         </p>
-                        <p className="hp-body mt-2 text-xs text-hp-muted md:text-sm">
+                        <p className="hp-shadow-sync-text hp-profile-text-shadow hp-body mt-2 text-xs text-hp-muted md:text-sm">
                           {item.detail}
                         </p>
                       </div>

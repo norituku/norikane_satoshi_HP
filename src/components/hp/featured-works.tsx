@@ -323,7 +323,7 @@ function PreviewFrame({
 }) {
   return (
     <div
-      className="relative -mx-4 -mt-4 aspect-video overflow-hidden rounded-none md:-mx-5 md:-mt-5"
+      className="hp-featured-shadow-media relative -mx-4 -mt-4 aspect-video overflow-hidden rounded-none md:-mx-5 md:-mt-5"
       data-featured-work-abstract-cover={abstractCover ? "true" : undefined}
       data-hp-color-field={abstractCover ? "cinematic-neutral" : undefined}
       style={background ? { background } : undefined}
@@ -344,7 +344,7 @@ function PreviewThumbnail({
     <img
       src={getYouTubeThumbnailUrl(videoId)}
       alt=""
-      className={`pointer-events-none absolute inset-0 z-20 h-full w-full rounded-none object-cover transition-opacity duration-300 ${
+      className={`hp-featured-shadow-media pointer-events-none absolute inset-0 z-20 h-full w-full rounded-none object-cover transition-opacity duration-300 ${
         isVisible ? "opacity-100" : "opacity-0"
       }`}
       loading="lazy"
@@ -493,7 +493,7 @@ function VideoSurface({
     <>
       {shouldPlay ? (
         <div
-          className={`pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
+          className={`hp-featured-shadow-media pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
             isCoverVisible ? "opacity-0" : "opacity-100"
           }`}
           aria-hidden="true"
@@ -549,7 +549,7 @@ function FeaturedWorkCard({
             </div>
           </PreviewFrame>
         )}
-        <p className="mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
+        <p className="hp-featured-shadow-text mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
           {work.title}
         </p>
         <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-3">
@@ -726,7 +726,7 @@ function LiveReelCard({
         <PreviewFrame>
           {shouldStartVideo && !prefersReducedMotion ? (
             <div
-              className={`pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
+              className={`hp-featured-shadow-media pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
                 isCoverVisible ? "opacity-0" : "opacity-100"
               }`}
               aria-hidden="true"
@@ -738,7 +738,7 @@ function LiveReelCard({
           ) : null}
           <PreviewThumbnail videoId={previewVideoId} isVisible={isCoverVisible} />
         </PreviewFrame>
-        <p className="mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
+        <p className="hp-featured-shadow-text mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
           ライブ映像作品多数
         </p>
         <p className="mt-auto pt-3 text-xs text-hp-muted md:text-sm">配信</p>
