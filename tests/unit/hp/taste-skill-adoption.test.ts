@@ -67,17 +67,36 @@ describe("HP taste-skill adoption contract", () => {
   it("keeps the default Japanese hero free of duplicate latin display headings", () => {
     render(React.createElement(HeroSection))
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("則兼 智志")
-    expect(screen.getByText("フリーランスカラリスト")).toBeInTheDocument()
+    expect(screen.getByText("則兼 智志")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("フリーランスカラリスト")
     expect(screen.queryByText(/Satoshi Norikane/u)).not.toBeInTheDocument()
     expect(screen.queryByText(/Freelance Colorist/u)).not.toBeInTheDocument()
   })
 
-  it("uses an editorial hero composition with a contact hash CTA", () => {
-    render(React.createElement(HeroSection))
+  it("keeps the hero copy aligned to master", () => {
+    const { container } = render(React.createElement(HeroSection))
 
-    expect(screen.getByText("映像の色で物語を翻訳する。")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /AI 相談窓口/u })).toHaveAttribute("href", "#contact")
-    expect(screen.getByRole("link", { name: /ノートを読む/u })).toHaveAttribute("href", "/#philosophy")
+    for (const text of [
+      "デモリール準備中",
+      "則兼 智志",
+      "フリーランスカラリスト",
+      "東京・2026年〜",
+    ]) {
+      expect(screen.getByText(text)).toBeInTheDocument()
+    }
+
+    for (const text of [
+      "Color Grading / Look Design",
+      "映像の色で物語を翻訳する。",
+      "作品の意図を読み、色設計から納品まで静かに整えるカラリストです。",
+      "AI 相談窓口",
+      "ノートを読む",
+      "DaVinci Resolve / ACES",
+      "劇場映画・配信・CM・MV",
+      "Remote / Studio",
+      "立ち会い・リモート両対応",
+    ]) {
+      expect(container).not.toHaveTextContent(text)
+    }
   })
 })
