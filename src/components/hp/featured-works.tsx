@@ -13,7 +13,10 @@ import {
   type FeaturedWork,
   type FeaturedWorkLink,
 } from "@/components/hp/featured-works-data"
-import { HERO_DEEP_SURFACE_BACKGROUND } from "@/components/hp/hero-deep-surface"
+import {
+  HERO_ABSTRACT_ART_BACKGROUND,
+  MARS_ABSTRACT_COVER_BACKGROUND,
+} from "@/components/hp/hero-deep-surface"
 
 type YouTubePlayerStateChangeEvent = {
   data: number
@@ -315,14 +318,18 @@ function useScrollableMarquee(
 function PreviewFrame({
   children,
   abstractCover = false,
+  background,
 }: {
   children: ReactNode
   abstractCover?: boolean
+  background?: string
 }) {
   return (
     <div
       className="relative -mx-4 -mt-4 aspect-video overflow-hidden rounded-t-[12px] md:-mx-5 md:-mt-5"
       data-featured-work-abstract-cover={abstractCover ? "true" : undefined}
+      data-hp-color-field={abstractCover ? "pink-red-blue" : undefined}
+      style={background ? { background } : undefined}
     >
       {children}
     </div>
@@ -539,10 +546,12 @@ function FeaturedWorkCard({
             />
           </PreviewFrame>
         ) : (
-          <PreviewFrame abstractCover>
+          <PreviewFrame abstractCover background={MARS_ABSTRACT_COVER_BACKGROUND}>
             <div
-              className="absolute inset-0"
-              style={{ background: HERO_DEEP_SURFACE_BACKGROUND }}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 opacity-72"
+              data-hp-abstract-art="mars"
+              style={{ background: HERO_ABSTRACT_ART_BACKGROUND }}
             />
             <div className="absolute inset-0 z-10 flex flex-wrap content-end items-end justify-end gap-1.5 p-3 md:p-4">
               <WorkLinkBadges links={work.links} workTitle={work.title} clone={clone} />

@@ -120,13 +120,17 @@ describe("HP third-wave design contract", () => {
     const css = readProjectFile("src/app/globals.css")
 
     expect(css).not.toContain("--accent-primary: #8B7FFF")
-    expect(css).not.toContain("--aurora-purple: rgba(139, 127, 255, 0.28)")
+    expect(css).not.toContain("--aurora-purple")
+    expect(css).not.toContain("--aurora-sky")
     expect(css).not.toContain("--aurora-pink: rgba(255, 143, 171, 0.20)")
-    expect(css).not.toContain("--aurora-sky: rgba(125, 211, 252, 0.20)")
-    expect(extractToken(css, "--accent-primary")).toBe("#7568D6")
+    expect(css).not.toContain("rgba(125, 211, 252")
+    expect(extractToken(css, "--accent-primary")).toBe("#366FCC")
+    expect(extractToken(css, "--aurora-pink")).toBe("rgba(224, 76, 140, 0.18)")
+    expect(extractToken(css, "--aurora-red")).toBe("rgba(198, 42, 58, 0.15)")
+    expect(extractToken(css, "--aurora-blue")).toBe("rgba(54, 139, 214, 0.18)")
 
-    for (const token of ["--aurora-purple", "--aurora-pink", "--aurora-sky"]) {
-      expect(parseRgbaColor(extractToken(css, token)).a).toBeLessThanOrEqual(0.16)
+    for (const token of ["--aurora-pink", "--aurora-red", "--aurora-blue"]) {
+      expect(parseRgbaColor(extractToken(css, token)).a).toBeLessThanOrEqual(0.24)
     }
   })
 

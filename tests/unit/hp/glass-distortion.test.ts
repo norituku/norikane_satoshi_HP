@@ -28,20 +28,22 @@ function extractRgbaAlpha(source: string, customPropertyName: string) {
 }
 
 describe("HP glass distortion contract", () => {
-  it("keeps the three aurora sources equally subtle", () => {
+  it("keeps the three aurora sources controlled without the retired purple/sky slots", () => {
     const css = readProjectFile("src/app/globals.css")
 
     const alphas = [
-      extractRgbaAlpha(css, "--aurora-purple"),
       extractRgbaAlpha(css, "--aurora-pink"),
-      extractRgbaAlpha(css, "--aurora-sky"),
+      extractRgbaAlpha(css, "--aurora-red"),
+      extractRgbaAlpha(css, "--aurora-blue"),
     ]
 
+    expect(css).not.toContain("--aurora-purple")
+    expect(css).not.toContain("--aurora-sky")
     for (const alpha of alphas) {
       expect(alpha).toBeGreaterThanOrEqual(0.14)
-      expect(alpha).toBeLessThanOrEqual(0.17)
+      expect(alpha).toBeLessThanOrEqual(0.24)
     }
-    expect(Math.max(...alphas) - Math.min(...alphas)).toBeLessThanOrEqual(0.02)
+    expect(Math.max(...alphas) - Math.min(...alphas)).toBeLessThanOrEqual(0.04)
   })
 
   it("keeps the standard glass base while defining a refraction edge utility", () => {
@@ -101,9 +103,10 @@ describe("HP glass distortion contract", () => {
     expect(hero).not.toContain("rotate-[-10deg]")
     expect(hero).not.toContain("left-6 top-32")
 
-    const decorativeAriaHiddenDivs = hero.match(/<div\s+aria-hidden="true"/g) ?? []
-    expect(decorativeAriaHiddenDivs).toHaveLength(1)
+    const decorativeGlassShards = hero.match(/glass-card-sm glass-refraction-edge/g) ?? []
+    expect(decorativeGlassShards).toHaveLength(1)
     expect(hero).toContain("rotate-[12deg]")
+    expect(hero).toContain('data-hp-abstract-art="hero"')
   })
 
   it("stops the distortion animation for reduced motion users", () => {
