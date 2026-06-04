@@ -74,7 +74,18 @@ describe("HP targeted glass contracts", () => {
     expect(homeScheduleSource).toContain("glass-distortion-foreground")
 
     expect(cssRule(":root")).toContain("--hp-refracted-shadow-opacity")
+    expect(cssRule(":root")).toContain("--hp-refracted-shadow-opacity: 0.85")
+    expect(cssRule(":root")).toContain("--hp-refracted-shadow-blur: 24px")
     expect(cssRule(".hp-refracted-shadow-section")).toContain("isolation: isolate")
+    expect(cssRule(".hp-refracted-shadow-section::before")).toContain(
+      "radial-gradient(ellipse 58% 30% at 22% 8%, rgba(30, 34, 42, 0.30)",
+    )
+    expect(cssRule(".hp-refracted-shadow-section::before")).toContain(
+      "radial-gradient(ellipse 62% 34% at 78% 92%, rgba(30, 34, 42, 0.26)",
+    )
+    expect(cssRule(".hp-refracted-shadow-section::before")).toContain(
+      "inset: -3.5rem clamp(1rem, 4vw, 3.5rem)",
+    )
     expect(cssRule(".hp-refracted-shadow-section::before")).toContain(
       "var(--hp-refracted-shadow-opacity)",
     )
@@ -94,6 +105,20 @@ describe("HP targeted glass contracts", () => {
     expect(pageSource).not.toContain("hp-refracted-shadow-section--hero")
     expect(pageSource).not.toContain("hp-refracted-shadow-section--featured")
     expect(pageSource).not.toContain("FeaturedWorks hp-refracted-shadow-section")
+  })
+
+  it("keeps the liquid distortion stronger without adding another blur layer", () => {
+    const liquidSurface = cssRule(
+      ".hp-liquid-glass-enabled .glass-distortion-surface::before",
+    )
+
+    expect(liquidSurface).toContain(
+      'backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22)',
+    )
+    expect(liquidSurface).toContain("opacity: 0.95")
+    expect(cssRule(".hp-liquid-glass-enabled .glass-distortion-surface--subtle::before")).toContain(
+      "opacity: 0.60",
+    )
   })
 
   it("makes profile tool and social badges strong transparent glass buttons", () => {
