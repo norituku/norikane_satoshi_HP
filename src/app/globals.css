@@ -107,6 +107,7 @@
   --hp-featured-shadow-y: 7px;
   --hp-featured-shadow-blur: 14px;
   --hp-featured-shadow-color: rgba(30, 34, 42, 0.18);
+  --hp-featured-refraction-opacity: 0.78;
 }
 
 @layer base {
@@ -305,26 +306,42 @@
     opacity: 0;
     pointer-events: none;
     position: absolute;
-    transform: translate3d(-2%, -1%, 0);
-    z-index: 0;
+    z-index: 1;
   }
   .glass-distortion-foreground {
     position: relative;
-    z-index: 1;
+    z-index: 2;
   }
   .hp-shadow-sync-surface {
     isolation: isolate;
-    overflow: visible;
+    overflow: hidden;
     position: relative;
   }
   .hp-shadow-sync-foreground {
     position: relative;
-    z-index: 1;
+    z-index: 2;
   }
   .hp-shadow-sync-element {
-    filter: drop-shadow(var(--hp-element-shadow-x) var(--hp-element-shadow-y) var(--hp-element-shadow-blur) var(--hp-element-shadow-color));
+    position: relative;
   }
   .hp-shadow-sync-text {
+    position: relative;
+  }
+  .hp-shadow-sync-layer {
+    color: transparent;
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    user-select: none;
+    z-index: 0;
+  }
+  .hp-shadow-clone-element {
+    background: rgba(30, 34, 42, 0.18);
+    color: transparent;
+    filter: drop-shadow(var(--hp-element-shadow-x) var(--hp-element-shadow-y) var(--hp-element-shadow-blur) var(--hp-element-shadow-color));
+  }
+  .hp-shadow-clone-text {
+    color: transparent;
     text-shadow: var(--hp-element-shadow-x) var(--hp-element-text-shadow-y) var(--hp-element-text-shadow-blur) var(--hp-element-shadow-color);
   }
   .hp-shadow-sync-surface--note {
@@ -368,17 +385,6 @@
   }
   .hp-featured-shadow-text {
     text-shadow: var(--hp-featured-shadow-x) 2px 7px var(--hp-featured-shadow-color);
-  }
-  @supports ((backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px)) or (-webkit-backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px))) {
-    .hp-liquid-glass-enabled .glass-distortion-surface::before {
-      animation: hp-liquid-glass-shift 8s ease-in-out infinite alternate;
-      backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22);
-      -webkit-backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22);
-      opacity: 0.95;
-    }
-    .hp-liquid-glass-enabled .glass-distortion-surface--subtle::before {
-      opacity: 0.60;
-    }
   }
   .glass-badge {
     background: rgba(255, 255, 255, 0.92);
@@ -537,6 +543,31 @@
     border-radius: 0;
     box-shadow: none;
   }
+  .featured-work-refraction-overlay {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 2;
+  }
+  @supports ((backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px)) or (-webkit-backdrop-filter: url("#hp-liquid-glass-distortion") blur(1px))) {
+    .hp-liquid-glass-enabled .glass-distortion-surface::before {
+      backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22);
+      -webkit-backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22);
+      opacity: 0.95;
+    }
+    .hp-liquid-glass-enabled .glass-distortion-surface--subtle::before {
+      opacity: 0.60;
+    }
+    .hp-liquid-glass-enabled .featured-work-refraction-overlay {
+      backdrop-filter: url("#hp-liquid-glass-distortion");
+      -webkit-backdrop-filter: url("#hp-liquid-glass-distortion");
+      opacity: var(--hp-featured-refraction-opacity);
+    }
+  }
   .chatbot-thinking-dot {
     animation: chatbot-thinking-dot 1.2s ease-in-out infinite;
     opacity: 0.42;
@@ -592,8 +623,9 @@
     }
     .glass-distortion-surface::before,
     .hp-liquid-glass-enabled .glass-distortion-surface::before,
-    .hp-shadow-sync-element,
+    .hp-shadow-clone-element,
     .hp-featured-shadow-media,
+    .featured-work-refraction-overlay,
     .featured-work-transparent-card:hover {
       animation: none;
       transform: none;
@@ -622,14 +654,5 @@
   40% {
     opacity: 1;
     transform: translateY(-3px);
-  }
-}
-
-@keyframes hp-liquid-glass-shift {
-  0% {
-    transform: translate3d(-2%, -1%, 0) scale(1.01);
-  }
-  100% {
-    transform: translate3d(2%, 1%, 0) scale(1.03);
   }
 }

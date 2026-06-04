@@ -795,13 +795,13 @@ export function FeaturedWorks() {
 
       <div
         ref={marqueeRef}
-        className="mt-6 -mx-8 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] md:-mx-10 xl:-mx-12"
+        className="relative mt-6 -mx-8 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] md:-mx-10 xl:-mx-12"
         aria-label="Featured Works"
         tabIndex={0}
         data-featured-work-marquee-viewport="true"
       >
         <div
-          className="flex w-max gap-0 px-8 pb-4 md:px-10 xl:px-12"
+          className="relative z-[1] flex w-max gap-0 px-8 pb-4 md:px-10 xl:px-12"
           data-featured-work-marquee-track="continuous"
         >
           {shouldRenderCloneTrack ? (
@@ -831,6 +831,7 @@ export function FeaturedWorks() {
             </div>
           ) : null}
         </div>
+        <div className="featured-work-refraction-overlay" aria-hidden="true" />
       </div>
     </div>
   )

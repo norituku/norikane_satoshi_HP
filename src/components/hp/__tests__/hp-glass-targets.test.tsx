@@ -45,6 +45,10 @@ function expectNeutralSurface(rule: string) {
   }
 }
 
+function occurrences(source: string, pattern: string) {
+  return source.split(pattern).length - 1
+}
+
 describe("HP targeted glass contracts", () => {
   it("targets notes profile and schedule glass without broadening Featured Works", () => {
     expect(pageSource).toContain(
@@ -76,12 +80,14 @@ describe("HP targeted glass contracts", () => {
     expect(globalsCss).not.toContain("hp-refracted-shadow-card__shadow")
     expect(globalsCss).not.toContain("@keyframes hp-refracted-shadow-breathe")
     expect(globalsCss).not.toContain("hp-refracted-shadow-breathe")
+    expect(globalsCss).not.toContain("@keyframes hp-liquid-glass-shift")
+    expect(globalsCss).not.toContain("hp-liquid-glass-shift")
 
     expect(pageSource).not.toContain('aria-hidden="true" className="hp-refracted-shadow')
     expect(homeScheduleSource).not.toContain('aria-hidden="true" className="hp-refracted-shadow')
   })
 
-  it("binds positive-y shadows to actual section elements below the glass foreground", () => {
+  it("puts positive-y element shadows below the glass and keeps foreground elements unfiltered", () => {
     const rootRule = cssRule(":root")
     expect(rootRule).toContain("--hp-element-shadow-x")
     expect(rootRule).toContain("--hp-element-shadow-y")
@@ -91,31 +97,36 @@ describe("HP targeted glass contracts", () => {
     expect(rootRule).not.toMatch(/--hp-(?:element|featured)-shadow-[a-z-]*y:\s*-/)
 
     expect(cssRule(".hp-shadow-sync-surface")).toContain("isolation: isolate")
-    expect(cssRule(".hp-shadow-sync-surface")).toContain("overflow: visible")
-    expect(cssRule(".hp-shadow-sync-foreground")).toContain("z-index: 1")
+    expect(cssRule(".hp-shadow-sync-surface")).toContain("overflow: hidden")
+    expect(cssRule(".glass-distortion-surface::before")).toContain("z-index: 1")
+    expect(cssRule(".hp-shadow-sync-foreground")).toContain("z-index: 2")
 
-    const elementRule = cssRule(".hp-shadow-sync-element")
-    expect(elementRule).toContain(
+    expect(cssRule(".hp-shadow-sync-layer")).toContain("z-index: 0")
+    expect(cssRule(".hp-shadow-clone-element")).toContain(
       "drop-shadow(var(--hp-element-shadow-x) var(--hp-element-shadow-y) var(--hp-element-shadow-blur) var(--hp-element-shadow-color))",
     )
-    expect(cssRule(".hp-shadow-sync-text")).toContain(
+    expect(cssRule(".hp-shadow-clone-text")).toContain(
       "text-shadow: var(--hp-element-shadow-x) var(--hp-element-text-shadow-y) var(--hp-element-text-shadow-blur) var(--hp-element-shadow-color)",
     )
+    expect(cssRule(".hp-shadow-sync-element")).not.toContain("drop-shadow(")
+    expect(cssRule(".hp-shadow-sync-text")).not.toContain("text-shadow:")
     expect(cssRule(".hp-shadow-sync-surface--note")).toContain("--hp-element-shadow-y: 8px")
     expect(cssRule(".hp-shadow-sync-surface--profile")).toContain("--hp-element-shadow-y: 10px")
     expect(cssRule(".hp-shadow-sync-surface--schedule")).toContain("--hp-element-shadow-y: 10px")
   })
 
-  it("attaches shadows to profile notes schedule and Featured Works elements", () => {
-    expect(profilePhotoSource).toContain("hp-shadow-sync-element hp-profile-photo-shadow")
-    expect(pageSource).toContain("hp-shadow-sync-text hp-profile-text-shadow")
-    expect(pageSource).toContain("glass-badge glass-badge--profile-tool hp-shadow-sync-element")
-    expect(pageSource).toContain("glass-btn glass-btn--profile-social hp-shadow-sync-element")
-
-    expect(pageSource).toContain("hp-shadow-sync-text hp-note-text-shadow")
-    expect(pageSource).toContain("hp-shadow-sync-element hp-note-icon-shadow")
-    expect(homeScheduleSource).toContain("hp-shadow-sync-text hp-schedule-text-shadow")
-    expect(homeScheduleSource).toContain("hp-shadow-sync-element hp-schedule-widget-shadow")
+  it("attaches shadow-only layers to profile notes schedule and Featured Works elements", () => {
+    expect(pageSource).toContain("hp-shadow-sync-layer hp-note-shadow-layer")
+    expect(pageSource).toContain("hp-shadow-sync-layer hp-profile-shadow-layer")
+    expect(homeScheduleSource).toContain("hp-shadow-sync-layer hp-schedule-shadow-layer")
+    expect(pageSource).toContain("hp-shadow-clone-text hp-profile-text-shadow")
+    expect(pageSource).toContain("hp-shadow-clone-element hp-profile-photo-shadow")
+    expect(pageSource).toContain("hp-shadow-clone-element hp-profile-tool-shadow")
+    expect(pageSource).toContain("hp-shadow-clone-element hp-profile-social-shadow")
+    expect(homeScheduleSource).toContain("hp-shadow-clone-element hp-schedule-widget-shadow")
+    expect(profilePhotoSource).not.toContain("hp-profile-photo-shadow")
+    expect(pageSource).not.toContain("hp-shadow-sync-text hp-profile-text-shadow")
+    expect(homeScheduleSource).not.toContain("hp-shadow-sync-text hp-schedule-text-shadow")
 
     expect(featuredWorksSource).toContain("hp-featured-shadow-media")
     expect(featuredWorksSource).toContain("hp-featured-shadow-text")
@@ -131,6 +142,8 @@ describe("HP targeted glass contracts", () => {
       ".hp-liquid-glass-enabled .glass-distortion-surface::before",
     )
 
+    expect(liquidSurface).not.toContain("animation:")
+    expect(cssRule(".glass-distortion-surface::before")).not.toContain("translate3d")
     expect(liquidSurface).toContain(
       'backdrop-filter: url("#hp-liquid-glass-distortion") blur(20px) saturate(1.22)',
     )
@@ -138,6 +151,28 @@ describe("HP targeted glass contracts", () => {
     expect(cssRule(".hp-liquid-glass-enabled .glass-distortion-surface--subtle::before")).toContain(
       "opacity: 0.60",
     )
+  })
+
+  it("adds one fixed transparent Featured Works refraction overlay on the viewport", () => {
+    expect(featuredWorksSource).toContain('className="featured-work-refraction-overlay"')
+    expect(featuredWorksSource).toContain('aria-hidden="true"')
+    expect(occurrences(featuredWorksSource, "featured-work-refraction-overlay")).toBe(1)
+
+    const overlayRule = cssRule(".featured-work-refraction-overlay")
+    expect(overlayRule).toContain("background: transparent")
+    expect(overlayRule).toContain("border: 0")
+    expect(overlayRule).toContain("box-shadow: none")
+    expect(overlayRule).toContain("pointer-events: none")
+    expect(overlayRule).toContain("position: absolute")
+    expect(overlayRule).toContain("inset: 0")
+
+    const enabledOverlayRule = cssRule(
+      ".hp-liquid-glass-enabled .featured-work-refraction-overlay",
+    )
+    expect(enabledOverlayRule).toContain('backdrop-filter: url("#hp-liquid-glass-distortion")')
+    expect(enabledOverlayRule).toContain("-webkit-backdrop-filter")
+    expect(enabledOverlayRule).not.toContain("blur(")
+    expect(enabledOverlayRule).not.toContain("animation:")
   })
 
   it("makes profile tool and social badges strong transparent glass buttons", () => {
@@ -169,7 +204,7 @@ describe("HP targeted glass contracts", () => {
       ".glass-refraction-edge",
       ".glass-distortion-surface::before",
       ".hp-shadow-sync-surface",
-      ".hp-shadow-sync-element",
+      ".hp-shadow-clone-element",
       ".glass-badge",
       ".glass-badge--profile-tool",
       ".glass-btn--profile-social",
@@ -187,13 +222,14 @@ describe("HP targeted glass contracts", () => {
     expect(cssRule(".glass-badge--profile-tool")).toContain("inset")
   })
 
-  it("turns off element shadow motion in reduced-motion mode while keeping static shadows", () => {
+  it("turns off motion in reduced-motion mode while keeping static shadows", () => {
     const reducedMotionBlock = globalsCss.match(
       /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]+?)\n\s*\}\n\}/,
     )
 
-    expect(reducedMotionBlock?.[1]).toContain(".hp-shadow-sync-element")
+    expect(reducedMotionBlock?.[1]).toContain(".hp-shadow-clone-element")
     expect(reducedMotionBlock?.[1]).toContain(".hp-featured-shadow-media")
+    expect(reducedMotionBlock?.[1]).toContain(".featured-work-refraction-overlay")
     expect(reducedMotionBlock?.[1]).toContain("animation: none")
     expect(reducedMotionBlock?.[1]).toContain("transform: none")
     expect(reducedMotionBlock?.[1]).not.toContain("filter: none")

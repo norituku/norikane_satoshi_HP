@@ -90,11 +90,12 @@ describe("HP glass distortion contract", () => {
     expect(css).toMatch(/\.glass-distortion-surface::before[\s\S]*backdrop-filter/)
     const foreground = extractCssRule(css, ".glass-distortion-foreground")
 
-    expect(foreground).toContain("z-index: 1")
+    expect(foreground).toContain("z-index: 2")
     expect(foreground).not.toMatch(/(?:filter|backdrop-filter):/)
     expect(hero).toContain("glass-distortion-surface")
     expect(featuredWorks).toContain("glass-distortion-foreground")
     expect(featuredWorks).toContain("featured-work-transparent-card")
+    expect(featuredWorks).toContain("featured-work-refraction-overlay")
     expect(page).toContain("glass-distortion-foreground")
   })
 
@@ -110,13 +111,22 @@ describe("HP glass distortion contract", () => {
     expect(hero).toContain('data-hp-abstract-art="hero"')
   })
 
-  it("stops the distortion animation for reduced motion users", () => {
+  it("keeps liquid distortion static and disables remaining motion for reduced motion users", () => {
     const css = readProjectFile("src/app/globals.css")
+    const liquidSurface = extractCssRule(
+      css,
+      ".hp-liquid-glass-enabled .glass-distortion-surface::before",
+    )
 
-    expect(css).toContain("@keyframes hp-liquid-glass-shift")
+    expect(css).not.toContain("@keyframes hp-liquid-glass-shift")
+    expect(css).not.toContain("hp-liquid-glass-shift")
     expect(css).toContain(".hp-liquid-glass-enabled .glass-distortion-surface::before")
+    expect(liquidSurface).not.toContain("animation:")
     expect(css).toMatch(
       /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.glass-distortion-surface::before[\s\S]*animation:\s*none/,
+    )
+    expect(css).toMatch(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.featured-work-refraction-overlay[\s\S]*transform:\s*none/,
     )
   })
 })
