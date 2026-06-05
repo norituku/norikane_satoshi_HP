@@ -225,6 +225,40 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.90),
       0 14px 34px rgba(30, 34, 42, 0.085);
   }
+  .hp-liquid-dom-profile-shell {
+    border-radius: var(--hp-radius);
+    min-height: 1px;
+    overflow: hidden;
+    position: relative;
+  }
+  .hp-liquid-dom-profile-layout-probe {
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .hp-liquid-dom-profile-canvas {
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 1;
+  }
+  .hp-liquid-dom-profile-backdrop {
+    background-color: var(--bg-base);
+    background-image:
+      radial-gradient(ellipse 78% 58% at 15% 40%, var(--aurora-purple) 0%, transparent 68%),
+      radial-gradient(ellipse 66% 52% at 85% 15%, var(--aurora-pink) 0%, transparent 62%),
+      radial-gradient(ellipse 72% 54% at 55% 85%, var(--aurora-sky) 0%, transparent 64%);
+    height: 100%;
+    transform: scale(1.08);
+    width: 100%;
+  }
+  .hp-liquid-dom-profile-html.glass-card--hp-profile {
+    background: rgba(255, 255, 255, 0.34);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    height: 100%;
+    width: 100%;
+  }
   .glass-card--hp-schedule {
     background: rgba(255, 255, 255, 0.56);
     backdrop-filter: blur(30px) saturate(1.34);
@@ -634,6 +668,8 @@
     .hp-featured-shadow-track,
     .hp-featured-shadow-clone-media,
     .hp-featured-shadow-clone-badge,
+    .hp-liquid-dom-profile-backdrop,
+    .hp-liquid-dom-profile-canvas,
     .featured-work-refraction-overlay,
     .featured-work-transparent-card:hover {
       animation: none;

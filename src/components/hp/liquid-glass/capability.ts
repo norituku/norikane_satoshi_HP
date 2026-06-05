@@ -51,6 +51,8 @@ export function supportsHtmlInCanvas() {
   return supportsLayoutSubtree && (supportsCanvasDraw || supportsWebGpuElementCopy)
 }
 
-export function supportsLiquidDomProfileProof() {
+export function supportsLiquidDomProfileCard() {
   return supportsLiquidDomWebGpu() && supportsHtmlInCanvas()
 }
+
+export const supportsLiquidDomProfileProof = supportsLiquidDomProfileCard
