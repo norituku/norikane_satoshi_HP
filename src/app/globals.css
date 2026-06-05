@@ -213,6 +213,16 @@
       overflow-wrap: anywhere;
       word-break: normal;
     }
+    article.glass-card--hp-note-page figure[data-diagram-slug="correction-labyrinth-to-factor"],
+    article.glass-card--hp-note-page figure[data-diagram-slug="correction-failure-modes"] {
+      width: calc(100% + 2.5rem);
+      max-width: none;
+      margin-left: -1.25rem;
+      margin-right: -1.25rem;
+      border-left: 0;
+      border-right: 0;
+      border-radius: 0;
+    }
   }
   .glass-card--chat-frost {
     background: rgba(255, 255, 255, 0.72);
