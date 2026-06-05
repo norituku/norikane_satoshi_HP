@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react"
 import { FeaturedWorks } from "@/components/hp/featured-works"
 import { HeroSection } from "@/components/hp/hero-section"
 import { HomeScheduleSection } from "@/components/hp/home-schedule-section"
+import { PressSection } from "@/components/hp/press-section"
 import { ProfilePhoto } from "@/components/hp/profile-photo"
 import { isBookingEnabled } from "@/lib/feature-flags"
 import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site-brand"
@@ -235,6 +236,8 @@ export default async function HomePage() {
           <FeaturedWorks />
         </div>
       </section>
+
+      <PressSection />
 
       {isBookingEnabled() ? <HomeScheduleSection /> : null}
     </div>
