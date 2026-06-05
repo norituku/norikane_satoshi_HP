@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react"
 import { FeaturedWorks } from "@/components/hp/featured-works"
 import { HeroSection } from "@/components/hp/hero-section"
 import { HomeScheduleSection } from "@/components/hp/home-schedule-section"
+import { ProfileLiquidDomProof } from "@/components/hp/liquid-glass/profile-liquid-dom-proof"
 import { ProfilePhoto } from "@/components/hp/profile-photo"
 import { isBookingEnabled } from "@/lib/feature-flags"
 import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site-brand"
@@ -239,6 +240,7 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
+          <ProfileLiquidDomProof />
           <div className="glass-distortion-foreground hp-shadow-sync-foreground">
             <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">Profile</p>
             <h2 className="hp-heading mt-2 text-2xl font-semibold text-hp md:text-3xl">
