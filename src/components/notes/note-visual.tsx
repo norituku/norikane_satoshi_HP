@@ -86,7 +86,7 @@ const STATIC_MODULES: Record<string, ComponentType<unknown>> = {
 }
 
 const MOBILE_VIDEO_ASPECTS: Record<string, string> = {
-  "correction-control-math": "400 / 2000",
+  "correction-control-math": "800 / 1000",
   "correction-reversibility": "760 / 1000",
   "correction-space-choice": "533.3333333333 / 1500",
 }
