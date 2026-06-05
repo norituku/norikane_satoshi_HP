@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -77,6 +77,7 @@ function latestRecord(name: string) {
 }
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
   liquidDomTestState.nodeRecords.length = 0
   liquidDomTestState.supportsLiquidDomProfileCard.mockReturnValue(false)
@@ -121,7 +122,8 @@ describe("ProfileLiquidDomCard", () => {
         className="glass-card glass-card--hp-profile hp-shadow-sync-surface hp-shadow-sync-surface--profile p-8 md:p-10 xl:p-12"
         shadowLayer={<div data-testid="profile-shadow-layer" />}
       >
-        <p>Profile foreground</p>
+        <p data-testid="profile-foreground-marker">Profile foreground</p>
+        <div data-testid="featured-works-marker">Featured Works</div>
       </ProfileLiquidDomCard>,
     )
 
@@ -129,6 +131,19 @@ describe("ProfileLiquidDomCard", () => {
       expect(container.querySelector("[data-hp-liquid-dom-profile-card='true']")).toBeInTheDocument()
     })
 
+    const canvas = container.querySelector("[data-liquid-dom-node='LiquidCanvas']")
+    const foreground = container.querySelector(
+      "[data-hp-liquid-dom-profile-foreground='sharp-dom']",
+    )
+
+    expect(canvas).toBeInTheDocument()
+    expect(foreground).toBeInTheDocument()
+    expect(foreground).toContainElement(screen.getByTestId("profile-shadow-layer"))
+    expect(foreground).toContainElement(screen.getByTestId("profile-foreground-marker"))
+    expect(foreground).toContainElement(screen.getByTestId("featured-works-marker"))
+    expect(canvas).not.toContainElement(screen.getByTestId("profile-shadow-layer"))
+    expect(canvas).not.toContainElement(screen.getByTestId("profile-foreground-marker"))
+    expect(canvas).not.toContainElement(screen.getByTestId("featured-works-marker"))
     expect(latestRecord("LiquidCanvas")).toMatchObject({
       childCount: 1,
       childNames: ["ZStack"],
@@ -145,6 +160,8 @@ describe("ProfileLiquidDomCard", () => {
       childCount: 1,
       childNames: ["Html"],
     })
+    expect(canvas).toContainElement(container.querySelector(".hp-liquid-dom-profile-backdrop"))
+    expect(canvas).toContainElement(container.querySelector(".hp-liquid-dom-profile-glass-fill"))
     expect(liquidDomTestState.nodeRecords.filter((record) => record.name === "Frame")).toEqual([
       expect.objectContaining({ childCount: 1, childNames: ["Html"] }),
       expect.objectContaining({ childCount: 1, childNames: ["Glass"] }),
@@ -169,11 +186,14 @@ describe("ProfileLiquidDomCard", () => {
     expect(profileCard).toContain("GlassContainer {...PROFILE_GLASS_OPTICS}")
     expect(profileCard).toContain("Glass {...PROFILE_GLASS_SHAPE}")
     expect(profileCard).toContain("Html sizing=\"fill\" zIndex={1}")
+    expect(profileCard).toContain("hp-liquid-dom-profile-glass-fill")
+    expect(profileCard).toContain("data-hp-liquid-dom-profile-foreground=\"sharp-dom\"")
     expect(profileCard).toContain("displacementFactor: 0.18")
     expect(profileCard).toContain("thickness: 42")
     expect(profileCard).toContain("ior: 1.16")
     expect(profileCard).toContain("dispersion: 0.012")
     expect(css).toContain(".hp-liquid-dom-profile-backdrop")
-    expect(css).toContain(".hp-liquid-dom-profile-html.glass-card--hp-profile")
+    expect(css).toContain(".hp-liquid-dom-profile-foreground.glass-card--hp-profile")
+    expect(css).toContain("backdrop-filter: none")
   })
 })

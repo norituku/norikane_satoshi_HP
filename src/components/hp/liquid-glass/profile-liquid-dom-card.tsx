@@ -197,12 +197,6 @@ export function ProfileLiquidDomCard({
       className="hp-liquid-dom-profile-shell hp-shadow-sync-surface hp-shadow-sync-surface--profile"
       data-hp-liquid-dom-profile-card="true"
     >
-      <div className={`${className} hp-liquid-dom-profile-layout-probe`} aria-hidden="true">
-        {shadowLayer}
-        <div className="glass-distortion-foreground hp-shadow-sync-foreground">
-          {children}
-        </div>
-      </div>
       <LiquidCanvas
         className="hp-liquid-dom-profile-canvas"
         canvasClassName="h-full w-full"
@@ -221,18 +215,22 @@ export function ProfileLiquidDomCard({
             <Frame width={size.width} height={size.height}>
               <Glass {...PROFILE_GLASS_SHAPE}>
                 <Html sizing="fill" zIndex={1}>
-                  <div className={`${className} hp-liquid-dom-profile-html`}>
-                    {shadowLayer}
-                    <div className="glass-distortion-foreground hp-shadow-sync-foreground">
-                      {children}
-                    </div>
-                  </div>
+                  <div className="hp-liquid-dom-profile-glass-fill" />
                 </Html>
               </Glass>
             </Frame>
           </GlassContainer>
         </ZStack>
       </LiquidCanvas>
+      <div
+        className={`${className} hp-liquid-dom-profile-foreground`}
+        data-hp-liquid-dom-profile-foreground="sharp-dom"
+      >
+        {shadowLayer}
+        <div className="glass-distortion-foreground hp-shadow-sync-foreground">
+          {children}
+        </div>
+      </div>
     </div>
   )
 }
