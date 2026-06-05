@@ -89,6 +89,7 @@ const MOBILE_VIDEO_ASPECTS: Record<string, string> = {
   "correction-control-math": "800 / 1000",
   "correction-reversibility": "760 / 1000",
   "correction-space-choice": "533.3333333333 / 1500",
+  "correction-failure-modes": "1000 / 900",
 }
 
 export function NoteVisual({ slug }: { slug: string }) {
@@ -103,7 +104,11 @@ export function NoteVisual({ slug }: { slug: string }) {
         data-diagram-slug={config.slug}
         data-diagram-kind={config.kind}
         aria-label={config.alt}
-        className="mx-auto my-12 max-w-[58rem] overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-16"
+        className={`mx-auto my-12 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-16 ${
+          config.slug === "correction-failure-modes"
+            ? "max-w-[72rem]"
+            : "max-w-[58rem]"
+        }`}
       >
         <VisualBody config={config} />
       </figure>
