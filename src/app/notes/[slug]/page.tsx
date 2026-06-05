@@ -59,7 +59,7 @@ export default async function NotePage({ params }: PageProps) {
           ノート一覧に戻る
         </Link>
       </nav>
-      <article className="glass-card p-8 md:p-10 xl:p-14">
+      <article className="glass-card glass-card--hp-note-page p-8 md:p-10 xl:p-14">
         <p className="text-xs uppercase tracking-[0.22em] text-hp-muted">
           {label}
         </p>

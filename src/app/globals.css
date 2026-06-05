@@ -200,6 +200,16 @@
     box-shadow: var(--glass-shadow);
     border-radius: var(--hp-radius);
   }
+  @media (max-width: 767px) {
+    article.glass-card--hp-note-page {
+      margin-left: -1.5rem;
+      margin-right: -1.5rem;
+      padding: 2rem 1.25rem;
+      border-left: 0;
+      border-right: 0;
+      border-radius: 0;
+    }
+  }
   .glass-card--chat-frost {
     background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(32px) saturate(1.3);
