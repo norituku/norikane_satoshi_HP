@@ -430,6 +430,9 @@ function FlipCell({
 }) {
   const u = reducedMotion ? 0.65 : umphase(t)
   const descriptionLineGap = layout.descriptionFont * 1.28
+  const descriptionY = isMobile
+    ? layout.headerY - (layout.titleFont - layout.descriptionFont) * 0.8
+    : layout.headerY
   return (
     <g>
       <rect
@@ -465,12 +468,12 @@ function FlipCell({
       {isMobile ? (
         <text
           x={layout.descriptionX}
-          y={layout.headerY}
+          y={descriptionY}
           fontSize={layout.descriptionFont}
           fontWeight={500}
           fill={TEXT_MUTED}
         >
-          <tspan x={layout.descriptionX} y={layout.headerY}>
+          <tspan x={layout.descriptionX} y={descriptionY}>
             加算が偏ると、ある閾値で
           </tspan>
           <tspan x={layout.descriptionX} dy={descriptionLineGap}>
@@ -497,7 +500,7 @@ function FlipCell({
         fontWeight={600}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
       >
-        加算強度 u = {u.toFixed(2)}
+        加算強度 {u.toFixed(2)}
       </text>
       {CHIPS.map((spec, col) => (
         <FlipColumn key={col} layout={layout} col={col} spec={spec} u={u} />
