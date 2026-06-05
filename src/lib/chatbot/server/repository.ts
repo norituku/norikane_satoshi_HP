@@ -10,11 +10,13 @@ import type {
   ChatbotConversationContext,
   ChatbotMessage,
   ChatbotMessageRole,
+  ConversationState,
   ConversationSummary,
   DocumentaryAttachment,
   FinalMedium,
   JobContext,
   RoutingDecision,
+  SurveyChoiceSet,
   WorkSite,
 } from "@/lib/chatbot/domain"
 import { prisma } from "@/lib/prisma"
@@ -69,7 +71,9 @@ export async function loadConversationBySessionId(
     },
   })
 
-  return row ? toDomainConversation(row) : null
+  if (!row) return null
+  const contextFields = await loadConversationContextFields(row.id)
+  return toDomainConversation({ ...row, ...contextFields })
 }
 
 export async function appendMessage(input: {
@@ -139,10 +143,23 @@ export async function recordInquiry(input: {
 export async function updateConversationRouting(input: {
   conversationId: string
   routingDecision: RoutingDecisionKind
+  currentQuestion?: string | null
+  activeChoices?: SurveyChoiceSet | null
+  conversationState?: ConversationState
+  jobContext?: JobContext
 }): Promise<void> {
   await prisma.chatbotConversation.update({
     where: { id: input.conversationId },
-    data: { routingDecision: input.routingDecision },
+    data: {
+      routingDecision: input.routingDecision,
+      ...(input.jobContext ? toJobContextUpdateData(input.jobContext) : {}),
+    },
+  })
+  await updateConversationContextFields({
+    conversationId: input.conversationId,
+    currentQuestion: input.currentQuestion ?? null,
+    activeChoices: input.activeChoices ? JSON.stringify(input.activeChoices) : null,
+    conversationState: input.conversationState ? JSON.stringify(input.conversationState) : null,
   })
 }
 
@@ -182,10 +199,15 @@ export async function linkChatToBookingGroup(input: {
 function toDomainConversation(row: ChatbotConversationRow): ChatbotConversation {
   const routingDecisionKind = toRoutingDecisionKind(row.routingDecision)
   const jobContext = toJobContext(row)
+  const activeChoices = toSurveyChoiceSet(row.activeChoices)
+  const conversationState = toConversationState(row.conversationState)
   const context: ChatbotConversationContext = {
     sessionId: row.sessionId,
     ...(row.userId ? { userId: row.userId } : {}),
     ...(row.customerEmail ? { customerEmail: row.customerEmail } : {}),
+    ...(row.currentQuestion ? { currentQuestion: row.currentQuestion } : {}),
+    ...(activeChoices ? { activeChoices } : {}),
+    ...(conversationState ? { conversationState } : {}),
     ...(Object.keys(jobContext).length > 0 ? { jobContext } : {}),
   }
 
@@ -282,6 +304,59 @@ function toConversationSummaryUpdateData(
   }
 }
 
+function toJobContextUpdateData(jobContext: JobContext): Prisma.ChatbotConversationUpdateInput {
+  return {
+    finalMedium: jobContext.finalMedium,
+    jobType: jobContext.jobKind ?? null,
+    mainDuration:
+      typeof jobContext.projectLengthMinutes === "number"
+        ? String(jobContext.projectLengthMinutes)
+        : null,
+    workSite: jobContext.workSite,
+    attachments: JSON.stringify(jobContext.documentaryAttachment),
+    additionalWork: jobContext.additionalWork ? JSON.stringify(jobContext.additionalWork) : null,
+    referenceUrls: jobContext.referenceUrls ? JSON.stringify(jobContext.referenceUrls) : null,
+  }
+}
+
+async function loadConversationContextFields(conversationId: string): Promise<{
+  currentQuestion: string | null
+  activeChoices: string | null
+  conversationState: string | null
+}> {
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      currentQuestion: string | null
+      activeChoices: string | null
+      conversationState: string | null
+    }>
+  >(
+    `SELECT currentQuestion, activeChoices, conversationState
+     FROM ChatbotConversation
+     WHERE id = ?`,
+    conversationId,
+  )
+
+  return rows[0] ?? { currentQuestion: null, activeChoices: null, conversationState: null }
+}
+
+async function updateConversationContextFields(input: {
+  conversationId: string
+  currentQuestion: string | null
+  activeChoices: string | null
+  conversationState: string | null
+}): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `UPDATE ChatbotConversation
+     SET currentQuestion = ?, activeChoices = ?, conversationState = ?
+     WHERE id = ?`,
+    input.currentQuestion,
+    input.activeChoices,
+    input.conversationState,
+    input.conversationId,
+  )
+}
+
 function toJobContext(row: ChatbotConversationRow): Partial<JobContext> {
   const jobContext: Partial<JobContext> = {}
   const finalMedium = toFinalMedium(row.finalMedium)
@@ -356,6 +431,24 @@ function toAdditionalWork(value: string | null): JobContext["additionalWork"] | 
   return parsed as JobContext["additionalWork"]
 }
 
+function toSurveyChoiceSet(value: string | null | undefined): SurveyChoiceSet | undefined {
+  if (value == null) return undefined
+  const parsed = parseJson(value, "active choices")
+  if (!isSurveyChoiceSet(parsed)) {
+    throw new Error("Invalid chatbot active choices JSON")
+  }
+  return parsed
+}
+
+function toConversationState(value: string | null | undefined): Partial<ConversationState> | undefined {
+  if (value == null) return undefined
+  const parsed = parseJson(value, "conversation state")
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid chatbot conversation state JSON")
+  }
+  return parsed as Partial<ConversationState>
+}
+
 function toStringArray(value: string | null): string[] | undefined {
   if (value === null) return undefined
   const parsed = parseJson(value, "string array")
@@ -381,6 +474,17 @@ function parseJson(value: string, label: string): unknown {
 
 function isOneOf<const T extends readonly string[]>(value: string, allowed: T): value is T[number] {
   return allowed.includes(value)
+}
+
+function isSurveyChoiceSet(value: unknown): value is SurveyChoiceSet {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const candidate = value as Partial<SurveyChoiceSet>
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.question === "string" &&
+    Array.isArray(candidate.choices) &&
+    candidate.choices.every((choice) => typeof choice.id === "string" && typeof choice.label === "string")
+  )
 }
 
 export const __chatbotRepositoryTestUtils = {

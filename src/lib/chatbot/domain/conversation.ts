@@ -17,6 +17,7 @@ export type ChatbotConversationContext = {
   customerEmail?: string
   currentQuestion?: string
   activeChoices?: SurveyChoiceSet
+  conversationState?: Partial<ConversationState>
   jobContext?: Partial<JobContext>
   routingDecision?: RoutingDecision
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
 import type { ChatbotConversation, ChatbotMessage } from "@/lib/chatbot/domain"
+import { finalMediumChoices } from "@/lib/chatbot/domain"
 import { handleChatbotMessage } from "@/lib/chatbot/server/message-handler"
 import type { UserChatbotContext } from "@/lib/chatbot/server/user-context-loader"
 
@@ -261,5 +262,111 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.generate.mock.calls[0]?.[0].messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ content: "old user context" })]),
     )
+  })
+
+  it("persists the active choice panel returned by deterministic routing", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: { hasCustomerIdentity: true, turnCount: 2 },
+        },
+        messages: [{ id: "old", role: "user", content: "会社名と名前は共有済みです", createdAt: "2026-05-26T00:00:00.000Z" }],
+      }),
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "案件相談です" },
+      harness.options,
+    )
+
+    expect(result.ui).toEqual({ kind: "choice-panel", choiceSet: finalMediumChoices })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv_1",
+        currentQuestion: "最終媒体は何になりますか？",
+        activeChoices: finalMediumChoices,
+      }),
+    )
+  })
+
+  it("consumes stored final medium choice before text inference and advances to the next slot", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: finalMediumChoices,
+          currentQuestion: "最終媒体は何になりますか？",
+          conversationState: { hasCustomerIdentity: true, turnCount: 2 },
+        },
+        messages: [{ id: "old", role: "assistant", content: "最終媒体は何になりますか？", createdAt: "2026-05-26T00:00:00.000Z" }],
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "最終媒体は何になりますか？",
+      tier: "tier-2-ollama-deepseek",
+      proposedRoutingDecision: {
+        kind: "continue",
+        nextQuestion: "最終媒体は何になりますか？",
+        presentChoices: finalMediumChoices,
+      },
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "選択: live" },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0]).toMatchObject({
+      conversationState: expect.objectContaining({ hasFinalMedium: true }),
+      jobContext: expect.objectContaining({ finalMedium: "live" }),
+    })
+    expect(result.routingDecision).toMatchObject({
+      kind: "continue",
+      nextQuestion: "案件種別と尺を教えてください",
+    })
+    expect(result.routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: null,
+        conversationState: expect.objectContaining({ hasFinalMedium: true }),
+        jobContext: expect.objectContaining({ finalMedium: "live" }),
+      }),
+    )
+  })
+
+  it("keeps a stored final medium slot filled on later turns", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: { hasCustomerIdentity: true, hasFinalMedium: true, turnCount: 3 },
+          jobContext: { finalMedium: "live" },
+        },
+        messages: [{ id: "old", role: "user", content: "選択: live", createdAt: "2026-05-26T00:00:00.000Z" }],
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "最終媒体は何になりますか？",
+      tier: "tier-2-ollama-deepseek",
+      proposedRoutingDecision: {
+        kind: "continue",
+        nextQuestion: "最終媒体は何になりますか？",
+        presentChoices: finalMediumChoices,
+      },
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "補足です" },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toEqual(
+      expect.objectContaining({ hasFinalMedium: true }),
+    )
+    expect(result.routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
   })
 })

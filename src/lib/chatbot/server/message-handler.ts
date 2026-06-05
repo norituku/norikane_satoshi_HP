@@ -27,6 +27,10 @@ import {
   tier1ObservedNotionAiModel,
 } from "@/lib/chatbot/server"
 import { buildChatbotStaticPolicyPrompt } from "@/lib/chatbot/knowledge"
+import {
+  applyActiveChoiceAnswer,
+  isSatisfiedChoicePanel,
+} from "@/lib/chatbot/server/choice-panel-state"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
 
 type ChatbotMessageUi =
@@ -110,14 +114,23 @@ export async function handleChatbotMessage(
     role: "user",
     content: input.message,
   })
+  const activeChoiceAnswer = applyActiveChoiceAnswer({
+    activeChoices: conversation.context.activeChoices,
+    message: input.message,
+  })
   const userContext = input.userId
     ? await userContextLoader({
         userId: input.userId,
         currentConversationId: conversation.id,
       })
     : null
-  const jobContext = buildJobContext(input.jobContext, conversation, userMessage)
-  const conversationState = buildConversationState(input.conversationState, conversation, userMessage)
+  const jobContext = buildJobContext(input.jobContext, conversation, userMessage, activeChoiceAnswer?.jobContext)
+  const conversationState = buildConversationState(
+    input.conversationState,
+    conversation,
+    userMessage,
+    activeChoiceAnswer?.conversationState,
+  )
   const llmResponse = await orchestrator.generate({
     systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter),
     messages: [
@@ -135,11 +148,11 @@ export async function handleChatbotMessage(
     conversationState,
     latestUserMessage: input.message,
   })
-  const routingDecision =
-    deterministicRoutingDecision.kind === "to-direct-contact" ||
-    deterministicRoutingDecision.kind === "to-booking-inline"
-      ? deterministicRoutingDecision
-      : llmResponse.proposedRoutingDecision ?? deterministicRoutingDecision
+  const routingDecision = chooseRoutingDecision({
+    deterministicRoutingDecision,
+    proposedRoutingDecision: llmResponse.proposedRoutingDecision,
+    conversationState,
+  })
   const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision })
   const assistantMessage = await repository.appendMessage({
     conversationId: conversation.id,
@@ -151,6 +164,10 @@ export async function handleChatbotMessage(
     await repository.updateConversationRouting({
       conversationId: conversation.id,
       routingDecision: routingDecision.kind,
+      currentQuestion: routingDecision.kind === "continue" ? routingDecision.nextQuestion : null,
+      activeChoices: routingDecision.kind === "continue" ? routingDecision.presentChoices ?? null : null,
+      conversationState,
+      jobContext,
     })
   }
 
@@ -210,6 +227,7 @@ function buildJobContext(
   input: Partial<JobContext> | undefined,
   conversation: ChatbotConversation,
   userMessage: ChatbotMessage,
+  activeChoiceJobContext: Partial<JobContext> | undefined,
 ): JobContext {
   const stored = conversation.context.jobContext ?? {}
   const inferred = inferJobContextFromText(conversationText(conversation, userMessage))
@@ -220,6 +238,7 @@ function buildJobContext(
     ...inferred,
     ...stored,
     ...input,
+    ...activeChoiceJobContext,
   }
 }
 
@@ -227,15 +246,16 @@ function buildConversationState(
   input: Partial<ConversationState> | undefined,
   conversation: ChatbotConversation,
   userMessage: ChatbotMessage,
+  activeChoiceConversationState: Partial<ConversationState> | undefined,
 ): ConversationState {
   const userTurnCount =
     conversation.messages.filter((message) => message.role === "user").length +
     (userMessage.role === "user" ? 1 : 0)
 
   const topicGate = classifyChatbotTopic(userMessage.content)
+  const stored = conversation.context.conversationState ?? {}
   const inferred = inferConversationStateFromText(conversationText(conversation, userMessage))
-
-  return {
+  const merged = {
     hasFinalMedium: false,
     hasJobKind: false,
     hasAdditionalWork: false,
@@ -244,17 +264,89 @@ function buildConversationState(
     hasReferenceUrls: false,
     hasContactEmail: false,
     hasDesiredSchedule: false,
+    ...stored,
     ...inferred,
-    hasCustomerIdentity: Boolean(
-      input?.hasCustomerIdentity ??
-        input?.customerName ??
-        input?.companyName ??
-        inferred.hasCustomerIdentity
-    ),
-    turnCount: input?.turnCount ?? userTurnCount,
     ...input,
+    ...activeChoiceConversationState,
     ...topicGate,
   }
+
+  return {
+    ...merged,
+    hasFinalMedium: isSlotSatisfied(
+      stored.hasFinalMedium,
+      inferred.hasFinalMedium,
+      input?.hasFinalMedium,
+      activeChoiceConversationState?.hasFinalMedium,
+    ),
+    hasJobKind: isSlotSatisfied(
+      stored.hasJobKind,
+      inferred.hasJobKind,
+      input?.hasJobKind,
+      activeChoiceConversationState?.hasJobKind,
+    ),
+    hasAdditionalWork: isSlotSatisfied(
+      stored.hasAdditionalWork,
+      inferred.hasAdditionalWork,
+      input?.hasAdditionalWork,
+      activeChoiceConversationState?.hasAdditionalWork,
+    ),
+    hasDocumentaryAttachments: isSlotSatisfied(
+      stored.hasDocumentaryAttachments,
+      inferred.hasDocumentaryAttachments,
+      input?.hasDocumentaryAttachments,
+      activeChoiceConversationState?.hasDocumentaryAttachments,
+    ),
+    hasWorkSite: isSlotSatisfied(
+      stored.hasWorkSite,
+      inferred.hasWorkSite,
+      input?.hasWorkSite,
+      activeChoiceConversationState?.hasWorkSite,
+    ),
+    hasReferenceUrls: isSlotSatisfied(stored.hasReferenceUrls, inferred.hasReferenceUrls, input?.hasReferenceUrls),
+    hasContactEmail: isSlotSatisfied(stored.hasContactEmail, inferred.hasContactEmail, input?.hasContactEmail),
+    hasDesiredSchedule: isSlotSatisfied(stored.hasDesiredSchedule, inferred.hasDesiredSchedule, input?.hasDesiredSchedule),
+    hasCustomerIdentity: isSlotSatisfied(
+      stored.hasCustomerIdentity,
+      input?.hasCustomerIdentity,
+      Boolean(input?.customerName ?? input?.companyName),
+      inferred.hasCustomerIdentity,
+    ),
+    turnCount: Math.max(stored.turnCount ?? 0, input?.turnCount ?? 0, userTurnCount),
+  }
+}
+
+function chooseRoutingDecision(input: {
+  deterministicRoutingDecision: RoutingDecision
+  proposedRoutingDecision?: RoutingDecision
+  conversationState: ConversationState
+}): RoutingDecision {
+  if (
+    input.deterministicRoutingDecision.kind === "to-direct-contact" ||
+    input.deterministicRoutingDecision.kind === "to-booking-inline"
+  ) {
+    return input.deterministicRoutingDecision
+  }
+
+  if (
+    input.deterministicRoutingDecision.kind === "continue" &&
+    input.deterministicRoutingDecision.presentChoices
+  ) {
+    return input.deterministicRoutingDecision
+  }
+
+  if (
+    input.proposedRoutingDecision?.kind === "continue" &&
+    isSatisfiedChoicePanel(input.proposedRoutingDecision.presentChoices, input.conversationState)
+  ) {
+    return input.deterministicRoutingDecision
+  }
+
+  return input.proposedRoutingDecision ?? input.deterministicRoutingDecision
+}
+
+function isSlotSatisfied(...values: Array<boolean | undefined>): boolean {
+  return values.some(Boolean)
 }
 
 function toMessageUi(routingDecision: RoutingDecision | undefined, tier: ChatbotLlmResponse["tier"]): ChatbotMessageUi {
@@ -300,7 +392,7 @@ function inferConversationStateFromText(text: string): Partial<ConversationState
   const hasTransfer = /(?:素材|搬入|受け渡し|アップロード|drive|dropbox|gigafile|ギガファイル)/iu.test(text)
 
   return {
-    hasFinalMedium: /(?:web\s*cm|web|cm|mv|ミュージックビデオ|sns|ott|tv|テレビ|劇場)/iu.test(text),
+    hasFinalMedium: /(?:web\s*cm|web|cm|mv|ミュージックビデオ|sns|ott|tv|テレビ|劇場|live|ライブ)/iu.test(text),
     hasJobKind: hasProjectLength || /(?:ab\s*タイプ|a\/b|2\s*本|２\s*本|cm|mv|web\s*cm)/iu.test(text),
     hasAdditionalWork: /(?:カラグレ|カラーグレーディング|追加作業|修正|レタッチ|なし)/u.test(text),
     hasDocumentaryAttachments: /(?:付随|資料|参考|なし|素材)/u.test(text),
@@ -318,11 +410,7 @@ function inferConversationStateFromText(text: string): Partial<ConversationState
 }
 
 function inferJobContextFromText(text: string): Partial<JobContext> {
-  const finalMedium = /(?:web\s*cm|web|cm)/iu.test(text)
-    ? "web"
-    : /(?:mv|ミュージックビデオ)/iu.test(text)
-      ? "web"
-      : undefined
+  const finalMedium = inferFinalMediumFromText(text)
   const projectLengthMinutes = /(?:4|４)\s*分/u.test(text) ? 4 : undefined
   const preferredStartDate = /(?:6月中旬|６月中旬|中旬)/u.test(text) ? "2026-06-15" : undefined
   const publicReleaseDate = /(?:6月20日|６月２０日|6\/20|06-20)/u.test(text) ? "2026-06-20" : undefined
@@ -334,4 +422,14 @@ function inferJobContextFromText(text: string): Partial<JobContext> {
     ...(preferredStartDate ? { preferredStartDate } : {}),
     ...(publicReleaseDate ? { publicReleaseDate } : {}),
   }
+}
+
+function inferFinalMediumFromText(text: string): JobContext["finalMedium"] | undefined {
+  if (/(?:live|ライブ)/iu.test(text)) return "live"
+  if (/(?:ott|配信)/iu.test(text)) return "ott"
+  if (/(?:劇場|cinema)/iu.test(text)) return "cinema"
+  if (/(?:tv|テレビ|地上波)/iu.test(text)) return "tv-broadcast"
+  if (/(?:縦型|sns|shorts|reels|tiktok)/iu.test(text)) return "vertical-sns"
+  if (/(?:web\s*cm|web|cm|mv|ミュージックビデオ)/iu.test(text)) return "web"
+  return undefined
 }
