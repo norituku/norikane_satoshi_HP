@@ -65,10 +65,57 @@ let youtubeApiPromise: Promise<void> | null = null
 const STARTUP_COVER_HOLD_MS = 900
 const MARQUEE_LOOP_SECONDS = 72
 const MARQUEE_INPUT_IDLE_MS = 1300
+const MARQUEE_PROGRESS_MIN_THUMB_WIDTH = 44
 
 type MarqueeMetrics = {
   start: number
   loopWidth: number
+}
+
+export type FeaturedWorkMarqueeProgressBarGeometry = {
+  progress: number
+  thumbWidth: number
+  thumbTranslateX: number
+}
+
+export function getFeaturedWorkMarqueeProgressBarGeometry({
+  virtualScrollLeft,
+  metrics,
+  viewportWidth,
+  trackWidth,
+  minThumbWidth = MARQUEE_PROGRESS_MIN_THUMB_WIDTH,
+}: {
+  virtualScrollLeft: number
+  metrics: MarqueeMetrics | null
+  viewportWidth: number
+  trackWidth: number
+  minThumbWidth?: number
+}): FeaturedWorkMarqueeProgressBarGeometry {
+  if (!metrics || metrics.loopWidth <= 0 || viewportWidth <= 0 || trackWidth <= 0) {
+    return {
+      progress: 0,
+      thumbWidth: Math.max(0, Math.min(minThumbWidth, trackWidth)),
+      thumbTranslateX: 0,
+    }
+  }
+
+  const relativeScrollLeft = virtualScrollLeft - metrics.start
+  const normalizedRelativeScrollLeft =
+    ((relativeScrollLeft % metrics.loopWidth) + metrics.loopWidth) %
+    metrics.loopWidth
+  const progress = normalizedRelativeScrollLeft / metrics.loopWidth
+  const proportionalThumbWidth = trackWidth * (viewportWidth / metrics.loopWidth)
+  const thumbWidth = Math.min(
+    trackWidth,
+    Math.max(minThumbWidth, proportionalThumbWidth),
+  )
+  const thumbTranslateX = progress * Math.max(0, trackWidth - thumbWidth)
+
+  return {
+    progress,
+    thumbWidth,
+    thumbTranslateX,
+  }
 }
 
 function loadYouTubeIframeApi() {
@@ -182,6 +229,8 @@ function normalizeMarqueeScrollLeft(
 
 function useScrollableMarquee(
   viewportRef: RefObject<HTMLDivElement | null>,
+  progressTrackRef: RefObject<HTMLDivElement | null>,
+  progressThumbRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
 ) {
   useEffect(() => {
@@ -223,6 +272,23 @@ function useScrollableMarquee(
       viewport.dataset.featuredWorkMarqueeState = state
     }
 
+    const syncProgressBar = () => {
+      const progressTrack = progressTrackRef.current
+      const progressThumb = progressThumbRef.current
+      if (!progressTrack || !progressThumb) {
+        return
+      }
+
+      const geometry = getFeaturedWorkMarqueeProgressBarGeometry({
+        virtualScrollLeft,
+        metrics,
+        viewportWidth: viewport.clientWidth,
+        trackWidth: progressTrack.clientWidth,
+      })
+      progressThumb.style.width = `${geometry.thumbWidth}px`
+      progressThumb.style.transform = `translate3d(${geometry.thumbTranslateX}px, 0, 0)`
+    }
+
     const syncMetrics = () => {
       metrics = getMetrics()
       if (metrics) {
@@ -230,10 +296,12 @@ function useScrollableMarquee(
           viewport.scrollLeft = metrics.start
           virtualScrollLeft = metrics.start
           hasInitializedScrollPosition = true
+          syncProgressBar()
           return
         }
         virtualScrollLeft = normalizeMarqueeScrollLeft(viewport, metrics)
       }
+      syncProgressBar()
     }
 
     const pauseForInput = () => {
@@ -260,9 +328,11 @@ function useScrollableMarquee(
           if (Math.abs(viewport.scrollLeft - virtualScrollLeft) > 0.5) {
             viewport.scrollLeft = virtualScrollLeft
           }
+          syncProgressBar()
           lastFrameTime = timestamp
         } else {
           virtualScrollLeft = normalizeMarqueeScrollLeft(viewport, metrics)
+          syncProgressBar()
           lastFrameTime = null
         }
       }
@@ -285,6 +355,7 @@ function useScrollableMarquee(
       if (metrics) {
         virtualScrollLeft = viewport.scrollLeft
         virtualScrollLeft = normalizeMarqueeScrollLeft(viewport, metrics)
+        syncProgressBar()
       }
     }
 
@@ -309,7 +380,7 @@ function useScrollableMarquee(
       delete viewport.dataset.featuredWorkMarqueeState
       delete viewport.dataset.featuredWorkMarqueeIdleMs
     }
-  }, [enabled, viewportRef])
+  }, [enabled, progressThumbRef, progressTrackRef, viewportRef])
 }
 
 function PreviewFrame({
@@ -750,8 +821,15 @@ function LiveReelCard({
 export function FeaturedWorks() {
   const prefersReducedMotion = usePrefersReducedMotion()
   const [marqueeRef, hasEnteredViewport] = useHasEnteredViewport<HTMLDivElement>()
+  const progressTrackRef = useRef<HTMLDivElement | null>(null)
+  const progressThumbRef = useRef<HTMLDivElement | null>(null)
   const shouldRenderCloneTrack = !prefersReducedMotion
-  useScrollableMarquee(marqueeRef, shouldRenderCloneTrack)
+  useScrollableMarquee(
+    marqueeRef,
+    progressTrackRef,
+    progressThumbRef,
+    shouldRenderCloneTrack,
+  )
 
   const renderCards = (
     clone = false,
@@ -783,9 +861,22 @@ export function FeaturedWorks() {
           display: contents;
         }
 
+        [data-featured-work-native-scrollbar="hidden"] {
+          scrollbar-width: none;
+        }
+
+        [data-featured-work-native-scrollbar="hidden"]::-webkit-scrollbar {
+          display: none;
+        }
+
         @media (prefers-reduced-motion: reduce) {
           [data-featured-work-marquee-viewport="true"] {
             overflow-x: auto;
+            scrollbar-width: auto;
+          }
+
+          [data-featured-work-marquee-viewport="true"]::-webkit-scrollbar {
+            display: initial;
           }
         }
       `}</style>
@@ -803,6 +894,9 @@ export function FeaturedWorks() {
           aria-label="Featured Works"
           tabIndex={0}
           data-featured-work-marquee-viewport="true"
+          data-featured-work-native-scrollbar={
+            shouldRenderCloneTrack ? "hidden" : undefined
+          }
         >
           <div
             className="relative flex w-max gap-0 px-8 pb-4 md:px-10 xl:px-12"
@@ -836,6 +930,20 @@ export function FeaturedWorks() {
             ) : null}
           </div>
         </div>
+        {shouldRenderCloneTrack ? (
+          <div
+            ref={progressTrackRef}
+            className="h-1 w-full overflow-hidden rounded-full bg-white/60"
+            aria-hidden="true"
+            data-featured-work-marquee-progress-track="true"
+          >
+            <div
+              ref={progressThumbRef}
+              className="h-full rounded-full bg-[var(--accent-primary)]"
+              data-featured-work-marquee-progress-thumb="true"
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )

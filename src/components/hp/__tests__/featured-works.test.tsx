@@ -4,7 +4,10 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FEATURED_WORKS } from "@/components/hp/featured-works-data"
-import { FeaturedWorks } from "@/components/hp/featured-works"
+import {
+  FeaturedWorks,
+  getFeaturedWorkMarqueeProgressBarGeometry,
+} from "@/components/hp/featured-works"
 
 describe("FeaturedWorks", () => {
   const embeddedWorkCount = FEATURED_WORKS.filter((work) => work.youtubeId).length
@@ -89,11 +92,21 @@ describe("FeaturedWorks", () => {
     const cloneAfterStart = container.querySelector(
       '[data-featured-work-marquee-segment-start="clone-after"]',
     )
+    const progressTrack = container.querySelector(
+      '[data-featured-work-marquee-progress-track="true"]',
+    )
+    const progressThumb = container.querySelector(
+      '[data-featured-work-marquee-progress-thumb="true"]',
+    )
 
     expect(viewport).toHaveClass("overflow-x-auto")
     expect(viewport).toHaveClass("overflow-y-hidden")
     expect(viewport).toHaveAttribute("tabindex", "0")
     expect(viewport).toHaveAttribute("data-featured-work-marquee-idle-ms", "1300")
+    expect(viewport).toHaveAttribute("data-featured-work-native-scrollbar", "hidden")
+    expect(progressTrack).toBeInTheDocument()
+    expect(progressTrack).toHaveClass("w-full")
+    expect(progressThumb).toBeInTheDocument()
     expect(track).toHaveClass("w-max")
     expect(track).toHaveClass("gap-0")
     expect(track).not.toHaveClass("gap-4")
@@ -166,6 +179,12 @@ describe("FeaturedWorks", () => {
     expect(
       container.querySelector('[data-featured-work-marquee-segment="clone"]'),
     ).not.toBeInTheDocument()
+    expect(
+      container.querySelector('[data-featured-work-marquee-progress-track="true"]'),
+    ).not.toBeInTheDocument()
+    expect(
+      container.querySelector('[data-featured-work-marquee-viewport="true"]'),
+    ).not.toHaveAttribute("data-featured-work-native-scrollbar")
   })
 
   it("renders the live reel card without badge links", () => {
@@ -449,5 +468,69 @@ describe("FeaturedWorks", () => {
     for (const thumbnail of thumbnailCovers) {
       expect(thumbnail).toHaveClass("opacity-100")
     }
+  })
+})
+
+describe("getFeaturedWorkMarqueeProgressBarGeometry", () => {
+  const metrics = {
+    start: 1200,
+    loopWidth: 2400,
+  }
+
+  it("sizes the thumb from visible viewport width over one primary loop width", () => {
+    const geometry = getFeaturedWorkMarqueeProgressBarGeometry({
+      virtualScrollLeft: metrics.start,
+      metrics,
+      viewportWidth: 600,
+      trackWidth: 1000,
+      minThumbWidth: 44,
+    })
+
+    expect(geometry.progress).toBe(0)
+    expect(geometry.thumbWidth).toBe(250)
+    expect(geometry.thumbTranslateX).toBe(0)
+  })
+
+  it("maps one loop start-to-end progress across the full track travel", () => {
+    const geometry = getFeaturedWorkMarqueeProgressBarGeometry({
+      virtualScrollLeft: metrics.start + metrics.loopWidth * 0.999,
+      metrics,
+      viewportWidth: 600,
+      trackWidth: 1000,
+      minThumbWidth: 44,
+    })
+
+    expect(geometry.progress).toBeCloseTo(0.999, 3)
+    expect(geometry.thumbWidth).toBe(250)
+    expect(geometry.thumbTranslateX).toBeCloseTo(749.25, 2)
+  })
+
+  it("wraps after a full loop back to the left edge", () => {
+    const geometry = getFeaturedWorkMarqueeProgressBarGeometry({
+      virtualScrollLeft: metrics.start + metrics.loopWidth,
+      metrics,
+      viewportWidth: 600,
+      trackWidth: 1000,
+      minThumbWidth: 44,
+    })
+
+    expect(geometry.progress).toBe(0)
+    expect(geometry.thumbTranslateX).toBe(0)
+  })
+
+  it("falls back to a left-edge minimum thumb when metrics are unavailable", () => {
+    const geometry = getFeaturedWorkMarqueeProgressBarGeometry({
+      virtualScrollLeft: 0,
+      metrics: null,
+      viewportWidth: 600,
+      trackWidth: 1000,
+      minThumbWidth: 44,
+    })
+
+    expect(geometry).toEqual({
+      progress: 0,
+      thumbWidth: 44,
+      thumbTranslateX: 0,
+    })
   })
 })
