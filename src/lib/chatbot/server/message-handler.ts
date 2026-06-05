@@ -32,6 +32,12 @@ import {
   isSatisfiedChoicePanel,
 } from "@/lib/chatbot/server/choice-panel-state"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
+import { hasRequiredConsultationNotificationSlots } from "@/lib/chatbot/domain"
+import {
+  OPERATOR_NOTIFICATION_SENT_MARKER,
+  hasSentOperatorNotification,
+  sendOperatorConsultationNotification,
+} from "@/lib/chatbot/server/operator-notification"
 
 type ChatbotMessageUi =
   | { kind: "none" }
@@ -78,6 +84,7 @@ type HandleChatbotMessageOptions = {
   orchestratorFactory?: () => ChatbotLlmTierOrchestrator
   userContextLoader?: typeof loadUserChatbotContext
   userContextFormatter?: typeof formatUserChatbotContextForPrompt
+  operatorNotificationSender?: typeof sendOperatorConsultationNotification
 }
 
 const defaultRepository: ChatbotMessageRepository = {
@@ -96,6 +103,7 @@ export async function handleChatbotMessage(
   const orchestrator = options.orchestratorFactory?.() ?? createDefaultChatbotLlmOrchestrator()
   const userContextLoader = options.userContextLoader ?? loadUserChatbotContext
   const userContextFormatter = options.userContextFormatter ?? formatUserChatbotContextForPrompt
+  const operatorNotificationSender = options.operatorNotificationSender ?? sendOperatorConsultationNotification
   let conversation =
     (await repository.loadConversationBySessionId(input.sessionId)) ??
     (await repository.createConversation({ sessionId: input.sessionId, userId: input.userId ?? null }))
@@ -169,6 +177,14 @@ export async function handleChatbotMessage(
       conversationState,
       jobContext,
     })
+    await maybeSendOperatorNotification({
+      conversation,
+      routingDecision,
+      conversationState,
+      jobContext,
+      repository,
+      operatorNotificationSender,
+    })
   }
 
   return {
@@ -182,6 +198,33 @@ export async function handleChatbotMessage(
     tier: llmResponse.tier,
     ui: toMessageUi(routingDecision, llmResponse.tier),
   }
+}
+
+async function maybeSendOperatorNotification(input: {
+  conversation: ChatbotConversation
+  routingDecision: RoutingDecision
+  conversationState: ConversationState
+  jobContext: JobContext
+  repository: ChatbotMessageRepository
+  operatorNotificationSender: typeof sendOperatorConsultationNotification
+}): Promise<void> {
+  if (input.routingDecision.kind !== "to-booking-inline" && input.routingDecision.kind !== "to-direct-contact") return
+  if (hasSentOperatorNotification(input.conversation.messages)) return
+  if (!hasRequiredConsultationNotificationSlots({ conversationState: input.conversationState })) return
+
+  const result = await input.operatorNotificationSender({
+    trigger: "chat-completed",
+    jobContext: input.jobContext,
+    conversationState: input.conversationState,
+  })
+
+  if (result.status !== "sent") return
+
+  await input.repository.appendMessage({
+    conversationId: input.conversation.id,
+    role: "system",
+    content: `${OPERATOR_NOTIFICATION_SENT_MARKER} ${new Date().toISOString()}`,
+  })
 }
 
 function shouldIsolateExistingConversation(

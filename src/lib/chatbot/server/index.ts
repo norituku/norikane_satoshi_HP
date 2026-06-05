@@ -6,6 +6,7 @@ export type { CleanupExpiredChatbotConversationsResult } from "@/lib/chatbot/ser
 export {
   appendMessage,
   createConversation,
+  loadConversationById,
   linkChatToBookingGroup,
   linkConversationToUser,
   loadConversationBySessionId,

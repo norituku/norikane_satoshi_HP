@@ -102,6 +102,7 @@ function setup(overrides: {
     generate,
     userContextLoader,
     userContextFormatter,
+    operatorNotificationSender: vi.fn().mockResolvedValue({ status: "sent", id: "email_1" }),
     options: {
       repository,
       orchestratorFactory: () => ({ generate, isHealthy: vi.fn() }),
@@ -368,5 +369,75 @@ describe("handleChatbotMessage user context", () => {
       expect.objectContaining({ hasFinalMedium: true }),
     )
     expect(result.routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
+  })
+
+  it("sends the operator notification once when handoff slots are complete", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "Web CMです。尺4分、6月中旬に作業、6月20日までに納品希望です。作業場所はリモートで、client@example.com から連絡できます。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasWorkSite: true,
+          hasDesiredSchedule: true,
+          hasContactEmail: true,
+          contactEmail: "client@example.com",
+          customerName: "田中",
+          turnCount: 6,
+        },
+      },
+      { ...harness.options, operatorNotificationSender: harness.operatorNotificationSender },
+    )
+
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(harness.operatorNotificationSender).toHaveBeenCalledTimes(1)
+    expect(harness.operatorNotificationSender).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: "chat-completed",
+        conversationState: expect.objectContaining({ contactEmail: "client@example.com" }),
+        jobContext: expect.objectContaining({ finalMedium: "web" }),
+      }),
+    )
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv_1",
+        role: "system",
+        content: expect.stringContaining("[chatbot-operator-notification:sent]"),
+      }),
+    )
+
+    const alreadySent = setup({
+      existingConversation: conversation({
+        messages: [
+          message("system", "[chatbot-operator-notification:sent] 2026-06-05T00:00:00.000Z"),
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "Web CMです。尺4分、6月中旬に作業、6月20日までに納品希望です。作業場所はリモートで、client@example.com から連絡できます。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasWorkSite: true,
+          hasDesiredSchedule: true,
+          hasContactEmail: true,
+          contactEmail: "client@example.com",
+          turnCount: 6,
+        },
+      },
+      { ...alreadySent.options, operatorNotificationSender: alreadySent.operatorNotificationSender },
+    )
+
+    expect(alreadySent.operatorNotificationSender).not.toHaveBeenCalled()
   })
 })

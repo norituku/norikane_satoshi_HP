@@ -7,6 +7,11 @@ export type {
 } from "@/lib/chatbot/domain/conversation"
 export type { RoutingDecision } from "@/lib/chatbot/domain/routing-decision"
 export {
+  formatConsultationSummary,
+  hasRequiredConsultationNotificationSlots,
+} from "@/lib/chatbot/domain/consultation-summary"
+export type { ConsultationSummaryInput } from "@/lib/chatbot/domain/consultation-summary"
+export {
   additionalWorkChoices,
   documentaryAttachmentChoices,
   finalMediumChoices,

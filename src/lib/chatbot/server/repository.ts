@@ -76,6 +76,21 @@ export async function loadConversationBySessionId(
   return toDomainConversation({ ...row, ...contextFields })
 }
 
+export async function loadConversationById(conversationId: string): Promise<ChatbotConversation | null> {
+  const row = await prisma.chatbotConversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  })
+
+  if (!row) return null
+  const contextFields = await loadConversationContextFields(row.id)
+  return toDomainConversation({ ...row, ...contextFields })
+}
+
 export async function appendMessage(input: {
   conversationId: string
   role: ChatbotMessageRole
