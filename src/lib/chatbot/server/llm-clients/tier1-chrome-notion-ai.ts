@@ -5,6 +5,7 @@ import { getNotionAiChatbotThreadUrl } from "@/lib/chatbot/server/llm-clients/ti
 type Tier1ChromeNotionAiClientConfig = {
   cdpBaseUrl: string
   targetUrlIncludes: string
+  connectTimeoutMs: number
   requestTimeoutMs: number
   healthCheckTimeoutMs: number
   preferredModel?: string
@@ -222,7 +223,8 @@ const emptyText = ""
 export const tier1ChromeNotionAiDefaults = {
   cdpBaseUrl: "http://127.0.0.1:9223",
   targetUrlIncludes: getNotionAiChatbotThreadUrl(),
-  requestTimeoutMs: 12000,
+  connectTimeoutMs: 10000,
+  requestTimeoutMs: 180000,
   healthCheckTimeoutMs: 3000,
 } as const
 
@@ -238,6 +240,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
     this.config = {
       cdpBaseUrl: options.cdpBaseUrl ?? tier1ChromeNotionAiDefaults.cdpBaseUrl,
       targetUrlIncludes: options.targetUrlIncludes ?? tier1ChromeNotionAiDefaults.targetUrlIncludes,
+      connectTimeoutMs: options.connectTimeoutMs ?? tier1ChromeNotionAiDefaults.connectTimeoutMs,
       requestTimeoutMs: options.requestTimeoutMs ?? tier1ChromeNotionAiDefaults.requestTimeoutMs,
       healthCheckTimeoutMs:
         options.healthCheckTimeoutMs ?? tier1ChromeNotionAiDefaults.healthCheckTimeoutMs,
@@ -250,13 +253,13 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
 
   async generate(request: ChatbotLlmRequest): Promise<ChatbotLlmResponse> {
     const startedAt = Date.now()
-    const { session, target } = await this.openTargetSession(this.config.requestTimeoutMs)
+    const { session, target } = await this.openTargetSession(this.config.connectTimeoutMs)
 
     try {
       const runtimeContext = await this.evaluate<NotionAiRuntimeContext>(
         session,
         runtimeContextExpression,
-        this.config.requestTimeoutMs,
+        this.config.connectTimeoutMs,
       )
       const payload = buildRunInferencePayload({
         request,

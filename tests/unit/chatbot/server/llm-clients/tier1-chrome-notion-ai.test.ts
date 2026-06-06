@@ -116,8 +116,9 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(client.tier).toBe("tier-1-chrome-notion-ai")
   })
 
-  it("keeps the default request timeout short enough to reach fallback tiers", () => {
-    expect(tier1ChromeNotionAiDefaults.requestTimeoutMs).toBe(12000)
+  it("keeps discovery fail-fast while allowing long Notion AI inference", () => {
+    expect(tier1ChromeNotionAiDefaults.connectTimeoutMs).toBe(10000)
+    expect(tier1ChromeNotionAiDefaults.requestTimeoutMs).toBe(180000)
   })
 
   it("keeps the default target scoped to the chatbot-only Notion AI thread", () => {
@@ -451,8 +452,51 @@ describe("Tier1ChromeNotionAiClient", () => {
 
     const evaluate = vi.mocked(session.evaluate)
     expect(evaluate).toHaveBeenCalledTimes(2)
+    expect(evaluate.mock.calls[0][1]).toBe(tier1ChromeNotionAiDefaults.connectTimeoutMs)
+    expect(evaluate.mock.calls[1][1]).toBe(tier1ChromeNotionAiDefaults.requestTimeoutMs)
     expect(evaluate.mock.calls[1][0]).toContain("/api/v3/runInferenceTranscript")
     expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
+  })
+
+  it("uses a long inference timeout without extending runtime-context evaluation", async () => {
+    const session = sessionReturning([
+      {
+        spaceId: "space-id",
+        userId: "user-id",
+        selectedModel: "notion-current-model",
+        availableModels: ["apricot-sorbet-high"],
+        modelFromUser: true,
+      },
+      { ok: true, rawText: "12秒を超えても完了しました。", chunkCount: 1 },
+    ])
+    const client = new Tier1ChromeNotionAiClient({
+      fetchClient: cdpFetch(),
+      sessionFactory: async () => session,
+      connectTimeoutMs: 12000,
+      requestTimeoutMs: 180000,
+    })
+
+    await expect(client.generate(llmRequest())).resolves.toMatchObject({
+      rawText: "12秒を超えても完了しました。",
+    })
+
+    const evaluate = vi.mocked(session.evaluate)
+    expect(evaluate.mock.calls[0][1]).toBe(12000)
+    expect(evaluate.mock.calls[1][1]).toBe(180000)
+  })
+
+  it("does not let the long inference timeout slow failed CDP attachment", async () => {
+    const client = new Tier1ChromeNotionAiClient({
+      fetchClient: cdpFetch(),
+      sessionFactory: () => new Promise<NotionAiCdpSession>(() => undefined),
+      connectTimeoutMs: 1,
+      requestTimeoutMs: 180000,
+    })
+
+    await expectLlmError(client.generate(llmRequest()), {
+      code: "timeout",
+      isRetryable: true,
+    })
   })
 
   it("returns healthy only when CDP and Notion AI target context are available", async () => {
