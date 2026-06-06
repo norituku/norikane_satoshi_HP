@@ -2,6 +2,7 @@ import {
   HERO_ABSTRACT_ART_BACKGROUND,
   HERO_DEEP_SURFACE_BACKGROUND,
 } from "@/components/hp/hero-deep-surface"
+import { hpPublicContent } from "@/lib/hp/public-content"
 
 export function HeroSection() {
   return (
@@ -20,15 +21,17 @@ export function HeroSection() {
         <div className="mt-auto grid grid-cols-1 gap-10 md:grid-cols-[1fr_auto] md:items-end md:gap-12">
           <div>
             <h1 className="hp-display-heading font-[var(--font-sans)] text-5xl font-bold text-white md:text-7xl xl:text-8xl">
-              則兼 智志
+              {hpPublicContent.hero.name}
               <span className="hp-heading mt-4 block text-2xl font-semibold text-white/86 md:text-4xl xl:text-5xl">
-                フリーランスカラリスト
+                {hpPublicContent.hero.title}
               </span>
             </h1>
             {/* Keep the latin display utility available for a future English locale. */}
           </div>
           <div className="text-left font-[var(--font-sans)] md:text-right">
-            <p className="text-xs tracking-[0.12em] text-white/70">東京・2026年〜</p>
+            <p className="text-xs tracking-[0.12em] text-white/70">
+              {hpPublicContent.hero.locationLine}
+            </p>
           </div>
         </div>
       </div>

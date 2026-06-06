@@ -1,6 +1,8 @@
 export { satoshiProfileKnowledge } from "@/lib/chatbot/knowledge/satoshi-profile"
 export { videoIndustryKnowledge } from "@/lib/chatbot/knowledge/video-industry"
 export { featuredWorksKnowledge } from "@/lib/chatbot/knowledge/works"
+export { hpPublicKnowledge } from "@/lib/chatbot/knowledge/public-hp"
+export { publishedNotesSnapshot } from "@/lib/chatbot/knowledge/published-notes-snapshot"
 export {
   approvedSourceNotes,
   approvedSourceNotesKnowledge,

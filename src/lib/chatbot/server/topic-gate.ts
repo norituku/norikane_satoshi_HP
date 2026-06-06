@@ -29,6 +29,7 @@ export function classifyChatbotTopic(message: string): TopicGateResult {
     ...(matchesAny(normalized, technicalQuestionPatterns) ? { technicalQuestion: true } : {}),
     ...(matchesAny(normalized, reviewPatterns) ? { workReviewRequest: true } : {}),
     ...(matchesAny(normalized, portfolioPatterns) ? { portfolioQuestion: true } : {}),
+    ...(matchesAny(normalized, privateContentPatterns) ? { outOfScope: true } : {}),
   }
 }
 
@@ -69,6 +70,16 @@ const otherClientPatterns = [
   /別案件/u,
   /進行中(?:の)?案件/u,
   /誰(?:と|の案件)/u,
+  /他人(?:の)?(?:予約|予定|空き枠)/u,
+  /他(?:の)?(?:人|ユーザー|顧客).*(?:予約|予定|空き枠)/u,
+] as const
+
+const privateContentPatterns = [
+  /パスワードゲート/u,
+  /password\s*gate/u,
+  /下書き(?:ノート|記事|ページ|コンテンツ)?/u,
+  /非公開(?:案件|記事|ノート|ページ|コンテンツ|情報)?/u,
+  /未公開(?:案件|記事|ノート|ページ|コンテンツ|情報)?/u,
 ] as const
 
 const confidentialTechniquePatterns = [

@@ -1,5 +1,6 @@
 import { approvedSourceNotesKnowledge } from "@/lib/chatbot/knowledge/source-notes"
 import { chatbotForbiddenTopics } from "@/lib/chatbot/knowledge/forbidden-topics"
+import { hpPublicKnowledge } from "@/lib/chatbot/knowledge/public-hp"
 import { satoshiProfileKnowledge } from "@/lib/chatbot/knowledge/satoshi-profile"
 import { videoIndustryKnowledge } from "@/lib/chatbot/knowledge/video-industry"
 import { featuredWorksKnowledge } from "@/lib/chatbot/knowledge/works"
@@ -49,6 +50,9 @@ export function buildChatbotStaticPolicyPrompt(): string {
     "会話保持:",
     `- 会話状態は${conversationRetentionDays}日間保持する。`,
     "",
+    "HP公開情報:",
+    hpPublicKnowledge,
+    "",
     "工程日数:",
     ...workflowDurationPresets.map(
       (preset) =>
@@ -57,7 +61,7 @@ export function buildChatbotStaticPolicyPrompt(): string {
         }`,
     ),
     "",
-    "Approved source notes:",
+    "Approved source notes（HP公開ノート静的スナップショット）:",
     approvedSourceNotesKnowledge,
     "",
     "対応範囲ナレッジ:",

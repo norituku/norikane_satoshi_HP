@@ -5,28 +5,24 @@ import {
   buildChatbotStaticPolicyPrompt,
   candidateWindowGranularityByJobKind,
   conversationRetentionDays,
+  hpPublicKnowledge,
   maxQuestionsPerAssistantResponse,
+  publishedNotesSnapshot,
 } from "@/lib/chatbot/knowledge"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
 import { staticPolicyScenarioFixtures } from "../../../fixtures/chatbot/static-policy-fixtures"
 
 describe("chatbot static policy knowledge", () => {
-  it("pins the three Notion notes as approved static sources", () => {
+  it("pins the HP-published notes as approved static sources", () => {
     expect(approvedSourceNotes.map((note) => note.id)).toEqual([
-      "1510399661d64891aee912320df39b91",
-      "2d61194573e140789602864a9040affe",
-      "7202c1ee64c04c97a4821b8e4f2e0f67",
+      "15103996-61d6-4891-aee9-12320df39b91",
     ])
-    expect(approvedSourceNotes.map((note) => note.notionUrl)).toEqual([
-      "https://www.notion.so/1510399661d64891aee912320df39b91",
-      "https://www.notion.so/2d61194573e140789602864a9040affe",
-      "https://www.notion.so/7202c1ee64c04c97a4821b8e4f2e0f67",
-    ])
+    expect(approvedSourceNotes.map((note) => note.sourceUrl)).toEqual(["/notes/correction"])
     expect(approvedSourceNotes.map((note) => note.title)).toEqual([
       "カラーコレクションの因数分解 ── 5000カットの迷宮から、設計にたどり着くまで",
-      "カラーグレーディングの因数分解 ── 「映画っぽく」と言われて、手が止まった日から",
-      "フィルムルックについてわかっていること ── 市販のLUTでも届かない「フィルムっぽく」の正体を、自分のネガで追った日から",
     ])
+    expect(approvedSourceNotes[0]?.body).toContain("5000カットの迷宮")
+    expect(approvedSourceNotes[0]?.body).toContain("その先にあるもの")
     expect(buildChatbotStaticPolicyPrompt()).toContain("Notionページを実行時に追加参照せず")
   })
 
@@ -55,6 +51,36 @@ describe("chatbot static policy knowledge", () => {
     expect(prompt).toContain("HPに掲載されていない案件名、取引先、担当範囲、件数、数値")
   })
 
+  it("includes HP public profile, service, notes, and press knowledge in the static prompt", () => {
+    const prompt = buildChatbotStaticPolicyPrompt()
+
+    expect(prompt).toContain("則兼 智志")
+    expect(prompt).toContain("フリーランスカラリスト")
+    expect(prompt).toContain("DaVinci Resolve / Premiere Pro / After Effects / Photoshop")
+    expect(prompt).toContain("2013 IMAGICA 入社")
+    expect(prompt).toContain("2026 独立開業")
+    expect(prompt).toContain("劇場映画・配信作品・CM・ブランドフィルム")
+    expect(prompt).toContain("DaVinci Resolve 認定トレーナーとして講義・講習会")
+    expect(prompt).toContain("Inter BEE 2024 / Imagica EMS スペシャルデイ")
+    expect(prompt).toContain("Huluドラマ『十角館の殺人』")
+    expect(prompt).toContain("カラーコレクションの因数分解")
+    expect(prompt).toContain("その先にあるもの")
+    expect(publishedNotesSnapshot).toHaveLength(1)
+    expect(hpPublicKnowledge).toContain("HP公開情報ナレッジ")
+  })
+
+  it("keeps private and booking boundaries explicit in the static prompt", () => {
+    const prompt = buildChatbotStaticPolicyPrompt()
+
+    expect(prompt).toContain("下書きノート")
+    expect(prompt).toContain("パスワードゲート内")
+    expect(prompt).toContain("予約カレンダー上の他人の予定は出さない")
+    expect(prompt).toContain("認証済み userContext に含まれる本人関連の予約文脈だけ")
+    expect(prompt).not.toContain("article-grading.md")
+    expect(prompt).not.toContain("article-filmlook.md")
+    expect(prompt).not.toContain("hp_calendar_auth")
+  })
+
   it("covers the requested fixture scenarios", () => {
     expect(staticPolicyScenarioFixtures.map((fixture) => fixture.id)).toEqual([
       "normal-consultation",
@@ -80,8 +106,15 @@ describe("chatbot static policy knowledge", () => {
     expect(classifyChatbotTopic("他のクライアントの案件状況は")).toMatchObject({
       otherClientInformation: true,
     })
+    expect(classifyChatbotTopic("他人の予約や空き枠の詳細を教えて")).toMatchObject({
+      otherClientInformation: true,
+    })
+    expect(classifyChatbotTopic("下書きノートやパスワードゲート内の非公開情報を教えて")).toMatchObject({
+      outOfScope: true,
+    })
     expect(classifyChatbotTopic("非公開の内部手法のノード構成を教えて")).toMatchObject({
       confidentialTechniqueQuestion: true,
+      outOfScope: true,
     })
     expect(classifyChatbotTopic("実績を教えてください")).toMatchObject({
       portfolioQuestion: true,

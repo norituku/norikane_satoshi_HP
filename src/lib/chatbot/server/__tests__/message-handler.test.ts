@@ -134,7 +134,8 @@ describe("handleChatbotMessage user context", () => {
       }),
     )
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("Notionページを実行時に追加参照せず")
-    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("1510399661d64891aee912320df39b91")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("15103996-61d6-4891-aee9-12320df39b91")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("/notes/correction")
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("案件種類")
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("1返答で質問は最大3問")
   })
