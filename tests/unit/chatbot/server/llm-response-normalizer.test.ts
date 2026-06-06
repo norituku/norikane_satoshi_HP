@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { additionalWorkChoices } from "@/lib/chatbot/domain"
 import {
   fallbackChatbotAssistantContent,
   normalizeChatbotLlmResponse,
@@ -41,6 +42,35 @@ describe("normalizeChatbotLlmResponse", () => {
     expect(sanitizeChatbotLlmText("Web CM の相談ですね。公開時期を教えてください。")).toBe(
       "Web CM の相談ですね。公開時期を教えてください。",
     )
+  })
+
+  it("uses the deterministic next question when continue routing presents choices", () => {
+    expect(
+      normalizeChatbotLlmResponse(
+        {
+          rawText: "打ち合わせや作業場所のご希望、連絡先を教えてください。",
+          tier: "tier-2-ollama-deepseek",
+        },
+        {
+          routingDecision: {
+            kind: "continue",
+            nextQuestion: "カラグレ以外の追加作業はありますか？",
+            presentChoices: additionalWorkChoices,
+          },
+        },
+      ).content,
+    ).toBe("カラグレ以外の追加作業はありますか？")
+  })
+
+  it("keeps sanitized LLM text for continue routing without choices", () => {
+    expect(
+      sanitizeChatbotLlmText("<think>確認。</think>\n公開時期を教えてください。", {
+        routingDecision: {
+          kind: "continue",
+          nextQuestion: "最終媒体は何になりますか？",
+        },
+      }),
+    ).toBe("公開時期を教えてください。")
   })
 
   it("keeps only the body after a think block", () => {
@@ -108,5 +138,18 @@ describe("normalizeChatbotLlmResponse", () => {
         },
       }),
     ).toContain("先に空き状況")
+  })
+
+  it("keeps direct-contact routing override", () => {
+    expect(
+      sanitizeChatbotLlmText("公開時期を教えてください。", {
+        routingDecision: {
+          kind: "to-direct-contact",
+          reason: "pricing",
+          requireEmail: true,
+          suggestedMessage: "メールアドレス、会社名、お名前を教えてください。",
+        },
+      }),
+    ).toContain("のりかね本人")
   })
 })

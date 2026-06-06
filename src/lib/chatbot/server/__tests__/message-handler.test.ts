@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
 import type { ChatbotConversation, ChatbotMessage } from "@/lib/chatbot/domain"
-import { finalMediumChoices } from "@/lib/chatbot/domain"
+import { additionalWorkChoices, finalMediumChoices } from "@/lib/chatbot/domain"
 import { handleChatbotMessage } from "@/lib/chatbot/server/message-handler"
 import type { UserChatbotContext } from "@/lib/chatbot/server/user-context-loader"
 
@@ -409,6 +409,74 @@ describe("handleChatbotMessage user context", () => {
         activeChoices: finalMediumChoices,
       }),
     )
+  })
+
+  it("aligns assistant text with deterministic choice panel question", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            hasCustomerIdentity: true,
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasDesiredSchedule: false,
+            turnCount: 3,
+          },
+          jobContext: {
+            finalMedium: "live",
+            jobKind: "live-60m",
+          },
+        },
+        messages: [
+          {
+            id: "old",
+            role: "user",
+            content: "ライブ案件で尺は2時間前後、スケジュールは未確定です",
+            createdAt: "2026-05-26T00:00:00.000Z",
+          },
+        ],
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "打ち合わせや作業場所のご希望、連絡先を教えてください。",
+      tier: "tier-2-ollama-deepseek",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "作業場所のご希望はありますか？" },
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "スケジュールはまだ未確定です",
+        conversationState: {
+          hasCustomerIdentity: true,
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasDesiredSchedule: false,
+          turnCount: 4,
+        },
+        jobContext: {
+          finalMedium: "live",
+          jobKind: "live-60m",
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.ui).toEqual({ kind: "choice-panel", choiceSet: additionalWorkChoices })
+    expect(result.routingDecision).toMatchObject({
+      kind: "continue",
+      nextQuestion: "カラグレ以外の追加作業はありますか？",
+      presentChoices: additionalWorkChoices,
+    })
+    expect(result.assistantMessage.content).toBe("カラグレ以外の追加作業はありますか？")
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      role: "assistant",
+      content: "カラグレ以外の追加作業はありますか？",
+    })
   })
 
   it("consumes stored final medium choice before text inference and advances to the next slot", async () => {

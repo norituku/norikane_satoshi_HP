@@ -39,6 +39,11 @@ export function sanitizeChatbotLlmText(
   if (options.routingDecision?.kind === "to-booking-inline") {
     return "スケジュール感は把握しました。先に空き状況の候補を出します。細かい収録情報は分かる範囲で後からで大丈夫です。"
   }
+  if (options.routingDecision?.kind === "continue" && options.routingDecision.presentChoices) {
+    const nextQuestion = options.routingDecision.nextQuestion.trim()
+
+    return nextQuestion.length > 0 ? nextQuestion : fallbackChatbotAssistantContent
+  }
 
   const strippedThoughtBlocks = stripThinkBlocksOutsideCodeFences(rawText)
   const strippedLeadingThought = stripLeadingThoughtExplanation(strippedThoughtBlocks)
