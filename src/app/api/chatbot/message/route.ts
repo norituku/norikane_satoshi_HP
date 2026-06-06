@@ -16,6 +16,7 @@ const sessionMaxAgeSeconds = conversationRetentionDays * 24 * 60 * 60
 const chatbotMessageRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   conversationId: z.string().trim().min(1).optional(),
+  editTargetMessageId: z.string().trim().min(1).optional(),
   jobContext: z.record(z.string(), z.unknown()).optional(),
   conversationState: z.record(z.string(), z.unknown()).optional(),
 })
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
       userId: session?.user?.id,
       message: parsed.data.message,
       conversationId: parsed.data.conversationId,
+      editTargetMessageId: parsed.data.editTargetMessageId,
       jobContext: parsed.data.jobContext,
       conversationState: parsed.data.conversationState,
     })

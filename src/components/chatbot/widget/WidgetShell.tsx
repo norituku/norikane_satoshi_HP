@@ -41,6 +41,7 @@ type WidgetShellProps = {
 }
 
 type WidgetMessage = {
+  id?: string
   role: ChatbotMessageRole
   content: string
   createdAt: Date
@@ -97,6 +98,7 @@ function loadStoredWidgetSession(): {
       ? parsed.messages
           .filter((message) => message.role && typeof message.content === "string" && message.createdAt)
           .map((message) => ({
+            id: typeof message.id === "string" ? message.id : undefined,
             role: message.role,
             content: message.content,
             createdAt: new Date(message.createdAt),
@@ -167,6 +169,7 @@ export function WidgetShell({
     try {
       const stored: StoredWidgetSession = {
         messages: messages.map((message) => ({
+          ...(message.id ? { id: message.id } : {}),
           role: message.role,
           content: message.content,
           createdAt: message.createdAt.toISOString(),
@@ -266,6 +269,27 @@ export function WidgetShell({
     setMessages((currentMessages) => [...currentMessages, message])
   }
 
+  const markSubmittedUserMessage = (
+    createdAt: Date,
+    content: string,
+    userMessage: { id: string; content: string; createdAt: string },
+  ) => {
+    setMessages((currentMessages) =>
+      currentMessages.map((message) =>
+        message.role === "user" &&
+        message.content === content &&
+        message.createdAt.getTime() === createdAt.getTime()
+          ? {
+              ...message,
+              id: userMessage.id,
+              content: userMessage.content,
+              createdAt: new Date(userMessage.createdAt),
+            }
+          : message,
+      ),
+    )
+  }
+
   useEffect(() => {
     if (!submitting) return
 
@@ -290,11 +314,59 @@ export function WidgetShell({
       const payload = await submitChatbotMessage({ message: text, conversationId })
       setConversationId(payload.conversationId)
       setLastResponseTier(payload.tier)
+      markSubmittedUserMessage(createdAt, text, payload.userMessage)
       appendMessage({
+        id: payload.assistantMessage.id,
         role: payload.assistantMessage.role,
         content: payload.assistantMessage.content,
         createdAt: new Date(payload.assistantMessage.createdAt),
       })
+      setActiveUi(payload.ui)
+    } catch {
+      appendMessage({
+        role: "system",
+        content: networkErrorMessage,
+        createdAt: new Date(),
+      })
+    } finally {
+      setShowThinkingDelayNotice(false)
+      setSubmitting(false)
+    }
+  }
+
+  const handleEditMessage = async (messageId: string, newText: string) => {
+    const targetIndex = messages.findIndex((message) => message.id === messageId && message.role === "user")
+    const trimmedText = newText.trim()
+    if (targetIndex === -1 || !trimmedText || submitting) return
+
+    setMessages((currentMessages) => currentMessages.slice(0, targetIndex))
+    setActiveUi(noUi)
+    setShowThinkingDelayNotice(false)
+    setSubmitting(true)
+
+    try {
+      const payload = await submitChatbotMessage({
+        message: trimmedText,
+        conversationId,
+        editTargetMessageId: messageId,
+      })
+      setConversationId(payload.conversationId)
+      setLastResponseTier(payload.tier)
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: payload.userMessage.id,
+          role: payload.userMessage.role,
+          content: payload.userMessage.content,
+          createdAt: new Date(payload.userMessage.createdAt),
+        },
+        {
+          id: payload.assistantMessage.id,
+          role: payload.assistantMessage.role,
+          content: payload.assistantMessage.content,
+          createdAt: new Date(payload.assistantMessage.createdAt),
+        },
+      ])
       setActiveUi(payload.ui)
     } catch {
       appendMessage({
@@ -414,10 +486,13 @@ export function WidgetShell({
         <div className="space-y-3" role="log" aria-live="polite">
           {messages.map((message, index) => (
             <ChatMessage
-              key={`${message.role}-${message.createdAt.toISOString()}-${index}`}
+              key={message.id ?? `${message.role}-${message.createdAt.toISOString()}-${index}`}
+              id={message.id}
               role={message.role}
               content={message.content}
               createdAt={message.createdAt}
+              editingDisabled={submitting}
+              onEdit={handleEditMessage}
             />
           ))}
           {submitting ? <ThinkingIndicator showDelayNotice={showThinkingDelayNotice} /> : null}

@@ -21,9 +21,17 @@ function mockJsonResponse(body: unknown, status = 200) {
 }
 
 const assistantMessage = {
+  id: "assistant_msg_1",
   role: "assistant",
   content: "最終媒体を選んでください",
   createdAt: "2026-05-26T00:00:00.000Z",
+}
+
+const userMessage = {
+  id: "user_msg_1",
+  role: "user",
+  content: "相談したいです",
+  createdAt: "2026-05-25T23:59:00.000Z",
 }
 
 function submitMessage(text = "相談したいです") {
@@ -74,6 +82,7 @@ describe("WidgetShell API wiring", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({
         conversationId: "conv_1",
+        userMessage,
         assistantMessage,
         tier: "tier-2-ollama-deepseek",
         ui: { kind: "none" },
@@ -119,6 +128,7 @@ describe("WidgetShell API wiring", () => {
     resolveFetch(
       mockJsonResponse({
         conversationId: "conv_1",
+        userMessage,
         assistantMessage,
         tier: "tier-2-ollama-deepseek",
         ui: { kind: "none" },
@@ -156,6 +166,7 @@ describe("WidgetShell API wiring", () => {
       vi.fn().mockResolvedValue(
         mockJsonResponse({
           conversationId: "conv_1",
+          userMessage,
           assistantMessage,
           tier: "tier-2-ollama-deepseek",
           ui: { kind: "choice-panel", choiceSet: finalMediumChoices },
@@ -176,6 +187,7 @@ describe("WidgetShell API wiring", () => {
       vi.fn().mockResolvedValue(
         mockJsonResponse({
           conversationId: "conv_1",
+          userMessage,
           assistantMessage: {
             ...assistantMessage,
             content: "候補日時から予約できます",
@@ -214,6 +226,7 @@ describe("WidgetShell API wiring", () => {
       .mockResolvedValueOnce(
         mockJsonResponse({
           conversationId: "conv_1",
+          userMessage: { ...userMessage, content: "フォームで送ります" },
           assistantMessage: {
             ...assistantMessage,
             content: "フォームに切り替えます",
@@ -269,6 +282,7 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("考え中")).toBeInTheDocument()
     resolveFetch(mockJsonResponse({
       conversationId: "conv_1",
+      userMessage: { ...userMessage, content: "待機表示を確認します" },
       assistantMessage,
       tier: "tier-2-ollama-deepseek",
       ui: { kind: "none" },
@@ -280,6 +294,7 @@ describe("WidgetShell API wiring", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({
         conversationId: "conv_restore",
+        userMessage: { ...userMessage, content: "Web CM の相談です" },
         assistantMessage,
         tier: "tier-2-ollama-deepseek",
         ui: { kind: "none" },
@@ -309,6 +324,7 @@ describe("WidgetShell API wiring", () => {
       .mockResolvedValueOnce(
         mockJsonResponse({
           conversationId: "conv_1",
+          userMessage: { ...userMessage, content: "料金確認です" },
           assistantMessage: {
             ...assistantMessage,
             content: "のりかね本人が確認します。",
@@ -340,5 +356,56 @@ describe("WidgetShell API wiring", () => {
     })
     expect(await screen.findByText(/送信内容/)).toHaveTextContent("メール: client@example.test")
     expect(screen.getByText(/送信内容/)).not.toHaveTextContent("氏名:")
+  })
+
+  it("edits a persisted user message, truncates following UI locally, and resends with editTargetMessageId", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage,
+          assistantMessage,
+          tier: "tier-2-ollama-deepseek",
+          ui: { kind: "choice-panel", choiceSet: finalMediumChoices },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage: {
+            ...userMessage,
+            id: "user_msg_2",
+            content: "編集後の相談です",
+            createdAt: "2026-05-26T00:02:00.000Z",
+          },
+          assistantMessage: {
+            ...assistantMessage,
+            id: "assistant_msg_2",
+            content: "編集後の条件で整理します",
+            createdAt: "2026-05-26T00:03:00.000Z",
+          },
+          tier: "tier-2-ollama-deepseek",
+          ui: { kind: "none" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderWidgetShell()
+    submitMessage()
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "編集後の相談です" } })
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      message: "編集後の相談です",
+      conversationId: "conv_1",
+      editTargetMessageId: "user_msg_1",
+    })
+    expect(await screen.findByText("編集後の条件で整理します")).toBeInTheDocument()
+    expect(screen.getByText("編集後の相談です")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "OTT 配信" })).not.toBeInTheDocument()
   })
 })

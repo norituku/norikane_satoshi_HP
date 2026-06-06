@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ChatMessage } from "@/components/chatbot/widget/ChatMessage"
 
@@ -28,5 +28,28 @@ describe("ChatMessage", () => {
 
     expect(screen.getByText("お客さま")).toBeInTheDocument()
     expect(screen.getByText("劇場公開作品です。")).toBeInTheDocument()
+  })
+
+  it("shows edit controls only for persisted user messages and saves changed text", () => {
+    const onEdit = vi.fn()
+    render(<ChatMessage id="msg_1" role="user" content="劇場公開作品です。" onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "Web CM です。" } })
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }))
+
+    expect(onEdit).toHaveBeenCalledWith("msg_1", "Web CM です。")
+  })
+
+  it("does not show edit controls for assistant or system messages", () => {
+    const onEdit = vi.fn()
+    render(
+      <>
+        <ChatMessage id="assistant_1" role="assistant" content="質問します。" onEdit={onEdit} />
+        <ChatMessage role="system" content="通信に失敗しました。" onEdit={onEdit} />
+      </>,
+    )
+
+    expect(screen.queryByRole("button", { name: "メッセージを編集" })).not.toBeInTheDocument()
   })
 })

@@ -61,6 +61,7 @@ async function loadPost({
       Promise.resolve(message(input.role, input.content)),
     )
   const updateConversationRouting = vi.fn().mockResolvedValue(undefined)
+  const truncateConversationFromMessage = vi.fn().mockResolvedValue({ deletedCount: 0 })
   const linkConversationToUser = vi.fn().mockResolvedValue(undefined)
   const loadUserChatbotContext = vi.fn().mockResolvedValue({
     userId: "user_1",
@@ -81,6 +82,7 @@ async function loadPost({
     loadConversationBySessionId,
     createConversation,
     appendMessage,
+    truncateConversationFromMessage,
     updateConversationRouting,
     linkConversationToUser,
     loadUserChatbotContext,
@@ -111,6 +113,7 @@ async function loadPost({
     createConversation,
     appendMessage,
     updateConversationRouting,
+    truncateConversationFromMessage,
     linkConversationToUser,
     loadUserChatbotContext,
     formatUserChatbotContextForPrompt,
@@ -139,6 +142,7 @@ describe("POST /api/chatbot/message", () => {
     })
     await expect(response.json()).resolves.toMatchObject({
       conversationId: "conv_1",
+      userMessage: { id: "user_1", role: "user", content: "相談したいです" },
       assistantMessage: { role: "assistant", content: "最終媒体を教えてください" },
       ui: { kind: "choice-panel" },
     })
@@ -176,6 +180,34 @@ describe("POST /api/chatbot/message", () => {
     await expect(response.json()).resolves.toMatchObject({
       tier: "tier-2-ollama-deepseek",
       ui: { kind: "choice-panel", choiceSet: { id: "final-medium" } },
+    })
+  })
+
+  it("accepts editTargetMessageId and passes it to the message handler path", async () => {
+    const route = await loadPost({
+      existingConversation: conversation({
+        messages: [
+          message("user", "最初の相談です"),
+          { ...message("user", "古い条件です"), id: "msg_edit" },
+        ],
+      }),
+    })
+
+    const response = await route.POST(
+      request(
+        { message: "編集後です", editTargetMessageId: "msg_edit" },
+        "chatbot_session_id=session_1",
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(route.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "msg_edit",
+    })
+    await expect(response.json()).resolves.toMatchObject({
+      userMessage: { id: "user_1", content: "編集後です" },
+      assistantMessage: { id: "assistant_1" },
     })
   })
 

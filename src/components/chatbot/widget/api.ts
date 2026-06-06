@@ -1,6 +1,7 @@
 import type { ChatbotMessageRole, ConversationState, JobContext, RoutingDecision } from "@/lib/chatbot/domain"
 
 export type WidgetAssistantMessage = {
+  id: string
   role: ChatbotMessageRole
   content: string
   createdAt: string
@@ -25,6 +26,7 @@ export type ChatbotResponseTier = "tier-1-chrome-notion-ai" | "tier-2-ollama-dee
 
 export type ChatbotMessageResponse = {
   conversationId: string
+  userMessage: WidgetAssistantMessage
   assistantMessage: WidgetAssistantMessage
   routingDecision?: RoutingDecision
   tier: ChatbotResponseTier
@@ -34,6 +36,7 @@ export type ChatbotMessageResponse = {
 export type SubmitChatbotMessageInput = {
   message: string
   conversationId?: string
+  editTargetMessageId?: string
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
 }

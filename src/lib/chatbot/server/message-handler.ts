@@ -17,6 +17,7 @@ import {
   linkConversationToUser,
   loadUserChatbotContext,
   loadConversationBySessionId,
+  truncateConversationFromMessage,
   updateConversationRouting,
   type ChatbotLlmClient,
   type ChatbotLlmResponse,
@@ -56,7 +57,8 @@ type ChatbotMessageUi =
 
 export type ChatbotMessageApiResult = {
   conversationId: string
-  assistantMessage: Pick<ChatbotMessage, "role" | "content" | "createdAt">
+  userMessage: Pick<ChatbotMessage, "id" | "role" | "content" | "createdAt">
+  assistantMessage: Pick<ChatbotMessage, "id" | "role" | "content" | "createdAt">
   routingDecision?: RoutingDecision
   tier: ChatbotLlmResponse["tier"]
   ui: ChatbotMessageUi
@@ -67,6 +69,7 @@ export type HandleChatbotMessageInput = {
   userId?: string
   message: string
   conversationId?: string
+  editTargetMessageId?: string
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
 }
@@ -75,6 +78,7 @@ type ChatbotMessageRepository = {
   loadConversationBySessionId: typeof loadConversationBySessionId
   createConversation: typeof createConversation
   appendMessage: typeof appendMessage
+  truncateConversationFromMessage: typeof truncateConversationFromMessage
   updateConversationRouting: typeof updateConversationRouting
   linkConversationToUser: typeof linkConversationToUser
 }
@@ -91,6 +95,7 @@ const defaultRepository: ChatbotMessageRepository = {
   loadConversationBySessionId,
   createConversation,
   appendMessage,
+  truncateConversationFromMessage,
   updateConversationRouting,
   linkConversationToUser,
 }
@@ -115,6 +120,27 @@ export async function handleChatbotMessage(
       (await repository.createConversation({ sessionId: isolatedSessionId, userId: input.userId ?? null }))
   } else if (input.userId && conversation.context.userId !== input.userId) {
     await repository.linkConversationToUser({ conversationId: conversation.id, userId: input.userId })
+  }
+
+  if (input.editTargetMessageId) {
+    const targetIndex = conversation.messages.findIndex((message) => message.id === input.editTargetMessageId)
+    if (targetIndex === -1) {
+      throw new Error("chatbot_edit_target_not_found")
+    }
+    await repository.truncateConversationFromMessage({
+      conversationId: conversation.id,
+      messageId: input.editTargetMessageId,
+    })
+    conversation = {
+      ...conversation,
+      status: "open",
+      context: {
+        sessionId: conversation.context.sessionId,
+        ...(conversation.context.userId ? { userId: conversation.context.userId } : {}),
+        ...(conversation.context.customerEmail ? { customerEmail: conversation.context.customerEmail } : {}),
+      },
+      messages: conversation.messages.slice(0, targetIndex),
+    }
   }
 
   const userMessage = await repository.appendMessage({
@@ -189,7 +215,14 @@ export async function handleChatbotMessage(
 
   return {
     conversationId: conversation.id,
+    userMessage: {
+      id: userMessage.id,
+      role: userMessage.role,
+      content: userMessage.content,
+      createdAt: userMessage.createdAt,
+    },
     assistantMessage: {
+      id: assistantMessage.id,
       role: assistantMessage.role,
       content: assistantMessage.content,
       createdAt: assistantMessage.createdAt,

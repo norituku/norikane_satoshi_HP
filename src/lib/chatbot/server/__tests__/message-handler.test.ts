@@ -86,6 +86,7 @@ function setup(overrides: {
       .mockImplementation((input: { role: ChatbotMessage["role"]; content: string }) =>
         Promise.resolve(message(input.role, input.content)),
       ),
+    truncateConversationFromMessage: vi.fn().mockResolvedValue({ deletedCount: 0 }),
     updateConversationRouting: vi.fn(),
     linkConversationToUser: vi.fn(),
   }
@@ -181,6 +182,54 @@ describe("handleChatbotMessage user context", () => {
       content: "最終媒体と尺を教えてください。",
     })
     expect(result.assistantMessage.content).toBe("最終媒体と尺を教えてください。")
+  })
+
+  it("truncates from the edited user message before regenerating from the edited text", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "keep_user", role: "user", content: "最初の相談です", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "edit_user", role: "user", content: "古い条件です", createdAt: "2026-05-26T00:01:00.000Z" },
+          { id: "old_assistant", role: "assistant", content: "古い応答です", createdAt: "2026-05-26T00:02:00.000Z" },
+        ],
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: finalMediumChoices,
+          currentQuestion: "最終媒体は何になりますか？",
+          conversationState: { hasFinalMedium: true, turnCount: 2 },
+          jobContext: { finalMedium: "cinema" },
+        },
+      }),
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "編集後の条件です",
+        editTargetMessageId: "edit_user",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "edit_user",
+    })
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "最初の相談です" },
+      { role: "user", content: "編集後の条件です" },
+    ])
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      finalMedium: "other",
+      workSite: "remote-grading",
+    })
+    expect(result.userMessage).toMatchObject({
+      id: "user_1",
+      role: "user",
+      content: "編集後の条件です",
+    })
   })
 
   it("overrides pricing output with direct contact policy", async () => {
