@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ExternalLink, Presentation, X } from "lucide-react"
+import { ExternalLink, X } from "lucide-react"
 
 type PressLink = {
   label: string
@@ -160,6 +160,19 @@ const focusableSelector = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",")
 
+function SpeakerAtLecternIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M10.2 6.15a2.65 2.65 0 1 1 5.3 0 2.65 2.65 0 0 1-5.3 0Z" />
+      <path d="M8.35 18.6h8.7l.75-7.15H7.6l.75 7.15Zm-1.45 2.15h11.6a.9.9 0 0 0 0-1.8H6.9a.9.9 0 0 0 0 1.8Z" />
+      <path d="M8.75 11.1c.24-2.03 1.97-3.6 4.1-3.6s3.86 1.57 4.1 3.6H8.75Z" />
+      <path d="M4.05 5.2a.85.85 0 0 1 .85-.85h2.1a.85.85 0 1 1 0 1.7H5.75v11.2a.85.85 0 1 1-1.7 0V5.2Z" />
+      <path d="M7.4 4.2a1.45 1.45 0 1 1 0 2.9 1.45 1.45 0 0 1 0-2.9Z" />
+      <path d="M7.65 6.15c2.08.34 3.78 1.44 4.8 3.1l-1.52.92C10.16 8.9 8.84 8.06 7.36 7.82l.29-1.67Z" />
+    </svg>
+  )
+}
+
 function PressDialogContent() {
   return (
     <div className="space-y-8 md:space-y-9">
@@ -301,17 +314,14 @@ export function PressDialog() {
       <button
         ref={triggerRef}
         type="button"
-        className="glass-badge glass-badge--profile-tool inline-flex h-10 items-center justify-center gap-2 px-4 text-xs font-semibold"
+        className="glass-btn glass-btn--profile-social flex h-10 w-10 items-center justify-center text-hp"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label="実績"
+        title="実績"
         onClick={() => setOpen(true)}
       >
-        <Presentation
-          className="h-4 w-4 shrink-0"
-          style={{ color: "var(--accent-primary)" }}
-          aria-hidden="true"
-        />
-        実績
+        <SpeakerAtLecternIcon className="h-4 w-4" />
       </button>
 
       {open ? (

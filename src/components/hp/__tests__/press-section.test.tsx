@@ -10,6 +10,17 @@ describe("PressSection", () => {
     cleanup()
   })
 
+  it("renders the profile trigger as an icon-only social badge", () => {
+    render(<PressDialog />)
+
+    const trigger = screen.getByRole("button", { name: "実績" })
+
+    expect(trigger).toHaveClass("glass-btn--profile-social")
+    expect(trigger).toHaveAttribute("title", "実績")
+    expect(trigger).not.toHaveTextContent("実績")
+    expect(trigger.querySelector("svg")).toBeInTheDocument()
+  })
+
   it("opens the three SSOT categories and nine press items in a modal dialog", () => {
     render(<PressDialog />)
 
