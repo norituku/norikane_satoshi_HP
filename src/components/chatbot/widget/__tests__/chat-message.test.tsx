@@ -44,6 +44,20 @@ describe("ChatMessage", () => {
     expect(screen.getByRole("button", { name: "OK" })).toBeInTheDocument()
   })
 
+  it("renders an icon-only edit control that is revealed by hover or focus styles", () => {
+    const onEdit = vi.fn()
+    const { container } = render(<ChatMessage id="msg_1" role="user" content="劇場公開作品です。" onEdit={onEdit} />)
+
+    const editButton = screen.getByRole("button", { name: "メッセージを編集" })
+    expect(screen.queryByText("編集")).not.toBeInTheDocument()
+    expect(editButton).toHaveClass("h-8")
+    expect(editButton).toHaveClass("w-8")
+    expect(editButton).toHaveClass("opacity-0")
+    expect(editButton).toHaveClass("group-hover:opacity-100")
+    expect(editButton).toHaveClass("group-focus-within:opacity-100")
+    expect(container.querySelector("article")).toHaveClass("group")
+  })
+
   it("saves changed text once after confirmation", () => {
     const onEdit = vi.fn()
     render(<ChatMessage id="msg_1" role="user" content="劇場公開作品です。" onEdit={onEdit} />)

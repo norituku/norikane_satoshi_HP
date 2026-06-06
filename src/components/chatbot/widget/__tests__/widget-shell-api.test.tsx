@@ -123,7 +123,8 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByText("考え中")).toBeInTheDocument()
     expect(screen.getByLabelText("相談内容")).toBeDisabled()
-    expect(screen.getByRole("button", { name: "送信" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "送信" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument()
 
     resolveFetch(
       mockJsonResponse({
@@ -138,6 +139,28 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
     expect(screen.getByLabelText("相談内容")).toBeEnabled()
+  })
+
+  it("cancels a pending chatbot response without showing a network error", async () => {
+    const abortError = new DOMException("Aborted", "AbortError")
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<ReturnType<typeof mockJsonResponse>>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(abortError), { once: true })
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderWidgetShell()
+    submitMessage("キャンセルします")
+
+    expect(await screen.findByText("考え中")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "停止" }))
+
+    await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
+    expect(screen.getByLabelText("相談内容")).toBeEnabled()
+    expect(screen.getByRole("button", { name: "送信" })).toBeInTheDocument()
+    expect(screen.queryByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   it("adds a delay notice after six seconds while the response is pending", async () => {

@@ -58,7 +58,7 @@ export function ChatMessage({ id, role, content, createdAt, editingDisabled = fa
   return (
     <article
       className={[
-        "max-w-[88%] px-4 py-3 text-sm leading-relaxed",
+        "group max-w-[88%] px-4 py-3 text-sm leading-relaxed",
         isUser
           ? "glass-bubble--user ml-auto border border-[var(--accent-primary)]/40 text-hp"
           : isSystem
@@ -73,7 +73,7 @@ export function ChatMessage({ id, role, content, createdAt, editingDisabled = fa
           {canEdit && !isEditing ? (
             <button
               type="button"
-              className="glass-btn inline-flex h-7 items-center gap-1 px-2 text-[11px]"
+              className="glass-btn inline-flex h-8 w-8 items-center justify-center opacity-0 transition-opacity duration-150 hover:shadow-[0_0_24px_rgba(139,127,255,0.3)] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] group-hover:opacity-100 group-focus-within:opacity-100"
               onClick={() => {
                 setEditConfirmPending(false)
                 setIsEditing(true)
@@ -81,7 +81,6 @@ export function ChatMessage({ id, role, content, createdAt, editingDisabled = fa
               aria-label="メッセージを編集"
             >
               <Pencil className="h-3 w-3" aria-hidden="true" />
-              編集
             </button>
           ) : null}
           {createdAt ? (

@@ -51,4 +51,14 @@ describe("ChatInput", () => {
     expect(input).toHaveClass("max-h-40")
     expect(input).toHaveClass("overflow-y-auto")
   })
+
+  it("switches to a stop button while a response is pending", () => {
+    const onStop = vi.fn()
+    render(<ChatInput onSubmit={vi.fn()} onStop={onStop} disabled stoppingEnabled />)
+
+    expect(screen.queryByRole("button", { name: "送信" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "停止" }))
+
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
 })

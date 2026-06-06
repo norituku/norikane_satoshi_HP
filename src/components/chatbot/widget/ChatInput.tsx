@@ -1,15 +1,23 @@
 "use client"
 
 import { FormEvent, KeyboardEvent, useLayoutEffect, useRef, useState } from "react"
-import { Send } from "lucide-react"
+import { Send, Square } from "lucide-react"
 
 type ChatInputProps = {
   onSubmit: (text: string) => void
+  onStop?: () => void
   disabled?: boolean
+  stoppingEnabled?: boolean
   placeholder?: string
 }
 
-export function ChatInput({ onSubmit, disabled = false, placeholder = "案件内容を書く" }: ChatInputProps) {
+export function ChatInput({
+  onSubmit,
+  onStop,
+  disabled = false,
+  stoppingEnabled = false,
+  placeholder = "案件内容を書く",
+}: ChatInputProps) {
   const [text, setText] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -53,14 +61,25 @@ export function ChatInput({ onSubmit, disabled = false, placeholder = "案件内
           onKeyDown={handleKeyDown}
           rows={1}
         />
-        <button
-          type="submit"
-          className="glass-btn flex h-9 w-9 shrink-0 items-center justify-center"
-          aria-label="送信"
-          disabled={disabled}
-        >
-          <Send className="h-4 w-4" aria-hidden="true" />
-        </button>
+        {stoppingEnabled ? (
+          <button
+            type="button"
+            className="glass-btn flex h-9 w-9 shrink-0 items-center justify-center"
+            aria-label="停止"
+            onClick={onStop}
+          >
+            <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="glass-btn flex h-9 w-9 shrink-0 items-center justify-center"
+            aria-label="送信"
+            disabled={disabled}
+          >
+            <Send className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </form>
   )

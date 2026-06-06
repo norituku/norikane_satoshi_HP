@@ -6,6 +6,7 @@ import { Minus, PanelRightClose, PanelRightOpen, Sparkles } from "lucide-react"
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
 
 import {
+  isChatbotRequestCancelledError,
   submitChatbotInquiry,
   submitChatbotMessage,
   type ChatbotResponseTier,
@@ -154,6 +155,7 @@ export function WidgetShell({
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(storedSession.lastResponseTier)
   const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const shellRef = useRef<HTMLElement | null>(null)
+  const activeRequestControllerRef = useRef<AbortController | null>(null)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugHostname(window.location.hostname)
   const sanitizedLayout = useMemo(() => sanitizeWidgetLayout(layout), [layout])
@@ -324,7 +326,32 @@ export function WidgetShell({
     return () => window.clearTimeout(timeoutId)
   }, [submitting])
 
+  useEffect(() => {
+    return () => {
+      activeRequestControllerRef.current?.abort()
+    }
+  }, [])
+
+  const finishRequest = (controller: AbortController) => {
+    if (activeRequestControllerRef.current !== controller) return
+    activeRequestControllerRef.current = null
+    setShowThinkingDelayNotice(false)
+    setSubmitting(false)
+  }
+
+  const handleStop = () => {
+    const controller = activeRequestControllerRef.current
+    if (!controller) return
+    controller.abort()
+    activeRequestControllerRef.current = null
+    setShowThinkingDelayNotice(false)
+    setSubmitting(false)
+  }
+
   const handleSubmit = async (text: string) => {
+    if (submitting) return
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
     const createdAt = new Date()
     setMessages((currentMessages) => [
       ...currentMessages,
@@ -335,7 +362,11 @@ export function WidgetShell({
     setSubmitting(true)
 
     try {
-      const payload = await submitChatbotMessage({ message: text, conversationId })
+      const payload = await submitChatbotMessage(
+        { message: text, conversationId },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
       setConversationId(payload.conversationId)
       setLastResponseTier(payload.tier)
       markSubmittedUserMessage(createdAt, text, payload.userMessage)
@@ -346,15 +377,15 @@ export function WidgetShell({
         createdAt: new Date(payload.assistantMessage.createdAt),
       })
       setActiveUi(payload.ui)
-    } catch {
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
       appendMessage({
         role: "system",
         content: networkErrorMessage,
         createdAt: new Date(),
       })
     } finally {
-      setShowThinkingDelayNotice(false)
-      setSubmitting(false)
+      finishRequest(controller)
     }
   }
 
@@ -362,6 +393,8 @@ export function WidgetShell({
     const targetIndex = messages.findIndex((message) => message.id === messageId && message.role === "user")
     const trimmedText = newText.trim()
     if (targetIndex === -1 || !trimmedText || submitting) return
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
 
     setMessages((currentMessages) => currentMessages.slice(0, targetIndex))
     setActiveUi(noUi)
@@ -373,7 +406,8 @@ export function WidgetShell({
         message: trimmedText,
         conversationId,
         editTargetMessageId: messageId,
-      })
+      }, { signal: controller.signal })
+      if (controller.signal.aborted) return
       setConversationId(payload.conversationId)
       setLastResponseTier(payload.tier)
       setMessages((currentMessages) => [
@@ -392,15 +426,15 @@ export function WidgetShell({
         },
       ])
       setActiveUi(payload.ui)
-    } catch {
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
       appendMessage({
         role: "system",
         content: networkErrorMessage,
         createdAt: new Date(),
       })
     } finally {
-      setShowThinkingDelayNotice(false)
-      setSubmitting(false)
+      finishRequest(controller)
     }
   }
 
@@ -524,7 +558,7 @@ export function WidgetShell({
         <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
       </div>
 
-      <ChatInput onSubmit={handleSubmit} disabled={submitting} />
+      <ChatInput onSubmit={handleSubmit} onStop={handleStop} disabled={submitting} stoppingEnabled={submitting} />
     </section>
   )
 }
