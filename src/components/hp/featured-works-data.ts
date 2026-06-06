@@ -11,6 +11,18 @@ export type FeaturedWorkLink = {
   url: string
 }
 
+export type FeaturedWorkPreviewVideo = {
+  videoId: string
+  loopStart?: number
+  loopEnd?: number
+}
+
+export type FeaturedPlaylistWork = {
+  title: string
+  client?: string
+  videos: readonly FeaturedWorkPreviewVideo[]
+}
+
 export const FEATURED_WORKS: FeaturedWork[] = [
   {
     title: "火星の女王",
@@ -88,31 +100,53 @@ export const FEATURED_WORKS: FeaturedWork[] = [
       },
     ],
   },
+]
+
+export const LIVE_REEL_VIDEOS = [
+  { videoId: "fEYJazIPxUg" },
+  { videoId: "G_3xr5desOo" },
+  { videoId: "ZorB-2mqe-U" },
+  { videoId: "d7qo_ke4kqI" },
+  { videoId: "Nhv9GDVem5U" },
+  { videoId: "heb1yJtreJg" },
+  { videoId: "peWya9bxVXc", loopStart: 10, loopEnd: 40 },
+  { videoId: "R92a65tojVg", loopStart: 0, loopEnd: 30 },
+  { videoId: "y0g6UCE0Pzg", loopStart: 50, loopEnd: 80 },
+  { videoId: "H_z2HYsx53o" },
+] as const
+
+export const LIVE_REEL_VIDEO_IDS = LIVE_REEL_VIDEOS.map((video) => video.videoId)
+
+export const FEATURED_PLAYLIST_WORKS: FeaturedPlaylistWork[] = [
   {
-    title: "リラックマと遊園地",
-    client: "NETFLIX",
-    youtubeId: "-X5BMqt0m2c",
-    officialUrl: "https://www.san-x.co.jp/rilakkuma/theme_park_adventure/",
-    links: [
-      {
-        label: "公式HP",
-        url: "https://www.san-x.co.jp/rilakkuma/theme_park_adventure/",
-      },
-      {
-        label: "YouTube",
-        url: "https://www.youtube.com/watch?v=-X5BMqt0m2c",
-      },
+    title: "ライブ映像作品",
+    client: "配信",
+    videos: LIVE_REEL_VIDEOS,
+  },
+  {
+    title: "CM",
+    videos: [
+      { videoId: "Eo2IIH-w3h8" },
+      { videoId: "OtEpoEKVBMA" },
+      { videoId: "fStjAoAOlbQ" },
+      { videoId: "vchw9jvBntI" },
+      { videoId: "cQwaCzcZNIk" },
+    ],
+  },
+  {
+    title: "MV",
+    videos: [
+      { videoId: "Pgvb6t2oLqg" },
+      { videoId: "N7c7ZaVXjvk" },
+      { videoId: "q5prKAR8UpA" },
+      { videoId: "dbLARf2asG0" },
+      { videoId: "QzQrzX07VMY" },
+      { videoId: "EmjP3gJ_ALY" },
+      { videoId: "6qZwQdw88Aw" },
+      { videoId: "O8EynS4boVU" },
     ],
   },
 ]
-
-export const LIVE_REEL_VIDEO_IDS = [
-  "fEYJazIPxUg",
-  "G_3xr5desOo",
-  "ZorB-2mqe-U",
-  "d7qo_ke4kqI",
-  "Nhv9GDVem5U",
-] as const
 
 export type ClipWindow = {
   startSeconds: number
@@ -123,8 +157,8 @@ export function getYouTubeThumbnailUrl(videoId: string) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
 }
 
-export function shuffleVideoIds(
-  videoIds: readonly string[],
+export function shuffleVideoIds<T>(
+  videoIds: readonly T[],
   random: () => number = Math.random,
 ) {
   const shuffled = [...videoIds]

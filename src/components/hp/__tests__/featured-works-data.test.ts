@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest"
 import {
+  FEATURED_PLAYLIST_WORKS,
   FEATURED_WORKS,
   LIVE_REEL_VIDEO_IDS,
+  LIVE_REEL_VIDEOS,
   calculateClipWindow,
   shuffleVideoIds,
 } from "@/components/hp/featured-works-data"
 
 describe("featured works data", () => {
-  it("defines the five official linked works with YouTube ids", () => {
+  it("defines the four official linked works with YouTube ids", () => {
     expect(FEATURED_WORKS).toEqual([
       expect.objectContaining({
         title: "火星の女王",
@@ -81,33 +83,55 @@ describe("featured works data", () => {
           },
         ],
       }),
-      expect.objectContaining({
-        title: "リラックマと遊園地",
-        client: "NETFLIX",
-        youtubeId: "-X5BMqt0m2c",
-        officialUrl: "https://www.san-x.co.jp/rilakkuma/theme_park_adventure/",
-        links: [
-          {
-            label: "公式HP",
-            url: "https://www.san-x.co.jp/rilakkuma/theme_park_adventure/",
-          },
-          {
-            label: "YouTube",
-            url: "https://www.youtube.com/watch?v=-X5BMqt0m2c",
-          },
-        ],
-      }),
     ])
     expect(FEATURED_WORKS[0]).not.toHaveProperty("youtubeId")
   })
 
-  it("defines the five live reel YouTube ids", () => {
+  it("defines the live reel YouTube ids and fixed preview loops", () => {
     expect(LIVE_REEL_VIDEO_IDS).toEqual([
       "fEYJazIPxUg",
       "G_3xr5desOo",
       "ZorB-2mqe-U",
       "d7qo_ke4kqI",
       "Nhv9GDVem5U",
+      "heb1yJtreJg",
+      "peWya9bxVXc",
+      "R92a65tojVg",
+      "y0g6UCE0Pzg",
+      "H_z2HYsx53o",
+    ])
+    expect(LIVE_REEL_VIDEOS).toEqual(
+      expect.arrayContaining([
+        { videoId: "peWya9bxVXc", loopStart: 10, loopEnd: 40 },
+        { videoId: "R92a65tojVg", loopStart: 0, loopEnd: 30 },
+        { videoId: "y0g6UCE0Pzg", loopStart: 50, loopEnd: 80 },
+      ]),
+    )
+  })
+
+  it("defines live, CM, and MV playlist cards", () => {
+    expect(FEATURED_PLAYLIST_WORKS.map((work) => work.title)).toEqual([
+      "ライブ映像作品",
+      "CM",
+      "MV",
+    ])
+    expect(FEATURED_PLAYLIST_WORKS[0]?.videos).toHaveLength(10)
+    expect(FEATURED_PLAYLIST_WORKS[1]?.videos.map((video) => video.videoId)).toEqual([
+      "Eo2IIH-w3h8",
+      "OtEpoEKVBMA",
+      "fStjAoAOlbQ",
+      "vchw9jvBntI",
+      "cQwaCzcZNIk",
+    ])
+    expect(FEATURED_PLAYLIST_WORKS[2]?.videos.map((video) => video.videoId)).toEqual([
+      "Pgvb6t2oLqg",
+      "N7c7ZaVXjvk",
+      "q5prKAR8UpA",
+      "dbLARf2asG0",
+      "QzQrzX07VMY",
+      "EmjP3gJ_ALY",
+      "6qZwQdw88Aw",
+      "O8EynS4boVU",
     ])
   })
 

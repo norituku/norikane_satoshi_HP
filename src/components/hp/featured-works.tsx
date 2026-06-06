@@ -14,12 +14,14 @@ import {
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import {
+  FEATURED_PLAYLIST_WORKS,
   FEATURED_WORKS,
-  LIVE_REEL_VIDEO_IDS,
   calculateClipWindow,
   getYouTubeThumbnailUrl,
   shuffleVideoIds,
   type ClipWindow,
+  type FeaturedPlaylistWork,
+  type FeaturedWorkPreviewVideo,
   type FeaturedWork,
   type FeaturedWorkLink,
 } from "@/components/hp/featured-works-data"
@@ -42,7 +44,11 @@ type YouTubePlayer = {
   destroy: () => void
   getDuration: () => number
   seekTo: (seconds: number, allowSeekAhead: boolean) => void
-  loadVideoById: (videoId: string | { videoId: string; startSeconds?: number }) => void
+  loadVideoById: (
+    videoId:
+      | string
+      | { videoId: string; startSeconds?: number; endSeconds?: number },
+  ) => void
 }
 
 type ActiveVideoModal = {
@@ -861,7 +867,39 @@ function FeaturedWorkVideoDialog({
   )
 }
 
-function getYouTubePlayerVars(videoId?: string) {
+function getFixedClipWindow(video: FeaturedWorkPreviewVideo): ClipWindow | null {
+  if (
+    typeof video.loopStart !== "number" ||
+    typeof video.loopEnd !== "number" ||
+    video.loopEnd <= video.loopStart
+  ) {
+    return null
+  }
+
+  return {
+    startSeconds: video.loopStart,
+    playSeconds: video.loopEnd - video.loopStart,
+  }
+}
+
+function getYouTubeLoadVideoArg(video: FeaturedWorkPreviewVideo) {
+  const fixedClip = getFixedClipWindow(video)
+  if (!fixedClip) {
+    return video.videoId
+  }
+
+  return {
+    videoId: video.videoId,
+    startSeconds: fixedClip.startSeconds,
+    endSeconds: fixedClip.startSeconds + fixedClip.playSeconds,
+  }
+}
+
+export function getYouTubePlayerVars(video?: string | FeaturedWorkPreviewVideo) {
+  const videoId = typeof video === "string" ? video : video?.videoId
+  const fixedClip =
+    typeof video === "object" && video ? getFixedClipWindow(video) : null
+
   return {
     autoplay: 1,
     controls: 0,
@@ -874,6 +912,12 @@ function getYouTubePlayerVars(videoId?: string) {
     playsinline: 1,
     rel: 0,
     ...(videoId ? { loop: 1, playlist: videoId } : {}),
+    ...(fixedClip
+      ? {
+          start: fixedClip.startSeconds,
+          end: fixedClip.startSeconds + fixedClip.playSeconds,
+        }
+      : {}),
   }
 }
 
@@ -1075,13 +1119,15 @@ function FeaturedWorkCard({
   )
 }
 
-function LiveReelCard({
+function PlaylistWorkCard({
+  work,
   shouldStartVideo,
   prefersReducedMotion,
   clone = false,
   segmentStart,
   onOpenVideo,
 }: {
+  work: FeaturedPlaylistWork
   shouldStartVideo: boolean
   prefersReducedMotion: boolean
   clone?: boolean
@@ -1093,12 +1139,20 @@ function LiveReelCard({
 }) {
   const playerHostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<YouTubePlayer | null>(null)
-  const queueRef = useRef<string[]>([])
+  const queueRef = useRef<FeaturedWorkPreviewVideo[]>([])
   const clipRef = useRef<ClipWindow | null>(null)
   const timerRef = useRef<number | null>(null)
   const coverTimerRef = useRef<number | null>(null)
-  const [previewVideoId, setPreviewVideoId] = useState<string>(LIVE_REEL_VIDEO_IDS[0])
+  const previewVideoRef = useRef<FeaturedWorkPreviewVideo>(work.videos[0])
+  const [previewVideo, setPreviewVideo] = useState<FeaturedWorkPreviewVideo>(
+    work.videos[0],
+  )
   const [isCoverVisible, setIsCoverVisible] = useState(true)
+  const playlistVideoIds = work.videos.map((video) => video.videoId).join(",")
+
+  useEffect(() => {
+    previewVideoRef.current = previewVideo
+  }, [previewVideo])
 
   useEffect(() => {
     const clearNextTimer = () => {
@@ -1125,11 +1179,11 @@ function LiveReelCard({
 
     let cancelled = false
 
-    const nextVideoId = () => {
+    const nextVideo = () => {
       if (queueRef.current.length === 0) {
-        queueRef.current = shuffleVideoIds(LIVE_REEL_VIDEO_IDS)
+        queueRef.current = shuffleVideoIds(work.videos)
       }
-      return queueRef.current.shift() ?? LIVE_REEL_VIDEO_IDS[0]
+      return queueRef.current.shift() ?? work.videos[0]
     }
 
     const playNext = () => {
@@ -1139,11 +1193,12 @@ function LiveReelCard({
       }
       clearNextTimer()
       clipRef.current = null
-      const videoId = nextVideoId()
-      setPreviewVideoId(videoId)
+      const video = nextVideo()
+      previewVideoRef.current = video
+      setPreviewVideo(video)
       clearCoverTimer()
       setIsCoverVisible(true)
-      player.loadVideoById(videoId)
+      player.loadVideoById(getYouTubeLoadVideoArg(video))
     }
 
     const handleStateChange = (event: YouTubePlayerStateChangeEvent) => {
@@ -1152,6 +1207,12 @@ function LiveReelCard({
       }
 
       if (event.data === window.YT.PlayerState.ENDED) {
+        const fixedClip = getFixedClipWindow(previewVideoRef.current)
+        if (fixedClip) {
+          event.target.seekTo(fixedClip.startSeconds, true)
+          event.target.playVideo()
+          return
+        }
         playNext()
         return
       }
@@ -1162,14 +1223,16 @@ function LiveReelCard({
 
       const player = event.target
       const existingClip = clipRef.current
+      const fixedClip = getFixedClipWindow(previewVideoRef.current)
       const duration = player.getDuration()
       const playableDuration = Number.isFinite(duration) ? Math.max(duration, 30) : 30
       const clip =
         existingClip ??
+        fixedClip ??
         calculateClipWindow(playableDuration, Math.random, 30)
       clipRef.current = clip
 
-      if (!existingClip && clip.startSeconds > 0) {
+      if (!existingClip && !fixedClip && clip.startSeconds > 0) {
         player.seekTo(clip.startSeconds, true)
       }
 
@@ -1195,13 +1258,15 @@ function LiveReelCard({
         return
       }
 
-      queueRef.current = shuffleVideoIds(LIVE_REEL_VIDEO_IDS)
-      const firstVideoId = nextVideoId()
-      setPreviewVideoId(firstVideoId)
+      queueRef.current = shuffleVideoIds(work.videos)
+      const firstVideo = nextVideo()
+      previewVideoRef.current = firstVideo
+      setPreviewVideo(firstVideo)
+      clipRef.current = getFixedClipWindow(firstVideo)
       setIsCoverVisible(true)
       playerRef.current = new window.YT.Player(playerHostRef.current, {
-        videoId: firstVideoId,
-        playerVars: getYouTubePlayerVars(),
+        videoId: firstVideo.videoId,
+        playerVars: getYouTubePlayerVars(firstVideo),
         events: {
           onReady: (event) => {
             event.target.mute()
@@ -1218,7 +1283,7 @@ function LiveReelCard({
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [shouldStartVideo, prefersReducedMotion])
+  }, [shouldStartVideo, prefersReducedMotion, work.videos])
 
   useEffect(() => {
     return () => {
@@ -1236,7 +1301,11 @@ function LiveReelCard({
     <div
       className="featured-work-transparent-card flex shrink-0 flex-col overflow-hidden rounded-none p-4 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
-      aria-label={clone ? undefined : "ライブ映像作品多数のランダムループ再生カード"}
+      aria-label={clone ? undefined : `${work.title}のランダムループ再生カード`}
+      data-featured-work-card={work.title}
+      data-featured-work-playlist-card={work.title}
+      data-featured-work-playlist-video-count={work.videos.length}
+      data-featured-work-playlist-video-ids={playlistVideoIds}
       data-featured-work-marquee-segment-start={segmentStart}
     >
       <div className="flex min-h-0 flex-1 flex-col">
@@ -1248,20 +1317,22 @@ function LiveReelCard({
               }`}
               aria-hidden="true"
               data-featured-work-preview-media={isCoverVisible ? "preparing" : "playing"}
-              data-featured-work-live-current-video-id={previewVideoId}
+              data-featured-work-current-video-id={previewVideo.videoId}
+              data-featured-work-loop-start={previewVideo.loopStart}
+              data-featured-work-loop-end={previewVideo.loopEnd}
             >
               <div ref={playerHostRef} className="h-full w-full" />
             </div>
           ) : null}
-          <PreviewThumbnail videoId={previewVideoId} isVisible={isCoverVisible} />
+          <PreviewThumbnail videoId={previewVideo.videoId} isVisible={isCoverVisible} />
           <VideoOpenButton
-            label="ライブ映像作品をモーダルで再生"
+            label={`${work.title}をモーダルで再生`}
             clone={clone}
             onOpen={(triggerElement) => {
               onOpenVideo(
                 {
-                  videoId: previewVideoId,
-                  label: "ライブ映像作品をモーダルで再生",
+                  videoId: previewVideo.videoId,
+                  label: `${work.title}をモーダルで再生`,
                 },
                 triggerElement,
               )
@@ -1269,9 +1340,11 @@ function LiveReelCard({
           />
         </PreviewFrame>
         <p className="mt-4 text-sm font-semibold leading-snug text-hp md:text-[0.95rem]">
-          ライブ映像作品多数
+          {work.title}
         </p>
-        <p className="mt-auto pt-3 text-xs text-hp-muted md:text-sm">配信</p>
+        {work.client ? (
+          <p className="mt-auto pt-3 text-xs text-hp-muted md:text-sm">{work.client}</p>
+        ) : null}
       </div>
     </div>
   )
@@ -1321,12 +1394,16 @@ export function FeaturedWorks() {
           onOpenVideo={openVideo}
         />
       ))}
-      <LiveReelCard
-        shouldStartVideo={hasEnteredViewport}
-        prefersReducedMotion={prefersReducedMotion}
-        clone={clone}
-        onOpenVideo={openVideo}
-      />
+      {FEATURED_PLAYLIST_WORKS.map((work) => (
+        <PlaylistWorkCard
+          key={`${clone ? "clone" : "primary"}-${work.title}`}
+          work={work}
+          shouldStartVideo={hasEnteredViewport}
+          prefersReducedMotion={prefersReducedMotion}
+          clone={clone}
+          onOpenVideo={openVideo}
+        />
+      ))}
     </>
   )
 

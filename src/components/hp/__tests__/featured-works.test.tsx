@@ -3,14 +3,21 @@
 import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { FEATURED_WORKS, LIVE_REEL_VIDEO_IDS } from "@/components/hp/featured-works-data"
+import {
+  FEATURED_PLAYLIST_WORKS,
+  FEATURED_WORKS,
+  LIVE_REEL_VIDEO_IDS,
+} from "@/components/hp/featured-works-data"
 import {
   FeaturedWorks,
   getFeaturedWorkMarqueeProgressBarGeometry,
+  getYouTubePlayerVars,
 } from "@/components/hp/featured-works"
 
 describe("FeaturedWorks", () => {
   const embeddedWorkCount = FEATURED_WORKS.filter((work) => work.youtubeId).length
+  const playlistWorkCount = FEATURED_PLAYLIST_WORKS.length
+  const totalCardCount = FEATURED_WORKS.length + FEATURED_PLAYLIST_WORKS.length
   const getPrimarySegment = (container: HTMLElement) => {
     const segment = container.querySelector(
       '[data-featured-work-marquee-segment="primary"]',
@@ -138,7 +145,7 @@ describe("FeaturedWorks", () => {
     expect(track).not.toHaveClass("will-change-transform")
     expect(track?.textContent).toContain("火星の女王")
     expect(primary.querySelectorAll("[data-featured-work-card]")).toHaveLength(
-      FEATURED_WORKS.length,
+      totalCardCount,
     )
     expect(primary).toHaveClass("contents")
     expect(primary).not.toHaveClass("gap-4")
@@ -149,7 +156,7 @@ describe("FeaturedWorks", () => {
     expect(clone).not.toHaveClass("gap-4")
     expect(clone).not.toHaveClass("px-8")
     expect(clone?.querySelectorAll("[data-featured-work-card]")).toHaveLength(
-      FEATURED_WORKS.length,
+      totalCardCount,
     )
     expect(cloneBeforeStart).toBeInTheDocument()
     expect(primary.querySelector(
@@ -308,11 +315,14 @@ describe("FeaturedWorks", () => {
     ).not.toHaveAttribute("data-featured-work-native-scrollbar")
   })
 
-  it("renders the live reel card without badge links", () => {
+  it("renders playlist cards without badge links", () => {
     render(<FeaturedWorks />)
 
-    expect(screen.getByLabelText("ライブ映像作品多数のランダムループ再生カード")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: /ライブ映像作品多数/ })).not.toBeInTheDocument()
+    for (const work of FEATURED_PLAYLIST_WORKS) {
+      expect(screen.getByLabelText(`${work.title}のランダムループ再生カード`)).toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: new RegExp(work.title) })).not.toBeInTheDocument()
+    }
+    expect(screen.queryByText("ライブ映像作品多数")).not.toBeInTheDocument()
   })
 
   it("opens video previews in a body portal modal and restores focus", () => {
@@ -399,6 +409,57 @@ describe("FeaturedWorks", () => {
     )
   })
 
+  it("renders seven cards with live, CM, and MV playlist counts", () => {
+    const { container } = render(<FeaturedWorks />)
+    const primary = getPrimarySegment(container)
+    const cards = primary.querySelectorAll("[data-featured-work-card]")
+
+    expect(Array.from(cards).map((card) => card.getAttribute("data-featured-work-card"))).toEqual([
+      "火星の女王",
+      "十角館の殺人 / 時計館の殺人",
+      "福山雅治ライブフィルム「言霊の幸わう夏」「月光」",
+      "ゲキ×シネシリーズ",
+      "ライブ映像作品",
+      "CM",
+      "MV",
+    ])
+
+    for (const work of FEATURED_PLAYLIST_WORKS) {
+      const card = screen.getByLabelText(`${work.title}のランダムループ再生カード`)
+      expect(card).toHaveAttribute(
+        "data-featured-work-playlist-video-count",
+        String(work.videos.length),
+      )
+      expect(card).toHaveAttribute(
+        "data-featured-work-playlist-video-ids",
+        work.videos.map((video) => video.videoId).join(","),
+      )
+      expect(
+        screen.getByRole("button", {
+          name: `${work.title}をモーダルで再生`,
+        }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it("passes fixed live preview loop windows to the YouTube player vars", () => {
+    const fixedLoop = FEATURED_PLAYLIST_WORKS[0]?.videos.find(
+      (video) => video.videoId === "peWya9bxVXc",
+    )
+    expect(fixedLoop).toEqual({
+      videoId: "peWya9bxVXc",
+      loopStart: 10,
+      loopEnd: 40,
+    })
+    expect(getYouTubePlayerVars(fixedLoop)).toMatchObject({
+      loop: 1,
+      playlist: "peWya9bxVXc",
+      start: 10,
+      end: 40,
+    })
+    expect(getYouTubePlayerVars("heb1yJtreJg")).not.toHaveProperty("start")
+  })
+
   it("ignores video trigger clicks after pointer dragging", () => {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
@@ -454,12 +515,12 @@ describe("FeaturedWorks", () => {
       "[data-featured-work-neutral-placeholder]",
     )
 
-    expect(previewFrames).toHaveLength(embeddedWorkCount + 2)
+    expect(previewFrames).toHaveLength(embeddedWorkCount + playlistWorkCount + 1)
     expect(abstractCovers).toHaveLength(1)
     expect(cropFrames).toHaveLength(0)
     expect(scaledMedia).toHaveLength(0)
-    expect(thumbnailCovers).toHaveLength(embeddedWorkCount + 1)
-    expect(mediaCovers).toHaveLength(embeddedWorkCount + 1)
+    expect(thumbnailCovers).toHaveLength(embeddedWorkCount + playlistWorkCount)
+    expect(mediaCovers).toHaveLength(embeddedWorkCount + playlistWorkCount)
     expect(neutralPlaceholders).toHaveLength(0)
     expect(container.innerHTML).not.toContain("i.ytimg.com/vi/IQb3beIbE1I")
 
@@ -500,7 +561,7 @@ describe("FeaturedWorks", () => {
       expect(card).not.toHaveClass("glass-refraction-edge")
       expect(card).not.toHaveClass("glass-distortion-surface")
     }
-    const liveReelCard = screen.getByLabelText("ライブ映像作品多数のランダムループ再生カード")
+    const liveReelCard = screen.getByLabelText("ライブ映像作品のランダムループ再生カード")
     expect(liveReelCard).toHaveClass("overflow-hidden")
     expect(liveReelCard).toHaveClass("featured-work-transparent-card")
     expect(liveReelCard).toHaveClass("rounded-none")
@@ -545,7 +606,7 @@ describe("FeaturedWorks", () => {
     expect(badgeGroups).toHaveLength(FEATURED_WORKS.length)
     expect(
       screen
-        .getByLabelText("ライブ映像作品多数のランダムループ再生カード")
+        .getByLabelText("ライブ映像作品のランダムループ再生カード")
         .querySelector("[data-featured-work-link-badges]"),
     ).toBeNull()
   })
@@ -630,70 +691,6 @@ describe("FeaturedWorks", () => {
     ).toHaveLength(1)
   })
 
-  it("renders Rilakkuma as a playable Netflix video card with inline badges", () => {
-    Object.defineProperty(window, "matchMedia", {
-      writable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
-        matches: false,
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    })
-
-    render(<FeaturedWorks />)
-
-    const card = screen.getByLabelText("リラックマと遊園地 作品カード")
-    const title = Array.from(card.querySelectorAll("p")).find(
-      (element) => element.textContent === "リラックマと遊園地",
-    )
-    const client = Array.from(card.querySelectorAll("p")).find(
-      (element) => element.textContent === "NETFLIX",
-    )
-    const frame = card.querySelector(".aspect-video")
-    const thumbnail = card.querySelector(
-      '[data-featured-work-preview-thumbnail="visible"]',
-    )
-    const media = card.querySelector('[data-featured-work-preview-media="preparing"]')
-    const badges = card.querySelector('[data-featured-work-link-badges="inline"]')
-
-    expect(card.tagName).toBe("DIV")
-    expect(card).not.toHaveAttribute("href")
-    expect(frame).toHaveClass("aspect-video")
-    expect(frame).toHaveClass("overflow-hidden")
-    expect(frame).toHaveClass("-mt-4")
-    expect(frame).toHaveClass("-mx-4")
-    expect(frame).toHaveClass("rounded-none")
-    expect(frame).not.toHaveClass("rounded-t-[12px]")
-    expect(thumbnail).toBeInTheDocument()
-    expect(thumbnail).toHaveClass("rounded-none")
-    expect(media).toBeInTheDocument()
-    expect(media).toHaveClass("rounded-none")
-    expect(title).toBeInTheDocument()
-    expect(client).toBeInTheDocument()
-    expect(title?.nextElementSibling).toBe(client?.parentElement)
-    expect(badges?.parentElement).toBe(client?.parentElement)
-
-    expect(
-      screen.getByRole("link", {
-        name: "リラックマと遊園地 公式HPを新しいタブで開く",
-      }),
-    ).toHaveAttribute(
-      "href",
-      "https://www.san-x.co.jp/rilakkuma/theme_park_adventure/",
-    )
-    expect(
-      screen.queryByRole("link", {
-        name: "リラックマと遊園地 YouTubeを新しいタブで開く",
-      }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByRole("button", {
-        name: "リラックマと遊園地 の動画をモーダルで再生",
-      }),
-    ).toBeInTheDocument()
-  })
-
   it("prepares YouTube API players behind thumbnail covers", () => {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
@@ -715,8 +712,8 @@ describe("FeaturedWorks", () => {
       '[data-featured-work-preview-thumbnail="visible"]',
     )
 
-    expect(preparingMedia).toHaveLength(embeddedWorkCount + 1)
-    expect(thumbnailCovers).toHaveLength(embeddedWorkCount + 1)
+    expect(preparingMedia).toHaveLength(embeddedWorkCount + playlistWorkCount)
+    expect(thumbnailCovers).toHaveLength(embeddedWorkCount + playlistWorkCount)
 
     for (const media of preparingMedia) {
       expect(media).toHaveClass("pointer-events-none")
