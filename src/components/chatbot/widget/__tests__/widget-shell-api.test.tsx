@@ -243,7 +243,7 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByLabelText("問い合わせフォーム")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("氏名"), { target: { value: "田中" } })
-    fireEvent.change(screen.getByLabelText("メール"), { target: { value: "client@example.com" } })
+    fireEvent.change(screen.getByLabelText("メールアドレス"), { target: { value: "client@example.com" } })
     fireEvent.click(within(screen.getByLabelText("問い合わせフォーム")).getByRole("button", { name: "送信" }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
@@ -256,6 +256,49 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("送信しました。のりかね本人が確認して返信します。")).toBeInTheDocument()
     expect(await screen.findByText(/送信内容/)).toHaveTextContent("メール: client@example.com")
     expect(screen.getByText(/送信内容/)).toHaveTextContent("氏名: 田中")
+  })
+
+  it("renders the normal consultation summary form and posts submit-inquiry", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage: { ...userMessage, content: "相談を送ります" },
+          assistantMessage: {
+            ...assistantMessage,
+            content: "相談内容を整理しました。",
+          },
+          tier: "tier-2-ollama-deepseek",
+          ui: {
+            kind: "consultation-summary-form",
+            summary: {
+              subject: "チャットボット相談",
+              customerEmail: "client@example.com",
+              jobContext: { finalMedium: "live", workSite: "remote-grading" },
+              summaryText: "live-60m / live / remote-grading / 日程未定",
+              openQuestions: ["作業・立ち会い日程未確認"],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ ok: true }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderWidgetShell()
+    submitMessage("相談を送ります")
+
+    expect(await screen.findByLabelText("相談サマリ")).toHaveTextContent("live-60m")
+    expect(screen.getByLabelText("メールアドレス")).toHaveValue("client@example.com")
+    fireEvent.click(within(screen.getByLabelText("問い合わせフォーム")).getByRole("button", { name: "送信" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/chatbot/submit-inquiry")
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      email: "client@example.com",
+      conversationId: "conv_1",
+      freeText: expect.stringContaining("live-60m"),
+    })
   })
 
   it("shows a short system message on network error", async () => {

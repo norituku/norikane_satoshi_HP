@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   sendOperatorConsultationNotification: vi.fn(),
+  hasSentOperatorNotification: vi.fn(),
   appendMessage: vi.fn(),
   loadConversationById: vi.fn(),
 }))
 
 vi.mock("@/lib/chatbot/server/operator-notification", () => ({
+  hasSentOperatorNotification: mocks.hasSentOperatorNotification,
   sendOperatorConsultationNotification: mocks.sendOperatorConsultationNotification,
 }))
 
@@ -42,6 +44,7 @@ describe("POST /api/chatbot/submit-inquiry", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.sendOperatorConsultationNotification.mockResolvedValue({ status: "sent", id: "email_1" })
+    mocks.hasSentOperatorNotification.mockReturnValue(false)
     mocks.appendMessage.mockResolvedValue(undefined)
     mocks.loadConversationById.mockResolvedValue({
       id: "conv_1",
@@ -147,6 +150,17 @@ describe("POST /api/chatbot/submit-inquiry", () => {
         }),
       }),
     )
+  })
+
+  it("skips duplicate operator email when the conversation already has the sent marker", async () => {
+    mocks.hasSentOperatorNotification.mockReturnValueOnce(true)
+
+    const response = await POST(request(validBody()))
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ ok: true, emailSkipped: true })
+    expect(mocks.appendMessage).toHaveBeenCalled()
+    expect(mocks.sendOperatorConsultationNotification).not.toHaveBeenCalled()
   })
 
   it("keeps the UX successful when the operator notification sender fails", async () => {

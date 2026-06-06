@@ -20,6 +20,10 @@ export type WidgetUi =
       reason: Extract<RoutingDecision, { kind: "to-direct-contact" }>["reason"]
       suggestedMessage: string
     }
+  | {
+      kind: "consultation-summary-form"
+      summary: Extract<RoutingDecision, { kind: "to-email" }>["summary"]
+    }
   | { kind: "tier4-inquiry-form" }
 
 export type ChatbotResponseTier = "tier-1-chrome-notion-ai" | "tier-2-ollama-deepseek" | "tier-4-form-fallback"

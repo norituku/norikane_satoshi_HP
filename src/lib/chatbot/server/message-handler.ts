@@ -33,6 +33,7 @@ import {
   isSatisfiedChoicePanel,
 } from "@/lib/chatbot/server/choice-panel-state"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
+import type { ConversationSummary } from "@/lib/chatbot/domain/workflow-estimate"
 import { hasRequiredConsultationNotificationSlots } from "@/lib/chatbot/domain"
 import {
   OPERATOR_NOTIFICATION_SENT_MARKER,
@@ -52,6 +53,10 @@ type ChatbotMessageUi =
       kind: "direct-contact-card"
       reason: Extract<RoutingDecision, { kind: "to-direct-contact" }>["reason"]
       suggestedMessage: string
+    }
+  | {
+      kind: "consultation-summary-form"
+      summary: ConversationSummary
     }
   | { kind: "tier4-inquiry-form" }
 
@@ -229,7 +234,7 @@ export async function handleChatbotMessage(
     },
     routingDecision,
     tier: llmResponse.tier,
-    ui: toMessageUi(routingDecision, llmResponse.tier),
+    ui: toMessageUi(routingDecision, llmResponse.tier, conversationState),
   }
 }
 
@@ -241,9 +246,13 @@ async function maybeSendOperatorNotification(input: {
   repository: ChatbotMessageRepository
   operatorNotificationSender: typeof sendOperatorConsultationNotification
 }): Promise<void> {
-  if (input.routingDecision.kind !== "to-booking-inline" && input.routingDecision.kind !== "to-direct-contact") return
+  if (
+    input.routingDecision.kind !== "to-booking-inline" &&
+    input.routingDecision.kind !== "to-direct-contact" &&
+    input.routingDecision.kind !== "to-email"
+  ) return
   if (hasSentOperatorNotification(input.conversation.messages)) return
-  if (!hasRequiredConsultationNotificationSlots({ conversationState: input.conversationState })) return
+  if (!hasRequiredOperatorNotificationSlots(input.routingDecision, input.conversationState)) return
 
   const result = await input.operatorNotificationSender({
     trigger: "chat-completed",
@@ -258,6 +267,23 @@ async function maybeSendOperatorNotification(input: {
     role: "system",
     content: `${OPERATOR_NOTIFICATION_SENT_MARKER} ${new Date().toISOString()}`,
   })
+}
+
+function hasRequiredOperatorNotificationSlots(
+  routingDecision: RoutingDecision,
+  conversationState: ConversationState,
+): boolean {
+  if (routingDecision.kind === "to-email") {
+    return Boolean(
+      conversationState.hasFinalMedium &&
+        conversationState.hasJobKind &&
+        conversationState.hasWorkSite &&
+        conversationState.hasContactEmail &&
+        conversationState.contactEmail,
+    )
+  }
+
+  return hasRequiredConsultationNotificationSlots({ conversationState })
 }
 
 function shouldIsolateExistingConversation(
@@ -290,6 +316,7 @@ function buildChatbotSystemPrompt(
     "不明なことを推測で断定せず、未確認事項として質問します。",
     "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
     "呼称は中立に保ち、他顧客の情報を参照または推測しません。",
+    "連絡先を求める場合は、電話番号ではなくメールアドレス（必須）を明示します。電話番号は任意情報として扱います。",
   ]
 
   if (userContext) {
@@ -421,7 +448,11 @@ function isSlotSatisfied(...values: Array<boolean | undefined>): boolean {
   return values.some(Boolean)
 }
 
-function toMessageUi(routingDecision: RoutingDecision | undefined, tier: ChatbotLlmResponse["tier"]): ChatbotMessageUi {
+function toMessageUi(
+  routingDecision: RoutingDecision | undefined,
+  tier: ChatbotLlmResponse["tier"],
+  conversationState: ConversationState,
+): ChatbotMessageUi {
   if (tier === "tier-4-form-fallback") return { kind: "tier4-inquiry-form" }
   if (!routingDecision) return { kind: "none" }
 
@@ -430,7 +461,12 @@ function toMessageUi(routingDecision: RoutingDecision | undefined, tier: Chatbot
   }
 
   if (routingDecision.kind === "to-booking-inline") {
-    if (routingDecision.suggestedSlots.length === 0) return { kind: "none" }
+    if (routingDecision.suggestedSlots.length === 0) {
+      return {
+        kind: "consultation-summary-form",
+        summary: buildConversationSummary(routingDecision.jobContext, conversationState),
+      }
+    }
     return {
       kind: "booking-card",
       suggestedSlots: routingDecision.suggestedSlots,
@@ -446,7 +482,45 @@ function toMessageUi(routingDecision: RoutingDecision | undefined, tier: Chatbot
     }
   }
 
+  if (routingDecision.kind === "to-email") {
+    return {
+      kind: "consultation-summary-form",
+      summary: routingDecision.summary,
+    }
+  }
+
   return { kind: "none" }
+}
+
+function buildConversationSummary(jobContext: JobContext, conversationState: ConversationState): ConversationSummary {
+  return {
+    subject: "チャットボット相談",
+    customerEmail: conversationState.contactEmail ?? "",
+    ...(conversationState.customerName ? { customerName: conversationState.customerName } : {}),
+    ...(conversationState.companyName ? { companyName: conversationState.companyName } : {}),
+    jobContext,
+    summaryText: buildUiSummaryText(jobContext, conversationState),
+    openQuestions: buildUiOpenQuestions(conversationState),
+  }
+}
+
+function buildUiSummaryText(jobContext: JobContext, conversationState: ConversationState): string {
+  const jobKind = jobContext.jobKind ?? "案件種別未確認"
+  const schedule = conversationState.hasDesiredSchedule ? "日程あり" : "日程未定"
+
+  return `${jobKind} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${schedule}`
+}
+
+function buildUiOpenQuestions(conversationState: ConversationState): string[] {
+  return [
+    conversationState.hasFinalMedium ? undefined : "最終媒体未確認",
+    conversationState.hasJobKind ? undefined : "案件種別・尺未確認",
+    conversationState.hasAdditionalWork ? undefined : "追加作業未確認",
+    conversationState.hasDocumentaryAttachments ? undefined : "付随映像未確認",
+    conversationState.hasWorkSite ? undefined : "作業場所未確認",
+    conversationState.hasReferenceUrls ? undefined : "参考URL未確認",
+    conversationState.hasDesiredSchedule ? undefined : "作業・立ち会い日程未確認",
+  ].filter((item): item is string => Boolean(item))
 }
 
 function conversationText(conversation: ChatbotConversation, userMessage: ChatbotMessage): string {

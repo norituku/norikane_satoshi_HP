@@ -56,4 +56,20 @@ describe("DirectContactCard", () => {
 
     expect(onSubmitEmail).not.toHaveBeenCalled()
   })
+
+  it("does not submit a phone number as the required contact", () => {
+    const onSubmitEmail = vi.fn()
+    render(
+      <DirectContactCard
+        reason="tight-deadline"
+        suggestedMessage="確認します。"
+        onSubmitEmail={onSubmitEmail}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("メールアドレス"), { target: { value: "090-1234-5678" } })
+    screen.getByRole("button", { name: "この内容で送信" }).click()
+
+    expect(onSubmitEmail).not.toHaveBeenCalled()
+  })
 })

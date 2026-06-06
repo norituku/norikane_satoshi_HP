@@ -193,7 +193,7 @@ function continueDecision(conversationState: ConversationState): RoutingDecision
 
   return {
     kind: "continue",
-    nextQuestion: "ご連絡先メールを教えてください",
+    nextQuestion: "ご連絡先のメールアドレス（必須）を教えてください",
   }
 }
 

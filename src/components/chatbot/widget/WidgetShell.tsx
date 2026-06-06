@@ -584,5 +584,22 @@ function ActiveWidgetUi({
     return <InquiryForm onSubmit={onInquirySubmit} />
   }
 
+  if (ui.kind === "consultation-summary-form") {
+    return (
+      <InquiryForm
+        mode="consultation-summary"
+        initialEmail={ui.summary.customerEmail}
+        summaryText={ui.summary.summaryText}
+        openQuestions={ui.summary.openQuestions}
+        onSubmit={(input) =>
+          onInquirySubmit({
+            ...input,
+            freeText: [ui.summary.summaryText, input.freeText].filter(Boolean).join("\n"),
+          })
+        }
+      />
+    )
+  }
+
   return null
 }

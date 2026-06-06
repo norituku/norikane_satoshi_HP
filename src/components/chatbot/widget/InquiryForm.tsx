@@ -13,15 +13,25 @@ type InquiryFormInput = {
 
 type InquiryFormProps = {
   onSubmit: (input: InquiryFormInput) => void
+  mode?: "tier4" | "consultation-summary"
+  initialEmail?: string
+  summaryText?: string
+  openQuestions?: string[]
 }
 
 /**
  * The "[AI応答補助フォーム]" subject prefix is intentionally handled by the PR 10 API route.
  */
-export function InquiryForm({ onSubmit }: InquiryFormProps) {
+export function InquiryForm({
+  onSubmit,
+  mode = "tier4",
+  initialEmail = "",
+  summaryText,
+  openQuestions = [],
+}: InquiryFormProps) {
   const [input, setInput] = useState<InquiryFormInput>({
     name: "",
-    email: "",
+    email: initialEmail,
     jobType: "",
     duration: "",
     desiredDeadline: "",
@@ -42,18 +52,31 @@ export function InquiryForm({ onSubmit }: InquiryFormProps) {
       desiredDeadline: input.desiredDeadline.trim(),
       freeText: input.freeText.trim(),
     }
-    if (!normalizedInput.email) return
+    if (!isValidEmail(normalizedInput.email)) return
     onSubmit(normalizedInput)
   }
 
   return (
     <form className="glass-card space-y-4 p-5" aria-label="問い合わせフォーム" onSubmit={handleSubmit}>
       <div>
-        <p className="text-sm font-semibold text-hp">問い合わせフォーム</p>
+        <p className="text-sm font-semibold text-hp">
+          {mode === "consultation-summary" ? "相談内容を送信" : "問い合わせフォーム"}
+        </p>
         <p className="mt-1 text-xs leading-relaxed text-hp-muted">
-          AI アシスタントが応答できない場合の連絡用フォームです。
+          {mode === "consultation-summary"
+            ? "整理した相談内容をご連絡先のメールアドレス（必須）と一緒に送信します。"
+            : "AI アシスタントが応答できない場合の連絡用フォームです。メールアドレスは必須です。"}
         </p>
       </div>
+      {mode === "consultation-summary" && summaryText ? (
+        <div className="glass-card-sm space-y-2 px-3 py-3 text-xs leading-relaxed text-hp-muted" aria-label="相談サマリ">
+          <p className="font-semibold text-hp">相談サマリ</p>
+          <p>{summaryText}</p>
+          {openQuestions.length > 0 ? (
+            <p>未確認: {openQuestions.join(" / ")}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block space-y-1 text-xs font-semibold text-hp">
           <span className="flex items-center gap-2">
@@ -69,7 +92,7 @@ export function InquiryForm({ onSubmit }: InquiryFormProps) {
         </label>
         <label className="block space-y-1 text-xs font-semibold text-hp">
           <span className="flex items-center gap-2">
-            メール
+            メールアドレス
             <span className="glass-badge px-2 py-0.5 text-[10px]">必須</span>
           </span>
           <input
@@ -78,7 +101,8 @@ export function InquiryForm({ onSubmit }: InquiryFormProps) {
             value={input.email}
             onChange={(event) => updateInput("email", event.target.value)}
             required
-            aria-label="メール"
+            placeholder="例: client@example.com"
+            aria-label="メールアドレス"
           />
         </label>
         <label className="block space-y-1 text-xs font-semibold text-hp">
@@ -138,4 +162,8 @@ export function InquiryForm({ onSubmit }: InquiryFormProps) {
       </button>
     </form>
   )
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)
 }

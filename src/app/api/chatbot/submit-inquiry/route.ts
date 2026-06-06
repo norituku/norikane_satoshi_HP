@@ -2,7 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 
 import { enforceBodyLimit } from "@/lib/api/server/body-limit"
-import { sendOperatorConsultationNotification } from "@/lib/chatbot/server/operator-notification"
+import {
+  hasSentOperatorNotification,
+  sendOperatorConsultationNotification,
+} from "@/lib/chatbot/server/operator-notification"
 import { appendMessage, loadConversationById } from "@/lib/chatbot/server/repository"
 
 export const runtime = "nodejs"
@@ -44,6 +47,10 @@ export async function POST(request: NextRequest) {
   const customerName = input.name || undefined
   const conversation = await loadInquiryConversation(input.conversationId)
   await appendInquiryMessage(input)
+
+  if (conversation && hasSentOperatorNotification(conversation.messages)) {
+    return NextResponse.json({ ok: true, emailSkipped: true })
+  }
 
   try {
     const result = await sendOperatorConsultationNotification({

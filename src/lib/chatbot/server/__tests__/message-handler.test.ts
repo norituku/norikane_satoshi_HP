@@ -356,7 +356,52 @@ describe("handleChatbotMessage user context", () => {
         customerEmail: "client@example.com",
       }),
     })
-    expect(result.ui).not.toMatchObject({ kind: "direct-contact-card" })
+    expect(result.ui).toMatchObject({
+      kind: "consultation-summary-form",
+      summary: expect.objectContaining({ customerEmail: "client@example.com" }),
+    })
+  })
+
+  it("returns a consultation summary form for zero-candidate booking handoff", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "劇場案件です。希望時期と client@example.com は共有済みです。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasAdditionalWork: true,
+          hasDocumentaryAttachments: true,
+          hasWorkSite: true,
+          hasReferenceUrls: true,
+          hasDesiredSchedule: true,
+          hasContactEmail: true,
+          contactEmail: "client@example.com",
+          customerName: "田中",
+          turnCount: 8,
+        },
+        jobContext: {
+          finalMedium: "cinema",
+          workSite: "remote-grading",
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-booking-inline",
+      suggestedSlots: [],
+    })
+    expect(result.ui).toMatchObject({
+      kind: "consultation-summary-form",
+      summary: expect.objectContaining({
+        customerEmail: "client@example.com",
+        summaryText: expect.stringContaining("cinema"),
+      }),
+    })
   })
 
   it("isolates a previous user's conversation when the authenticated user changes", async () => {
@@ -620,6 +665,75 @@ describe("handleChatbotMessage user context", () => {
           hasContactEmail: true,
           contactEmail: "client@example.com",
           turnCount: 6,
+        },
+      },
+      { ...alreadySent.options, operatorNotificationSender: alreadySent.operatorNotificationSender },
+    )
+
+    expect(alreadySent.operatorNotificationSender).not.toHaveBeenCalled()
+  })
+
+  it("sends the operator notification once for email handoff", async () => {
+    const harness = setup()
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "メールで進めたいです。client@example.com です。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasWorkSite: true,
+          hasContactEmail: true,
+          contactEmail: "client@example.com",
+          customerName: "田中",
+          hasDesiredSchedule: false,
+          turnCount: 8,
+        },
+        jobContext: {
+          finalMedium: "live",
+          jobKind: "live-60m",
+          workSite: "remote-grading",
+        },
+      },
+      { ...harness.options, operatorNotificationSender: harness.operatorNotificationSender },
+    )
+
+    expect(harness.operatorNotificationSender).toHaveBeenCalledTimes(1)
+    expect(harness.operatorNotificationSender).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: "chat-completed",
+        conversationState: expect.objectContaining({ contactEmail: "client@example.com" }),
+      }),
+    )
+
+    const alreadySent = setup({
+      existingConversation: conversation({
+        messages: [
+          message("system", "[chatbot-operator-notification:sent] 2026-06-05T00:00:00.000Z"),
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "メールで進めたいです。client@example.com です。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasWorkSite: true,
+          hasContactEmail: true,
+          contactEmail: "client@example.com",
+          hasDesiredSchedule: false,
+          turnCount: 8,
+        },
+        jobContext: {
+          finalMedium: "live",
+          jobKind: "live-60m",
+          workSite: "remote-grading",
         },
       },
       { ...alreadySent.options, operatorNotificationSender: alreadySent.operatorNotificationSender },

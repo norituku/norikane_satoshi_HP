@@ -37,7 +37,7 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedEmail = email.trim()
-    if (!trimmedEmail) return
+    if (!isValidEmail(trimmedEmail)) return
     onSubmitEmail(trimmedEmail, companyName.trim(), personName.trim())
   }
 
@@ -49,7 +49,7 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
       </div>
       <div className="glass-card-sm space-y-1 px-3 py-3 text-xs leading-relaxed text-hp-muted" aria-label="送信前の整理内容">
         <p className="font-semibold text-hp">送信前の整理内容</p>
-        <p>確認が必要な内容として、入力された相談内容と連絡先をのりかね本人へ送ります。</p>
+        <p>確認が必要な内容として、入力された相談内容とご連絡先のメールアドレスをのりかね本人へ送ります。</p>
         <p>送信ボタンを押すまでメールは送信されません。</p>
       </div>
       <form className="space-y-3" onSubmit={handleSubmit}>
@@ -64,6 +64,7 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
+            placeholder="例: client@example.com"
             aria-label="メールアドレス"
           />
         </label>
@@ -99,4 +100,8 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
       </form>
     </section>
   )
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)
 }
