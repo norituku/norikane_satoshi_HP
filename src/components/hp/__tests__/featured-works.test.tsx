@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   FEATURED_PLAYLIST_WORKS,
@@ -564,6 +564,109 @@ describe("FeaturedWorks", () => {
 
     expect(player?.seekTo).toHaveBeenCalledTimes(2)
     expect(player?.seekTo).toHaveBeenLastCalledWith(30, true)
+  })
+
+  it("keeps startup thumbnail covers visible for 1.8 seconds after playback starts", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    })
+    vi.useFakeTimers()
+    vi.spyOn(Math, "random").mockReturnValue(0)
+
+    type MockPlayerOptions = {
+      videoId?: string
+      playerVars?: Record<string, string | number>
+      events?: {
+        onReady?: (event: { target: MockPlayer }) => void
+        onStateChange?: (event: { data: number; target: MockPlayer }) => void
+        onError?: (event: { data: number; target: MockPlayer }) => void
+      }
+    }
+
+    const players: MockPlayer[] = []
+
+    class MockPlayer {
+      readonly options: MockPlayerOptions
+      readonly mute = vi.fn()
+      readonly stopVideo = vi.fn()
+      readonly destroy = vi.fn()
+      readonly getDuration = vi.fn(() => 90)
+      readonly seekTo = vi.fn()
+      readonly loadVideoById = vi.fn()
+      readonly playVideo = vi.fn(() => {
+        this.options.events?.onStateChange?.({ data: 1, target: this })
+      })
+
+      constructor(_element: HTMLElement, options: MockPlayerOptions) {
+        this.options = options
+        players.push(this)
+        queueMicrotask(() => {
+          options.events?.onReady?.({ target: this })
+        })
+      }
+    }
+
+    window.YT = {
+      Player: MockPlayer,
+      PlayerState: {
+        ENDED: 0,
+        PLAYING: 1,
+      },
+    }
+
+    render(<FeaturedWorks />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(players.length).toBeGreaterThanOrEqual(
+      embeddedWorkCount + playlistWorkCount,
+    )
+
+    const previewLabels = [
+      ...FEATURED_WORKS.filter((work) => work.youtubeId).map(
+        (work) => `${work.title} 作品カード`,
+      ),
+      ...FEATURED_PLAYLIST_WORKS.map(
+        (work) => `${work.title}のランダムループ再生カード`,
+      ),
+    ]
+
+    const expectCovers = (state: "preparing" | "playing") => {
+      for (const label of previewLabels) {
+        const card = screen.getByLabelText(label)
+        expect(
+          card.querySelector(`[data-featured-work-preview-media="${state}"]`),
+        ).toBeInTheDocument()
+        expect(
+          card.querySelector(
+            `[data-featured-work-preview-thumbnail="${
+              state === "preparing" ? "visible" : "hidden"
+            }"]`,
+          ),
+        ).toBeInTheDocument()
+      }
+    }
+
+    expectCovers("preparing")
+
+    await act(async () => {
+      vi.advanceTimersByTime(1799)
+    })
+    expectCovers("preparing")
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+    expectCovers("playing")
   })
 
   it("ignores video trigger clicks after pointer dragging", () => {
