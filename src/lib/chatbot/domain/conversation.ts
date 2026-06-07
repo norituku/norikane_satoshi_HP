@@ -8,6 +8,7 @@ export type ChatbotMessage = {
   id: string
   role: ChatbotMessageRole
   content: string
+  llmModel?: string | null
   createdAt: string
 }
 

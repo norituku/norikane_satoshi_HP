@@ -16,6 +16,7 @@ const baseConfig = {
   modelName,
   requestTimeoutMs: 20,
   healthCheckTimeoutMs: 20,
+  keepAlive: "30m",
 } as const
 
 function conversationState(): ConversationState {
@@ -80,7 +81,8 @@ async function expectLlmError(
 
 describe("Tier2OllamaDeepSeekClient", () => {
   it("keeps the default request bounded for local Ollama generation", () => {
-    expect(tier2OllamaDeepSeekDefaults.requestTimeoutMs).toBe(45000)
+    expect(tier2OllamaDeepSeekDefaults.requestTimeoutMs).toBe(90000)
+    expect(tier2OllamaDeepSeekDefaults.keepAlive).toBe("30m")
     expect(tier2OllamaDeepSeekDefaults.maxOutputTokens).toBe(120)
   })
 
@@ -170,6 +172,7 @@ describe("Tier2OllamaDeepSeekClient", () => {
             { role: "user", content: "立ち会い候補を相談したいです" },
           ],
           stream: false,
+          keep_alive: "30m",
           options: {
             temperature: 0.2,
             num_predict: 120,

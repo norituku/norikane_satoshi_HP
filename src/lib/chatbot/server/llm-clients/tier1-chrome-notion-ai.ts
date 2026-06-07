@@ -495,7 +495,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
     return this.toLlmError({
       message: result.message,
       code: result.code,
-      isRetryable: result.code !== "auth" && result.code !== "invalid-output",
+      isRetryable: result.code !== "auth",
     })
   }
 

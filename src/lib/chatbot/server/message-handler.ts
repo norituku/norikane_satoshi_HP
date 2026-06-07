@@ -225,6 +225,7 @@ export async function handleChatbotMessage(
     conversationId: conversation.id,
     role: "assistant",
     content: normalizedLlmResponse.content,
+    llmModel: llmResponse.tier,
   })
 
   if (routingDecision) {

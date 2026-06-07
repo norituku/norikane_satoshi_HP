@@ -85,8 +85,12 @@ function setup(overrides: {
     ),
     appendMessage: vi
       .fn()
-      .mockImplementation((input: { id?: string; role: ChatbotMessage["role"]; content: string }) =>
-        Promise.resolve({ ...message(input.role, input.content), ...(input.id ? { id: input.id } : {}) }),
+      .mockImplementation((input: { id?: string; role: ChatbotMessage["role"]; content: string; llmModel?: string | null }) =>
+        Promise.resolve({
+          ...message(input.role, input.content),
+          ...(input.id ? { id: input.id } : {}),
+          ...(input.llmModel ? { llmModel: input.llmModel } : {}),
+        }),
       ),
     truncateConversationFromMessage: vi.fn().mockResolvedValue({ deletedCount: 0 }),
     updateConversationRouting: vi.fn(),
@@ -314,6 +318,7 @@ describe("handleChatbotMessage user context", () => {
       conversationId: "conv_1",
       role: "assistant",
       content: "最終媒体と尺を教えてください。",
+      llmModel: "tier-2-ollama-deepseek",
     })
     expect(result.assistantMessage.content).toBe("最終媒体と尺を教えてください。")
   })
@@ -786,6 +791,7 @@ describe("handleChatbotMessage user context", () => {
       conversationId: "conv_1",
       role: "assistant",
       content: "カラグレ以外の追加作業はありますか？",
+      llmModel: "tier-2-ollama-deepseek",
     })
   })
 

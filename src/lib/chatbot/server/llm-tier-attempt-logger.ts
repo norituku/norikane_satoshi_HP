@@ -6,6 +6,7 @@ export type ChatbotTierAttemptLogEvent = {
   phase: TierAttemptEvent["phase"]
   outcome: TierAttemptEvent["outcome"]
   latencyMs: number
+  attempt?: number
   error?: {
     name: string
     code?: string
@@ -20,6 +21,7 @@ export function formatChatbotTierAttemptLogEvent(event: TierAttemptEvent): Chatb
     phase: event.phase,
     outcome: event.outcome,
     latencyMs: event.latencyMs,
+    ...(event.attempt ? { attempt: event.attempt } : {}),
     error: event.error
       ? {
           name: event.error.name,

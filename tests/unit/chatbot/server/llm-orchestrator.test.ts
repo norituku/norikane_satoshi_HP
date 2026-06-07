@@ -76,13 +76,19 @@ function fakeClient(
     healthy?: boolean
     healthPromise?: Promise<boolean>
     generateResult?: ChatbotLlmResponse
+    generateResults?: ChatbotLlmResponse[]
     generateError?: Error
+    generateErrors?: Error[]
   } = {},
 ): ChatbotLlmClient {
   const client = {
     tier,
     isHealthy: vi.fn(async () => overrides.healthPromise ?? overrides.healthy ?? true),
     generate: vi.fn(async () => {
+      const generateError = overrides.generateErrors?.shift()
+      if (generateError) throw generateError
+      const generateResult = overrides.generateResults?.shift()
+      if (generateResult) return generateResult
       if (overrides.generateError) throw overrides.generateError
       return overrides.generateResult ?? llmResponse(tier)
     }),
@@ -95,7 +101,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
   it("returns tier 1 response when tier 1 is healthy and generate succeeds", async () => {
     const tier1 = fakeClient("tier-1-chrome-notion-ai")
     const tier2 = fakeClient("tier-2-ollama-deepseek")
-    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2] })
+    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2], retryBackoffMs: 0 })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
       llmResponse("tier-1-chrome-notion-ai"),
@@ -104,16 +110,16 @@ describe("createChatbotLlmTierOrchestrator", () => {
     expect(tier2.generate).not.toHaveBeenCalled()
   })
 
-  it("tries tier 2 when tier 1 is unhealthy", async () => {
+  it("does not skip tier 1 generate when tier 1 health-check is unhealthy", async () => {
     const tier1 = fakeClient("tier-1-chrome-notion-ai", { healthy: false })
     const tier2 = fakeClient("tier-2-ollama-deepseek")
     const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2] })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
-      llmResponse("tier-2-ollama-deepseek"),
+      llmResponse("tier-1-chrome-notion-ai"),
     )
-    expect(tier1.generate).not.toHaveBeenCalled()
-    expect(tier2.generate).toHaveBeenCalledOnce()
+    expect(tier1.generate).toHaveBeenCalledOnce()
+    expect(tier2.generate).not.toHaveBeenCalled()
   })
 
   it("tries tier 2 when tier 1 generate throws a retryable ChatbotLlmError", async () => {
@@ -126,7 +132,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
       llmResponse("tier-2-ollama-deepseek"),
     )
-    expect(tier1.generate).toHaveBeenCalledOnce()
+    expect(tier1.generate).toHaveBeenCalledTimes(2)
     expect(tier2.generate).toHaveBeenCalledOnce()
   })
 
@@ -135,7 +141,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
       generateError: llmError("tier-1-chrome-notion-ai", { isRetryable: false }),
     })
     const tier2 = fakeClient("tier-2-ollama-deepseek")
-    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2] })
+    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2], retryBackoffMs: 0 })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
       llmResponse("tier-2-ollama-deepseek"),
@@ -154,7 +160,10 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const tier4 = fakeClient("tier-4-form-fallback", {
       generateResult: llmResponse("tier-4-form-fallback", "fallback form"),
     })
-    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2, tier4] })
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier1, tier2, tier4],
+      retryBackoffMs: 0,
+    })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
       llmResponse("tier-4-form-fallback", "fallback form"),
@@ -169,7 +178,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const tier2 = fakeClient("tier-2-ollama-deepseek", {
       generateError: llmError("tier-2-ollama-deepseek"),
     })
-    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2] })
+    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier1, tier2], retryBackoffMs: 0 })
 
     await expect(orchestrator.generate(llmRequest())).rejects.toMatchObject({
       code: "unknown",
@@ -200,6 +209,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const orchestrator = createChatbotLlmTierOrchestrator({
       clients: [tier1],
       onTierAttempt: (event) => events.push(event),
+      retryBackoffMs: 0,
     })
 
     await orchestrator.generate(llmRequest())
@@ -216,6 +226,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
         phase: "generate",
         outcome: "success",
         latencyMs: expect.any(Number),
+        attempt: 1,
       },
     ])
   })
@@ -234,6 +245,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const orchestrator = createChatbotLlmTierOrchestrator({
       clients: [tier1, tier2],
       onTierAttempt: (event) => events.push(event),
+      retryBackoffMs: 0,
     })
 
     await orchestrator.generate(llmRequest())
@@ -251,13 +263,14 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const tier2 = fakeClient("tier-2-ollama-deepseek")
     const orchestrator = createChatbotLlmTierOrchestrator({
       clients: [tier1, tier2],
+      retryBackoffMs: 0,
       onTierAttempt: () => {
         throw new Error("observer failed")
       },
     })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
-      llmResponse("tier-2-ollama-deepseek"),
+      llmResponse("tier-1-chrome-notion-ai"),
     )
   })
 
@@ -290,7 +303,7 @@ describe("createChatbotLlmTierOrchestrator", () => {
     await expect(orchestrator.isHealthy()).resolves.toBe(false)
   })
 
-  it("skips a tier when generate health-check times out", async () => {
+  it("does not skip tier generate when generate health-check times out", async () => {
     const tier1 = fakeClient("tier-1-chrome-notion-ai", {
       healthPromise: new Promise<boolean>(() => {}),
     })
@@ -298,13 +311,65 @@ describe("createChatbotLlmTierOrchestrator", () => {
     const orchestrator = createChatbotLlmTierOrchestrator({
       clients: [tier1, tier4],
       healthCheckTimeoutMs: 1,
+      retryBackoffMs: 0,
     })
 
     await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
-      llmResponse("tier-4-form-fallback"),
+      llmResponse("tier-1-chrome-notion-ai"),
     )
-    expect(tier1.generate).not.toHaveBeenCalled()
-    expect(tier4.generate).toHaveBeenCalledOnce()
+    expect(tier1.generate).toHaveBeenCalledOnce()
+    expect(tier4.generate).not.toHaveBeenCalled()
+  })
+
+  it("recovers tier 1 attach loss with a retry before falling back", async () => {
+    const tier1 = fakeClient("tier-1-chrome-notion-ai", {
+      generateErrors: [
+        llmError("tier-1-chrome-notion-ai", {
+          code: "connection",
+          message: "No Notion AI page target was found on the configured Chrome CDP port.",
+          isRetryable: true,
+        }),
+      ],
+      generateResults: [llmResponse("tier-1-chrome-notion-ai", "reattached")],
+    })
+    const tier2 = fakeClient("tier-2-ollama-deepseek")
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier1, tier2],
+      retryBackoffMs: 0,
+    })
+
+    await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
+      llmResponse("tier-1-chrome-notion-ai", "reattached"),
+    )
+    expect(tier1.generate).toHaveBeenCalledTimes(2)
+    expect(tier2.generate).not.toHaveBeenCalled()
+  })
+
+  it("recovers tier 2 cold-load timeout with a retry before using tier 4", async () => {
+    const tier1 = fakeClient("tier-1-chrome-notion-ai", {
+      generateError: llmError("tier-1-chrome-notion-ai", { code: "auth", isRetryable: false }),
+    })
+    const tier2 = fakeClient("tier-2-ollama-deepseek", {
+      generateErrors: [
+        llmError("tier-2-ollama-deepseek", {
+          code: "timeout",
+          message: "Ollama DeepSeek tier request timed out.",
+          isRetryable: true,
+        }),
+      ],
+      generateResults: [llmResponse("tier-2-ollama-deepseek", "warm response")],
+    })
+    const tier4 = fakeClient("tier-4-form-fallback")
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier1, tier2, tier4],
+      retryBackoffMs: 0,
+    })
+
+    await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
+      llmResponse("tier-2-ollama-deepseek", "warm response"),
+    )
+    expect(tier2.generate).toHaveBeenCalledTimes(2)
+    expect(tier4.generate).not.toHaveBeenCalled()
   })
 
   it("does not call fetch or any network transport directly", async () => {

@@ -105,6 +105,7 @@ export async function appendMessage(input: {
   conversationId: string
   role: ChatbotMessageRole
   content: string
+  llmModel?: string | null
 }): Promise<ChatbotMessage> {
   const row = await prisma.$transaction(async (tx) => {
     const message = await tx.chatbotMessage.create({
@@ -113,6 +114,7 @@ export async function appendMessage(input: {
         conversationId: input.conversationId,
         role: input.role,
         content: input.content,
+        llmModel: input.llmModel ?? null,
       },
     })
 
@@ -313,6 +315,7 @@ function toDomainMessage(row: ChatbotMessageRow): ChatbotMessage {
     id: row.id,
     role: toMessageRole(row.role),
     content: row.content,
+    ...(row.llmModel ? { llmModel: row.llmModel } : {}),
     createdAt: row.createdAt.toISOString(),
   }
 }

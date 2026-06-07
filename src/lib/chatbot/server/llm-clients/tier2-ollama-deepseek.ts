@@ -6,6 +6,7 @@ type Tier2OllamaDeepSeekClientConfig = {
   modelName: string
   requestTimeoutMs: number
   healthCheckTimeoutMs: number
+  keepAlive: string
 }
 
 type Tier2OllamaDeepSeekClientOptions = Tier2OllamaDeepSeekClientConfig & {
@@ -45,8 +46,9 @@ class OllamaHttpStatusError extends Error {
 export const tier2OllamaDeepSeekDefaults = {
   baseUrl: "http://localhost:11434",
   modelName: "hf.co/mmnga/cyberagent-DeepSeek-R1-Distill-Qwen-14B-Japanese-gguf:Q4_K_M",
-  requestTimeoutMs: 45000,
+  requestTimeoutMs: 90000,
   healthCheckTimeoutMs: 3000,
+  keepAlive: "30m",
   maxOutputTokens: 120,
 } as const
 
@@ -75,6 +77,7 @@ export class Tier2OllamaDeepSeekClient implements ChatbotLlmClient {
       modelName: options.modelName,
       requestTimeoutMs: options.requestTimeoutMs,
       healthCheckTimeoutMs: options.healthCheckTimeoutMs,
+      keepAlive: options.keepAlive,
     }
     this.httpClient = options.httpClient ?? globalFetch
   }
@@ -92,6 +95,7 @@ export class Tier2OllamaDeepSeekClient implements ChatbotLlmClient {
             model: this.config.modelName,
             messages: buildMessages(request),
             stream: streamDisabled,
+            keep_alive: this.config.keepAlive,
             options: buildOptions(request),
           }),
         },
@@ -218,6 +222,7 @@ export function createTier2OllamaDeepSeekClient(
     modelName: process.env.CHATBOT_TIER2_OLLAMA_MODEL ?? tier2OllamaDeepSeekDefaults.modelName,
     requestTimeoutMs: tier2OllamaDeepSeekDefaults.requestTimeoutMs,
     healthCheckTimeoutMs: tier2OllamaDeepSeekDefaults.healthCheckTimeoutMs,
+    keepAlive: tier2OllamaDeepSeekDefaults.keepAlive,
     ...overrides,
   })
 }

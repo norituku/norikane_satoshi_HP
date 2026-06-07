@@ -242,6 +242,7 @@ describe("POST /api/chatbot/message", () => {
       conversationId: "conv_1",
       role: "assistant",
       content: "最終媒体を教えてください",
+      llmModel: "tier-2-ollama-deepseek",
     })
   })
 
