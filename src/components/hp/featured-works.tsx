@@ -93,6 +93,7 @@ const STARTUP_COVER_HOLD_MS = 5000
 const MARQUEE_LOOP_SECONDS = 72
 const MARQUEE_INPUT_IDLE_MS = 1300
 const MARQUEE_PROGRESS_MIN_THUMB_WIDTH = 44
+const CARD_NEAR_VIEWPORT_ROOT_MARGIN_PX = 320
 const VIDEO_OPEN_DRAG_THRESHOLD_PX = 8
 const INITIAL_THUMBNAIL_SELECTION: YouTubeThumbnailVariantSelection = {
   variant: 1,
@@ -235,6 +236,83 @@ function useHasEnteredViewport<T extends HTMLElement>() {
   }, [])
 
   return [ref, hasEnteredViewport] as const
+}
+
+function getPerformanceNow() {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.performance?.now === "function"
+  ) {
+    return window.performance.now()
+  }
+
+  return typeof performance !== "undefined" &&
+    typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
+}
+
+function getFeaturedWorksPageLoadTimeMs() {
+  return typeof window !== "undefined" && window.performance ? 0 : getPerformanceNow()
+}
+
+export function getInitialStartupCoverHoldMs(
+  pageLoadTimeMs: number,
+  nowMs = getPerformanceNow(),
+) {
+  return Math.max(0, STARTUP_COVER_HOLD_MS - Math.max(0, nowMs - pageLoadTimeMs))
+}
+
+function useNearMarqueeViewport<T extends HTMLElement>(enabled: boolean) {
+  const ref = useRef<T | null>(null)
+  const [isNearViewport, setIsNearViewport] = useState(
+    () => typeof window !== "undefined" && !("IntersectionObserver" in window),
+  )
+
+  useEffect(() => {
+    const element = ref.current
+    const setNearViewportAsync = (value: boolean) => {
+      let cancelled = false
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setIsNearViewport(value)
+        }
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (!enabled || !element) {
+      return setNearViewportAsync(false)
+    }
+
+    if (!("IntersectionObserver" in window)) {
+      return setNearViewportAsync(true)
+    }
+
+    const root = element.closest<HTMLElement>(
+      '[data-featured-work-marquee-viewport="true"]',
+    )
+    if (!root) {
+      return setNearViewportAsync(true)
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsNearViewport(entry.isIntersecting)
+      },
+      {
+        root,
+        rootMargin: `0px ${CARD_NEAR_VIEWPORT_ROOT_MARGIN_PX}px`,
+        threshold: 0.01,
+      },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [enabled])
+
+  return [ref, isNearViewport] as const
 }
 
 function getNormalizedMarqueeScrollLeft(
@@ -1015,6 +1093,7 @@ function VideoSurface({
   title,
   isActive,
   prefersReducedMotion,
+  pageLoadTimeMs,
   clone,
   onOpenVideo,
 }: {
@@ -1028,6 +1107,7 @@ function VideoSurface({
   title: string
   isActive: boolean
   prefersReducedMotion: boolean
+  pageLoadTimeMs: number
   clone: boolean
   onOpenVideo: (
     video: ActiveVideoModal,
@@ -1048,6 +1128,7 @@ function VideoSurface({
   const clipRef = useRef<ClipWindow | null>(null)
   const timerRef = useRef<number | null>(null)
   const coverTimerRef = useRef<number | null>(null)
+  const hasHiddenInitialCoverRef = useRef(false)
   const [activeClip, setActiveClip] = useState<ClipWindow | null>(null)
   const [isCoverVisible, setIsCoverVisible] = useState(true)
   const shouldPlay = isActive && !prefersReducedMotion
@@ -1087,6 +1168,18 @@ function VideoSurface({
       }
     }
 
+    const scheduleCoverHide = () => {
+      clearCoverTimer()
+      const coverHoldMs = hasHiddenInitialCoverRef.current
+        ? STARTUP_COVER_HOLD_MS
+        : getInitialStartupCoverHoldMs(pageLoadTimeMs)
+      coverTimerRef.current = window.setTimeout(() => {
+        setIsCoverVisible(false)
+        hasHiddenInitialCoverRef.current = true
+        coverTimerRef.current = null
+      }, coverHoldMs)
+    }
+
     if (!shouldPlay) {
       clearNextTimer()
       clearCoverTimer()
@@ -1096,6 +1189,8 @@ function VideoSurface({
         setIsCoverVisible(true)
       }, 0)
       playerRef.current?.stopVideo()
+      playerRef.current?.destroy()
+      playerRef.current = null
       return
     }
 
@@ -1142,11 +1237,7 @@ function VideoSurface({
         playNextClip(event.target)
       }
 
-      clearCoverTimer()
-      coverTimerRef.current = window.setTimeout(() => {
-        setIsCoverVisible(false)
-        coverTimerRef.current = null
-      }, STARTUP_COVER_HOLD_MS)
+      scheduleCoverHide()
     }
 
     loadYouTubeIframeApi().then(() => {
@@ -1183,7 +1274,7 @@ function VideoSurface({
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [shouldPlay, videoId])
+  }, [pageLoadTimeMs, shouldPlay, videoId])
 
   useEffect(() => {
     return () => {
@@ -1245,6 +1336,7 @@ function FeaturedWorkCard({
   work,
   shouldStartVideo,
   prefersReducedMotion,
+  pageLoadTimeMs,
   clone = false,
   segmentStart,
   onOpenVideo,
@@ -1252,6 +1344,7 @@ function FeaturedWorkCard({
   work: FeaturedWork
   shouldStartVideo: boolean
   prefersReducedMotion: boolean
+  pageLoadTimeMs: number
   clone?: boolean
   segmentStart?: "primary" | "clone-before" | "clone-after"
   onOpenVideo: (
@@ -1259,12 +1352,19 @@ function FeaturedWorkCard({
     triggerElement: HTMLButtonElement,
   ) => void
 }) {
+  const [cardRef, isNearViewport] = useNearMarqueeViewport<HTMLDivElement>(
+    shouldStartVideo && !prefersReducedMotion,
+  )
+  const shouldPlayVideo = shouldStartVideo && isNearViewport
+
   return (
     <div
+      ref={cardRef}
       className="featured-work-transparent-card group flex shrink-0 flex-col overflow-hidden rounded-none p-4 transition-transform hover:-translate-y-0.5 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
       aria-label={clone ? undefined : `${work.title} 作品カード`}
       data-featured-work-card={work.title}
+      data-featured-work-video-near-viewport={isNearViewport ? "true" : "false"}
       data-featured-work-marquee-segment-start={segmentStart}
     >
       <div className="flex min-h-0 flex-1 flex-col">
@@ -1279,8 +1379,9 @@ function FeaturedWorkCard({
               clipExcludeStart={work.clipExcludeStart}
               clipExcludeEnd={work.clipExcludeEnd}
               title={work.title}
-              isActive={shouldStartVideo}
+              isActive={shouldPlayVideo}
               prefersReducedMotion={prefersReducedMotion}
+              pageLoadTimeMs={pageLoadTimeMs}
               clone={clone}
               onOpenVideo={onOpenVideo}
             />
@@ -1320,6 +1421,7 @@ function PlaylistWorkCard({
   work,
   shouldStartVideo,
   prefersReducedMotion,
+  pageLoadTimeMs,
   clone = false,
   segmentStart,
   onOpenVideo,
@@ -1327,6 +1429,7 @@ function PlaylistWorkCard({
   work: FeaturedPlaylistWork
   shouldStartVideo: boolean
   prefersReducedMotion: boolean
+  pageLoadTimeMs: number
   clone?: boolean
   segmentStart?: "primary" | "clone-before" | "clone-after"
   onOpenVideo: (
@@ -1334,12 +1437,16 @@ function PlaylistWorkCard({
     triggerElement: HTMLButtonElement,
   ) => void
 }) {
+  const [cardRef, isNearViewport] = useNearMarqueeViewport<HTMLDivElement>(
+    shouldStartVideo && !prefersReducedMotion,
+  )
   const playerHostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<YouTubePlayer | null>(null)
   const queueRef = useRef<FeaturedWorkPreviewVideo[]>([])
   const clipRef = useRef<ClipWindow | null>(null)
   const timerRef = useRef<number | null>(null)
   const coverTimerRef = useRef<number | null>(null)
+  const hasHiddenInitialCoverRef = useRef(false)
   const previewVideoRef = useRef<FeaturedWorkPreviewVideo>(work.videos[0])
   const [previewVideo, setPreviewVideo] = useState<FeaturedWorkPreviewVideo>(
     work.videos[0],
@@ -1347,6 +1454,7 @@ function PlaylistWorkCard({
   const [activeClip, setActiveClip] = useState<ClipWindow | null>(null)
   const [isCoverVisible, setIsCoverVisible] = useState(true)
   const playlistVideoIds = work.videos.map((video) => video.videoId).join(",")
+  const shouldPlayVideo = shouldStartVideo && isNearViewport
 
   useEffect(() => {
     previewVideoRef.current = previewVideo
@@ -1367,11 +1475,28 @@ function PlaylistWorkCard({
       }
     }
 
-    if (!shouldStartVideo || prefersReducedMotion) {
+    const scheduleCoverHide = () => {
+      clearCoverTimer()
+      const coverHoldMs = hasHiddenInitialCoverRef.current
+        ? STARTUP_COVER_HOLD_MS
+        : getInitialStartupCoverHoldMs(pageLoadTimeMs)
+      coverTimerRef.current = window.setTimeout(() => {
+        setIsCoverVisible(false)
+        hasHiddenInitialCoverRef.current = true
+        coverTimerRef.current = null
+      }, coverHoldMs)
+    }
+
+    if (!shouldPlayVideo || prefersReducedMotion) {
       clearNextTimer()
       clearCoverTimer()
-      window.setTimeout(() => setIsCoverVisible(true), 0)
+      window.setTimeout(() => {
+        setActiveClip(null)
+        setIsCoverVisible(true)
+      }, 0)
       playerRef.current?.stopVideo()
+      playerRef.current?.destroy()
+      playerRef.current = null
       return
     }
 
@@ -1438,11 +1563,7 @@ function PlaylistWorkCard({
         player.seekTo(clip.startSeconds, true)
       }
 
-      clearCoverTimer()
-      coverTimerRef.current = window.setTimeout(() => {
-        setIsCoverVisible(false)
-        coverTimerRef.current = null
-      }, STARTUP_COVER_HOLD_MS)
+      scheduleCoverHide()
       clearNextTimer()
       timerRef.current = window.setTimeout(
         playNext,
@@ -1485,7 +1606,7 @@ function PlaylistWorkCard({
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [shouldStartVideo, prefersReducedMotion, work.videos])
+  }, [pageLoadTimeMs, prefersReducedMotion, shouldPlayVideo, work.videos])
 
   useEffect(() => {
     return () => {
@@ -1501,6 +1622,7 @@ function PlaylistWorkCard({
 
   return (
     <div
+      ref={cardRef}
       className="featured-work-transparent-card flex shrink-0 flex-col overflow-hidden rounded-none p-4 md:p-5"
       style={{ width: "min(72vw, 260px)" }}
       aria-label={clone ? undefined : `${work.title}のランダムループ再生カード`}
@@ -1508,11 +1630,12 @@ function PlaylistWorkCard({
       data-featured-work-playlist-card={work.title}
       data-featured-work-playlist-video-count={work.videos.length}
       data-featured-work-playlist-video-ids={playlistVideoIds}
+      data-featured-work-video-near-viewport={isNearViewport ? "true" : "false"}
       data-featured-work-marquee-segment-start={segmentStart}
     >
       <div className="flex min-h-0 flex-1 flex-col">
         <PreviewFrame>
-          {shouldStartVideo && !prefersReducedMotion ? (
+          {shouldPlayVideo && !prefersReducedMotion ? (
             <div
               className={`pointer-events-none absolute inset-0 h-full w-full rounded-none transition-opacity duration-300 ${
                 isCoverVisible ? "opacity-0" : "opacity-100"
@@ -1562,6 +1685,7 @@ export function FeaturedWorks() {
   const prefersReducedMotion = usePrefersReducedMotion()
   const marqueeViewportId = useId()
   const [marqueeRef, hasEnteredViewport] = useHasEnteredViewport<HTMLDivElement>()
+  const [featuredWorksLoadTimeMs] = useState(getFeaturedWorksPageLoadTimeMs)
   const [activeVideo, setActiveVideo] = useState<ActiveVideoModal | null>(null)
   const progressTrackRef = useRef<HTMLDivElement | null>(null)
   const progressThumbRef = useRef<HTMLDivElement | null>(null)
@@ -1597,6 +1721,7 @@ export function FeaturedWorks() {
           work={work}
           shouldStartVideo={hasEnteredViewport}
           prefersReducedMotion={prefersReducedMotion}
+          pageLoadTimeMs={featuredWorksLoadTimeMs}
           clone={clone}
           segmentStart={index === 0 ? segmentStart : undefined}
           onOpenVideo={openVideo}
@@ -1608,6 +1733,7 @@ export function FeaturedWorks() {
           work={work}
           shouldStartVideo={hasEnteredViewport}
           prefersReducedMotion={prefersReducedMotion}
+          pageLoadTimeMs={featuredWorksLoadTimeMs}
           clone={clone}
           onOpenVideo={openVideo}
         />

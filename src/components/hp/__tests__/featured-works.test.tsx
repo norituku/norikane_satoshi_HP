@@ -10,6 +10,7 @@ import {
 } from "@/components/hp/featured-works-data"
 import {
   FeaturedWorks,
+  getInitialStartupCoverHoldMs,
   getFeaturedWorkMarqueeProgressBarGeometry,
   getPreviewClipWindow,
   getYouTubePlayerVars,
@@ -42,6 +43,7 @@ describe("FeaturedWorks", () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.useRealTimers()
     delete window.YT
   })
@@ -76,6 +78,13 @@ describe("FeaturedWorks", () => {
         ).not.toBeInTheDocument()
       }
     }
+  })
+
+  it("calculates initial cover hold from the Featured Works load timestamp", () => {
+    expect(getInitialStartupCoverHoldMs(1000, 1000)).toBe(5000)
+    expect(getInitialStartupCoverHoldMs(1000, 4500)).toBe(1500)
+    expect(getInitialStartupCoverHoldMs(1000, 6000)).toBe(0)
+    expect(getInitialStartupCoverHoldMs(1000, 7000)).toBe(0)
   })
 
   it("uses only the Featured Works label and renders a scroll-driven marquee shell", () => {
@@ -717,6 +726,228 @@ describe("FeaturedWorks", () => {
       vi.advanceTimersByTime(1)
     })
     expectCovers("playing")
+  })
+
+  it("counts the first startup cover hold from Featured Works mount time", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    })
+    vi.useFakeTimers()
+    vi.spyOn(Math, "random").mockReturnValue(0)
+    let performanceNow = 0
+    vi.spyOn(window.performance, "now").mockImplementation(() => performanceNow)
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout")
+
+    type MockPlayerOptions = {
+      videoId?: string
+      playerVars?: Record<string, string | number>
+      events?: {
+        onReady?: (event: { target: MockPlayer }) => void
+        onStateChange?: (event: { data: number; target: MockPlayer }) => void
+        onError?: (event: { data: number; target: MockPlayer }) => void
+      }
+    }
+
+    const players: MockPlayer[] = []
+
+    class MockPlayer {
+      readonly options: MockPlayerOptions
+      readonly mute = vi.fn()
+      readonly stopVideo = vi.fn()
+      readonly destroy = vi.fn()
+      readonly getDuration = vi.fn(() => 90)
+      readonly seekTo = vi.fn()
+      readonly loadVideoById = vi.fn()
+      readonly playVideo = vi.fn(() => {
+        this.options.events?.onStateChange?.({ data: 1, target: this })
+      })
+
+      constructor(_element: HTMLElement, options: MockPlayerOptions) {
+        this.options = options
+        players.push(this)
+      }
+    }
+
+    window.YT = {
+      Player: MockPlayer,
+      PlayerState: {
+        ENDED: 0,
+        PLAYING: 1,
+      },
+    }
+
+    render(<FeaturedWorks />)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const player = players.find(
+      (item) => item.options.videoId === "-2kSMEiw0wA",
+    )
+    expect(player).toBeDefined()
+    const card = screen.getByLabelText("十角館の殺人 / 時計館の殺人 作品カード")
+
+    await act(async () => {
+      performanceNow = 4500
+      vi.advanceTimersByTime(4500)
+      player?.options.events?.onReady?.({ target: player })
+      await Promise.resolve()
+    })
+
+    expect(
+      card.querySelector('[data-featured-work-preview-media="preparing"]'),
+    ).toBeInTheDocument()
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500)
+  })
+
+  it("limits YouTube player creation to marquee cards near the viewport", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    })
+
+    const observers: MockIntersectionObserver[] = []
+
+    class MockIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null
+      readonly rootMargin: string
+      readonly thresholds: ReadonlyArray<number>
+      readonly elements: Element[] = []
+
+      constructor(
+        private readonly callback: IntersectionObserverCallback,
+        options: IntersectionObserverInit = {},
+      ) {
+        this.root = options.root ?? null
+        this.rootMargin = options.rootMargin ?? "0px"
+        this.thresholds = Array.isArray(options.threshold)
+          ? options.threshold
+          : [options.threshold ?? 0]
+        observers.push(this)
+      }
+
+      observe = (element: Element) => {
+        this.elements.push(element)
+      }
+
+      unobserve = (element: Element) => {
+        const index = this.elements.indexOf(element)
+        if (index >= 0) {
+          this.elements.splice(index, 1)
+        }
+      }
+
+      disconnect = () => {
+        this.elements.length = 0
+      }
+
+      takeRecords = () => []
+
+      emit(element: Element, isIntersecting: boolean) {
+        this.callback(
+          [
+            {
+              isIntersecting,
+              target: element,
+            } as IntersectionObserverEntry,
+          ],
+          this,
+        )
+      }
+    }
+
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+
+    type MockPlayerOptions = {
+      videoId?: string
+      playerVars?: Record<string, string | number>
+      events?: {
+        onReady?: (event: { target: MockPlayer }) => void
+        onStateChange?: (event: { data: number; target: MockPlayer }) => void
+        onError?: (event: { data: number; target: MockPlayer }) => void
+      }
+    }
+
+    const players: MockPlayer[] = []
+
+    class MockPlayer {
+      readonly options: MockPlayerOptions
+      readonly mute = vi.fn()
+      readonly stopVideo = vi.fn()
+      readonly destroy = vi.fn()
+      readonly getDuration = vi.fn(() => 90)
+      readonly seekTo = vi.fn()
+      readonly loadVideoById = vi.fn()
+      readonly playVideo = vi.fn()
+
+      constructor(_element: HTMLElement, options: MockPlayerOptions) {
+        this.options = options
+        players.push(this)
+      }
+    }
+
+    window.YT = {
+      Player: MockPlayer,
+      PlayerState: {
+        ENDED: 0,
+        PLAYING: 1,
+      },
+    }
+
+    const { container } = render(<FeaturedWorks />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(players).toHaveLength(0)
+
+    const viewport = container.querySelector(
+      '[data-featured-work-marquee-viewport="true"]',
+    ) as HTMLElement
+    const sectionObserver = observers.find((observer) => observer.root === null)
+    expect(sectionObserver).toBeDefined()
+
+    await act(async () => {
+      sectionObserver?.emit(viewport, true)
+      await Promise.resolve()
+    })
+
+    expect(players).toHaveLength(0)
+
+    const firstVideoCard = screen.getByLabelText(
+      "十角館の殺人 / 時計館の殺人 作品カード",
+    )
+    const firstCardObserver = observers.find(
+      (observer) =>
+        observer.root === viewport &&
+        observer.elements.includes(firstVideoCard),
+    )
+    expect(firstCardObserver?.rootMargin).toBe("0px 320px")
+
+    await act(async () => {
+      firstCardObserver?.emit(firstVideoCard, true)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(players).toHaveLength(1)
+    })
+    expect(players[0]?.options.videoId).toBe("-2kSMEiw0wA")
+    expect(
+      container.querySelectorAll("[data-featured-work-preview-media]"),
+    ).toHaveLength(1)
   })
 
   it("re-shows single video thumbnail covers before each random clip restart", async () => {
