@@ -238,31 +238,6 @@ function useHasEnteredViewport<T extends HTMLElement>() {
   return [ref, hasEnteredViewport] as const
 }
 
-function getPerformanceNow() {
-  if (
-    typeof window !== "undefined" &&
-    typeof window.performance?.now === "function"
-  ) {
-    return window.performance.now()
-  }
-
-  return typeof performance !== "undefined" &&
-    typeof performance.now === "function"
-    ? performance.now()
-    : Date.now()
-}
-
-function getFeaturedWorksPageLoadTimeMs() {
-  return typeof window !== "undefined" && window.performance ? 0 : getPerformanceNow()
-}
-
-export function getInitialStartupCoverHoldMs(
-  pageLoadTimeMs: number,
-  nowMs = getPerformanceNow(),
-) {
-  return Math.max(0, STARTUP_COVER_HOLD_MS - Math.max(0, nowMs - pageLoadTimeMs))
-}
-
 function useNearMarqueeViewport<T extends HTMLElement>(enabled: boolean) {
   const ref = useRef<T | null>(null)
   const [isNearViewport, setIsNearViewport] = useState(
@@ -1104,7 +1079,6 @@ function VideoSurface({
   title,
   isActive,
   prefersReducedMotion,
-  pageLoadTimeMs,
   clone,
   onOpenVideo,
 }: {
@@ -1118,7 +1092,6 @@ function VideoSurface({
   title: string
   isActive: boolean
   prefersReducedMotion: boolean
-  pageLoadTimeMs: number
   clone: boolean
   onOpenVideo: (
     video: ActiveVideoModal,
@@ -1139,7 +1112,6 @@ function VideoSurface({
   const clipRef = useRef<ClipWindow | null>(null)
   const timerRef = useRef<number | null>(null)
   const coverTimerRef = useRef<number | null>(null)
-  const hasHiddenInitialCoverRef = useRef(false)
   const [activeClip, setActiveClip] = useState<ClipWindow | null>(null)
   const [isCoverVisible, setIsCoverVisible] = useState(true)
   const shouldPlay = isActive && !prefersReducedMotion
@@ -1181,14 +1153,10 @@ function VideoSurface({
 
     const scheduleCoverHide = () => {
       clearCoverTimer()
-      const coverHoldMs = hasHiddenInitialCoverRef.current
-        ? STARTUP_COVER_HOLD_MS
-        : getInitialStartupCoverHoldMs(pageLoadTimeMs)
       coverTimerRef.current = window.setTimeout(() => {
         setIsCoverVisible(false)
-        hasHiddenInitialCoverRef.current = true
         coverTimerRef.current = null
-      }, coverHoldMs)
+      }, STARTUP_COVER_HOLD_MS)
     }
 
     if (!shouldPlay) {
@@ -1218,7 +1186,6 @@ function VideoSurface({
       setActiveClip(clip)
       clearCoverTimer()
       setIsCoverVisible(true)
-      hasHiddenInitialCoverRef.current = true
       player.seekTo(0, true)
       player.playVideo()
     }
@@ -1315,7 +1282,7 @@ function VideoSurface({
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [pageLoadTimeMs, shouldPlay, videoId])
+  }, [shouldPlay, videoId])
 
   useEffect(() => {
     return () => {
@@ -1377,7 +1344,6 @@ function FeaturedWorkCard({
   work,
   shouldStartVideo,
   prefersReducedMotion,
-  pageLoadTimeMs,
   clone = false,
   segmentStart,
   onOpenVideo,
@@ -1385,7 +1351,6 @@ function FeaturedWorkCard({
   work: FeaturedWork
   shouldStartVideo: boolean
   prefersReducedMotion: boolean
-  pageLoadTimeMs: number
   clone?: boolean
   segmentStart?: "primary" | "clone-before" | "clone-after"
   onOpenVideo: (
@@ -1422,7 +1387,6 @@ function FeaturedWorkCard({
               title={work.title}
               isActive={shouldPlayVideo}
               prefersReducedMotion={prefersReducedMotion}
-              pageLoadTimeMs={pageLoadTimeMs}
               clone={clone}
               onOpenVideo={onOpenVideo}
             />
@@ -1462,7 +1426,6 @@ function PlaylistWorkCard({
   work,
   shouldStartVideo,
   prefersReducedMotion,
-  pageLoadTimeMs,
   clone = false,
   segmentStart,
   onOpenVideo,
@@ -1470,7 +1433,6 @@ function PlaylistWorkCard({
   work: FeaturedPlaylistWork
   shouldStartVideo: boolean
   prefersReducedMotion: boolean
-  pageLoadTimeMs: number
   clone?: boolean
   segmentStart?: "primary" | "clone-before" | "clone-after"
   onOpenVideo: (
@@ -1487,7 +1449,6 @@ function PlaylistWorkCard({
   const clipRef = useRef<ClipWindow | null>(null)
   const timerRef = useRef<number | null>(null)
   const coverTimerRef = useRef<number | null>(null)
-  const hasHiddenInitialCoverRef = useRef(false)
   const previewVideoRef = useRef<FeaturedWorkPreviewVideo>(work.videos[0])
   const [previewVideo, setPreviewVideo] = useState<FeaturedWorkPreviewVideo>(
     work.videos[0],
@@ -1518,14 +1479,10 @@ function PlaylistWorkCard({
 
     const scheduleCoverHide = () => {
       clearCoverTimer()
-      const coverHoldMs = hasHiddenInitialCoverRef.current
-        ? STARTUP_COVER_HOLD_MS
-        : getInitialStartupCoverHoldMs(pageLoadTimeMs)
       coverTimerRef.current = window.setTimeout(() => {
         setIsCoverVisible(false)
-        hasHiddenInitialCoverRef.current = true
         coverTimerRef.current = null
-      }, coverHoldMs)
+      }, STARTUP_COVER_HOLD_MS)
     }
 
     if (!shouldPlayVideo || prefersReducedMotion) {
@@ -1647,7 +1604,7 @@ function PlaylistWorkCard({
       clearNextTimer()
       clearCoverTimer()
     }
-  }, [pageLoadTimeMs, prefersReducedMotion, shouldPlayVideo, work.videos])
+  }, [prefersReducedMotion, shouldPlayVideo, work.videos])
 
   useEffect(() => {
     return () => {
@@ -1726,7 +1683,6 @@ export function FeaturedWorks() {
   const prefersReducedMotion = usePrefersReducedMotion()
   const marqueeViewportId = useId()
   const [marqueeRef, hasEnteredViewport] = useHasEnteredViewport<HTMLDivElement>()
-  const [featuredWorksLoadTimeMs] = useState(getFeaturedWorksPageLoadTimeMs)
   const [activeVideo, setActiveVideo] = useState<ActiveVideoModal | null>(null)
   const progressTrackRef = useRef<HTMLDivElement | null>(null)
   const progressThumbRef = useRef<HTMLDivElement | null>(null)
@@ -1762,7 +1718,6 @@ export function FeaturedWorks() {
           work={work}
           shouldStartVideo={hasEnteredViewport}
           prefersReducedMotion={prefersReducedMotion}
-          pageLoadTimeMs={featuredWorksLoadTimeMs}
           clone={clone}
           segmentStart={index === 0 ? segmentStart : undefined}
           onOpenVideo={openVideo}
@@ -1774,7 +1729,6 @@ export function FeaturedWorks() {
           work={work}
           shouldStartVideo={hasEnteredViewport}
           prefersReducedMotion={prefersReducedMotion}
-          pageLoadTimeMs={featuredWorksLoadTimeMs}
           clone={clone}
           onOpenVideo={openVideo}
         />

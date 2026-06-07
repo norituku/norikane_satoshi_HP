@@ -10,7 +10,6 @@ import {
 } from "@/components/hp/featured-works-data"
 import {
   FeaturedWorks,
-  getInitialStartupCoverHoldMs,
   getFeaturedWorkMarqueeProgressBarGeometry,
   getPreviewClipWindow,
   getYouTubePlayerVars,
@@ -78,13 +77,6 @@ describe("FeaturedWorks", () => {
         ).not.toBeInTheDocument()
       }
     }
-  })
-
-  it("calculates initial cover hold from the Featured Works load timestamp", () => {
-    expect(getInitialStartupCoverHoldMs(1000, 1000)).toBe(5000)
-    expect(getInitialStartupCoverHoldMs(1000, 4500)).toBe(1500)
-    expect(getInitialStartupCoverHoldMs(1000, 6000)).toBe(0)
-    expect(getInitialStartupCoverHoldMs(1000, 7000)).toBe(0)
   })
 
   it("uses only the Featured Works label and renders a scroll-driven marquee shell", () => {
@@ -732,7 +724,7 @@ describe("FeaturedWorks", () => {
     expectCovers("playing")
   })
 
-  it("counts the first startup cover hold from Featured Works mount time", async () => {
+  it("counts the first startup cover hold from the first playback start", async () => {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -744,8 +736,6 @@ describe("FeaturedWorks", () => {
     })
     vi.useFakeTimers()
     vi.spyOn(Math, "random").mockReturnValue(0)
-    let performanceNow = 0
-    vi.spyOn(window.performance, "now").mockImplementation(() => performanceNow)
     const setTimeoutSpy = vi.spyOn(window, "setTimeout")
 
     type MockPlayerOptions = {
@@ -799,7 +789,6 @@ describe("FeaturedWorks", () => {
     const card = screen.getByLabelText("十角館の殺人 / 時計館の殺人 作品カード")
 
     await act(async () => {
-      performanceNow = 4500
       vi.advanceTimersByTime(4500)
       player?.options.events?.onReady?.({ target: player })
       await Promise.resolve()
@@ -808,7 +797,7 @@ describe("FeaturedWorks", () => {
     expect(
       card.querySelector('[data-featured-work-preview-media="preparing"]'),
     ).toBeInTheDocument()
-    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500)
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000)
   })
 
   it("limits YouTube player creation to marquee cards near the viewport", async () => {
