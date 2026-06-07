@@ -25,7 +25,7 @@ export const initialIntakeQuestions = [
 ] as const
 
 export function buildChatbotStaticPolicyPrompt(): string {
-  return [
+  return compactStaticPolicyPrompt([
     "あなたは、のりかね映像設計室の新規映像案件の相談受付アシスタントです。",
     "Notionページを実行時に追加参照せず、下記の承認済み静的ルールだけで応答します。",
     "",
@@ -72,7 +72,26 @@ export function buildChatbotStaticPolicyPrompt(): string {
     "",
     "映像領域ナレッジ:",
     videoIndustryKnowledge.trim(),
-  ].join("\n")
+  ])
+}
+
+function compactStaticPolicyPrompt(parts: readonly string[]): string {
+  const seenLines = new Set<string>()
+  const compactedLines: string[] = []
+
+  for (const line of parts.join("\n").split("\n")) {
+    const normalizedLine = line.trimEnd()
+    if (!normalizedLine) {
+      if (compactedLines.at(-1) !== "") compactedLines.push("")
+      continue
+    }
+    if (seenLines.has(normalizedLine)) continue
+
+    seenLines.add(normalizedLine)
+    compactedLines.push(normalizedLine)
+  }
+
+  return compactedLines.join("\n").trim()
 }
 
 export function enforceAssistantQuestionLimit(content: string): string {

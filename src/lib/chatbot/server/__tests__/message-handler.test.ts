@@ -138,6 +138,8 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("/notes/correction")
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("案件種類")
     expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("1返答で質問は最大3問")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("呼称は中立に保ち")
+    expect(harness.generate.mock.calls[0]?.[0].systemPrompt).toContain("メールアドレス（必須）")
   })
 
   it("does not load user context for unauthenticated requests", async () => {

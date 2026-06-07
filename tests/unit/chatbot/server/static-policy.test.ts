@@ -40,6 +40,23 @@ describe("chatbot static policy knowledge", () => {
     })
   })
 
+  it("keeps fixed prompt safeguards and representative knowledge after compaction", () => {
+    const prompt = buildChatbotStaticPolicyPrompt()
+    const nonEmptyLines = prompt.split("\n").filter(Boolean)
+
+    expect(nonEmptyLines).toHaveLength(new Set(nonEmptyLines).size)
+    expect(prompt).toContain("金額・単価・概算・相場は出さず")
+    expect(prompt).toContain("料金は本人が案件詳細を確認して返答する")
+    expect(prompt).toContain("本人確認へ誘導")
+    expect(prompt).toContain("会話状態は7日間保持する")
+    expect(prompt).toContain("CM 30秒: 1〜2日 / 候補提示単位: 1時間単位")
+    expect(prompt).toContain("MV 5分: 2〜2.5日 / 候補提示単位: 1時間単位")
+    expect(prompt).toContain("本編 90分: 10〜11日 / 候補提示単位: 日付単位")
+    expect(prompt).toContain("劇場映画・配信作品・CM・ブランドフィルム")
+    expect(prompt).toContain("カラーコレクションの因数分解")
+    expect(prompt).toContain("火星の女王（NHK100周年記念ドラマ）")
+  })
+
   it("includes only HP-published Featured Works in the static prompt", () => {
     const prompt = buildChatbotStaticPolicyPrompt()
 
