@@ -114,6 +114,9 @@ const defaultRepository: ChatbotMessageRepository = {
   setConversationNotionAiThreadId,
 }
 
+const clientUserMessageIdPattern =
+  /^client_msg_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
 export async function handleChatbotMessage(
   input: HandleChatbotMessageInput,
   options: HandleChatbotMessageOptions = {},
@@ -141,21 +144,24 @@ export async function handleChatbotMessage(
   if (input.editTargetMessageId) {
     const targetIndex = conversation.messages.findIndex((message) => message.id === input.editTargetMessageId)
     if (targetIndex === -1) {
-      throw new Error("chatbot_edit_target_not_found")
-    }
-    await repository.truncateConversationFromMessage({
-      conversationId: conversation.id,
-      messageId: input.editTargetMessageId,
-    })
-    conversation = {
-      ...conversation,
-      status: "open",
-      context: {
-        sessionId: conversation.context.sessionId,
-        ...(conversation.context.userId ? { userId: conversation.context.userId } : {}),
-        ...(conversation.context.customerEmail ? { customerEmail: conversation.context.customerEmail } : {}),
-      },
-      messages: conversation.messages.slice(0, targetIndex),
+      if (!clientUserMessageIdPattern.test(input.editTargetMessageId)) {
+        throw new Error("chatbot_edit_target_not_found")
+      }
+    } else {
+      await repository.truncateConversationFromMessage({
+        conversationId: conversation.id,
+        messageId: input.editTargetMessageId,
+      })
+      conversation = {
+        ...conversation,
+        status: "open",
+        context: {
+          sessionId: conversation.context.sessionId,
+          ...(conversation.context.userId ? { userId: conversation.context.userId } : {}),
+          ...(conversation.context.customerEmail ? { customerEmail: conversation.context.customerEmail } : {}),
+        },
+        messages: conversation.messages.slice(0, targetIndex),
+      }
     }
   }
 

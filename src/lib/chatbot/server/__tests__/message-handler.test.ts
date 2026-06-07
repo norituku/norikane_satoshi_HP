@@ -388,6 +388,44 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("recovers an edit from a canceled client user message that was not persisted", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "keep_user", role: "user", content: "最初の相談です", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "keep_assistant", role: "assistant", content: "最初の応答です", createdAt: "2026-05-26T00:01:00.000Z" },
+        ],
+      }),
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "停止後に編集した条件です",
+        editTargetMessageId: "client_msg_00000000-0000-4000-8000-000000000001",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).not.toHaveBeenCalled()
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith({
+      id: undefined,
+      conversationId: "conv_1",
+      role: "user",
+      content: "停止後に編集した条件です",
+    })
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "最初の相談です" },
+      { role: "assistant", content: "最初の応答です" },
+      { role: "user", content: "停止後に編集した条件です" },
+    ])
+    expect(result.userMessage).toMatchObject({
+      role: "user",
+      content: "停止後に編集した条件です",
+    })
+  })
+
   it("overrides pricing output with direct contact policy", async () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({
