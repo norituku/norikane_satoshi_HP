@@ -566,7 +566,7 @@ describe("FeaturedWorks", () => {
     expect(player?.seekTo).toHaveBeenLastCalledWith(30, true)
   })
 
-  it("keeps startup thumbnail covers visible for 1.8 seconds after playback starts", async () => {
+  it("keeps startup thumbnail covers visible for 5 seconds after playback starts", async () => {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -659,7 +659,7 @@ describe("FeaturedWorks", () => {
     expectCovers("preparing")
 
     await act(async () => {
-      vi.advanceTimersByTime(1799)
+      vi.advanceTimersByTime(4999)
     })
     expectCovers("preparing")
 

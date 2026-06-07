@@ -87,7 +87,7 @@ type YouTubePlayerVarsOptions = {
 }
 
 let youtubeApiPromise: Promise<void> | null = null
-const STARTUP_COVER_HOLD_MS = 1800
+const STARTUP_COVER_HOLD_MS = 5000
 const MARQUEE_LOOP_SECONDS = 72
 const MARQUEE_INPUT_IDLE_MS = 1300
 const MARQUEE_PROGRESS_MIN_THUMB_WIDTH = 44
