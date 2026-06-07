@@ -841,4 +841,34 @@ describe("Tier1ChromeNotionAiClient", () => {
       chunkCount: 3,
     })
   })
+
+  it("reconstructs seeded patch-start text with subsequent patch operations", () => {
+    const parsed = parseInferenceNdjsonStream(
+      [
+        JSON.stringify({
+          type: "patch-start",
+          data: {
+            s: [
+              {
+                id: "turn-id",
+                type: "agent-inference",
+                value: [{ type: "text", content: "承知" }],
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "patch",
+          v: [{ o: "a", p: "/s/0/value/0/content", v: "しました。" }],
+        }),
+      ].join("\n"),
+    )
+
+    expect(parsed).toMatchObject({
+      partialText: "承知しました。",
+      finalText: "",
+      assistantText: "承知しました。",
+      chunkCount: 2,
+    })
+  })
 })

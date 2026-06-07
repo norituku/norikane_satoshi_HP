@@ -194,6 +194,7 @@ export type ParsedInferenceNdjsonStream = {
   chunkCount: number
 }
 
+type JsonContainer = Record<string, unknown> | unknown[]
 type CdpTargetsResponse = NotionAiCdpTarget[]
 type CdpCommandResponse<T> = {
   id: number
@@ -719,25 +720,43 @@ export function extractAssistantTextFromNdjson(ndjson: string): string {
 }
 
 export function parseInferenceNdjsonStream(ndjson: string): ParsedInferenceNdjsonStream {
-  const chunks = ndjson
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        const raw = JSON.parse(line) as unknown
-        return {
-          raw,
-          isPartialTranscript: isPartialInferenceChunk(raw),
-          assistantText: collectText(raw),
-        }
-      } catch {
-        return undefined
-      }
-    })
-    .filter((chunk): chunk is ParsedInferenceNdjsonChunk => Boolean(chunk))
+  const chunks: ParsedInferenceNdjsonChunk[] = []
+  let patchState: unknown[] | undefined
 
-  const partialText = chunks
+  for (const line of ndjson
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean)) {
+    try {
+      const raw = JSON.parse(line) as unknown
+      const seed = extractPatchSeed(raw)
+      if (seed) {
+        patchState = seed
+        chunks.push({ raw, isPartialTranscript: true, assistantText: emptyText })
+        continue
+      }
+
+      if (patchState && applyPatchOperations(patchState, raw)) {
+        chunks.push({
+          raw,
+          isPartialTranscript: true,
+          assistantText: collectText(patchState),
+        })
+        continue
+      }
+
+      chunks.push({
+        raw,
+        isPartialTranscript: isPartialInferenceChunk(raw),
+        assistantText: collectText(raw),
+      })
+    } catch {
+      continue
+    }
+  }
+
+  const patchText = patchState ? collectText(patchState) : emptyText
+  const linePartialText = chunks
     .filter((chunk) => chunk.isPartialTranscript)
     .map((chunk) => chunk.assistantText)
     .join(emptyText)
@@ -746,6 +765,7 @@ export function parseInferenceNdjsonStream(ndjson: string): ParsedInferenceNdjso
     .map((chunk) => chunk.assistantText)
     .filter(Boolean)
     .at(-1) ?? emptyText
+  const partialText = patchText || linePartialText
   const assistantText = finalText || partialText
 
   return {
@@ -953,7 +973,99 @@ function collectText(value: unknown): string {
 function isPartialInferenceChunk(value: unknown): boolean {
   if (!value || typeof value !== "object") return false
   const record = value as Record<string, unknown>
-  return record.isPartialTranscript === true || record.type === "partial" || record.type === "patch"
+  return (
+    record.isPartialTranscript === true ||
+    record.type === "partial" ||
+    record.type === "patch" ||
+    record.type === "patch-start"
+  )
+}
+
+function extractPatchSeed(value: unknown): unknown[] | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const record = value as Record<string, unknown>
+  if (record.type !== "patch-start") return undefined
+  const data = record.data
+  if (!data || typeof data !== "object") return undefined
+  const seed = (data as Record<string, unknown>).s
+  if (!Array.isArray(seed)) return undefined
+  return cloneJson(seed)
+}
+
+function applyPatchOperations(root: unknown[], value: unknown): boolean {
+  if (!value || typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  if (record.type !== "patch" || !Array.isArray(record.v)) return false
+
+  for (const operation of record.v) {
+    if (!operation || typeof operation !== "object") continue
+    const patch = operation as Record<string, unknown>
+    const path = typeof patch.p === "string" ? patch.p : undefined
+    if (!path) continue
+    applyPatchOperation(root, path, patch.v, typeof patch.o === "string" ? patch.o : "r")
+  }
+
+  return true
+}
+
+function applyPatchOperation(root: JsonContainer, path: string, value: unknown, operation: string): void {
+  const parts = decodeJsonPointer(path)
+  if (parts[0] === "s") parts.shift()
+  if (parts.length === 0) return
+
+  let cursor: unknown = root
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const part = parts[index]
+    const nextPart = parts[index + 1]
+    if (!isJsonContainer(cursor)) return
+
+    if (Array.isArray(cursor)) {
+      const arrayIndex = part === "-" ? cursor.length : Number(part)
+      if (!Number.isInteger(arrayIndex) || arrayIndex < 0) return
+      if (cursor[arrayIndex] === undefined) cursor[arrayIndex] = nextPart === "-" || /^\d+$/.test(nextPart) ? [] : {}
+      cursor = cursor[arrayIndex]
+      continue
+    }
+
+    if (cursor[part] === undefined) cursor[part] = nextPart === "-" || /^\d+$/.test(nextPart) ? [] : {}
+    cursor = cursor[part]
+  }
+
+  if (!isJsonContainer(cursor)) return
+  const key = parts.at(-1)
+  if (key === undefined) return
+  const nextValue = cloneJson(value)
+
+  if (Array.isArray(cursor)) {
+    const arrayIndex = key === "-" ? cursor.length : Number(key)
+    if (!Number.isInteger(arrayIndex) || arrayIndex < 0) return
+    if (operation === "a") cursor.splice(arrayIndex, 0, nextValue)
+    else cursor[arrayIndex] = nextValue
+    return
+  }
+
+  const currentValue = cursor[key]
+  if (operation === "a" && typeof currentValue === "string" && typeof nextValue === "string") {
+    cursor[key] = currentValue + nextValue
+    return
+  }
+  cursor[key] = nextValue
+}
+
+function decodeJsonPointer(path: string): string[] {
+  return path
+    .split("/")
+    .slice(1)
+    .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
+}
+
+function isJsonContainer(value: unknown): value is JsonContainer {
+  return Boolean(value && typeof value === "object")
+}
+
+function cloneJson<T>(value: T): T {
+  if (value === undefined) return value
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function collectAgentInferenceText(value: unknown): string {
@@ -1249,6 +1361,94 @@ async function runInferenceInPage(input: {
       return { isPartialTranscript: false, text: "" }
     }
   }
+  const cloneJsonInPage = <T,>(value: T): T => {
+    if (value === undefined) return value
+    return JSON.parse(JSON.stringify(value)) as T
+  }
+  const decodeJsonPointerInPage = (path: string): string[] => {
+    return path
+      .split("/")
+      .slice(1)
+      .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
+  }
+  const isJsonContainerInPage = (value: unknown): value is Record<string, unknown> | unknown[] => {
+    return Boolean(value && typeof value === "object")
+  }
+  const extractPatchSeedInPage = (value: unknown): unknown[] | undefined => {
+    if (!value || typeof value !== "object") return undefined
+    const record = value as Record<string, unknown>
+    if (record.type !== "patch-start") return undefined
+    const data = record.data
+    if (!data || typeof data !== "object") return undefined
+    const seed = (data as Record<string, unknown>).s
+    if (!Array.isArray(seed)) return undefined
+    return cloneJsonInPage(seed)
+  }
+  const applyPatchOperationInPage = (
+    root: Record<string, unknown> | unknown[],
+    path: string,
+    value: unknown,
+    operation: string,
+  ): void => {
+    const parts = decodeJsonPointerInPage(path)
+    if (parts[0] === "s") parts.shift()
+    if (parts.length === 0) return
+
+    let cursor: unknown = root
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const part = parts[index]
+      const nextPart = parts[index + 1]
+      if (!isJsonContainerInPage(cursor)) return
+
+      if (Array.isArray(cursor)) {
+        const arrayIndex = part === "-" ? cursor.length : Number(part)
+        if (!Number.isInteger(arrayIndex) || arrayIndex < 0) return
+        if (cursor[arrayIndex] === undefined) {
+          cursor[arrayIndex] = nextPart === "-" || /^\d+$/.test(nextPart) ? [] : {}
+        }
+        cursor = cursor[arrayIndex]
+        continue
+      }
+
+      if (cursor[part] === undefined) cursor[part] = nextPart === "-" || /^\d+$/.test(nextPart) ? [] : {}
+      cursor = cursor[part]
+    }
+
+    if (!isJsonContainerInPage(cursor)) return
+    const key = parts.at(-1)
+    if (key === undefined) return
+    const nextValue = cloneJsonInPage(value)
+
+    if (Array.isArray(cursor)) {
+      const arrayIndex = key === "-" ? cursor.length : Number(key)
+      if (!Number.isInteger(arrayIndex) || arrayIndex < 0) return
+      if (operation === "a") cursor.splice(arrayIndex, 0, nextValue)
+      else cursor[arrayIndex] = nextValue
+      return
+    }
+
+    const currentValue = cursor[key]
+    if (operation === "a" && typeof currentValue === "string" && typeof nextValue === "string") {
+      cursor[key] = currentValue + nextValue
+      return
+    }
+    cursor[key] = nextValue
+  }
+  const applyPatchOperationsInPage = (root: unknown[], value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false
+    const record = value as Record<string, unknown>
+    if (record.type !== "patch" || !Array.isArray(record.v)) return false
+
+    for (const operation of record.v) {
+      if (!operation || typeof operation !== "object") continue
+      const patch = operation as Record<string, unknown>
+      const path = typeof patch.p === "string" ? patch.p : undefined
+      if (!path) continue
+      applyPatchOperationInPage(root, path, patch.v, typeof patch.o === "string" ? patch.o : "r")
+    }
+
+    return true
+  }
 
   try {
     const response = await fetch(endpoint, {
@@ -1286,11 +1486,31 @@ async function runInferenceInPage(input: {
     let partialText = ""
     let finalText = ""
     let chunkCount = 0
+    let patchState: unknown[] | undefined
 
     for (const line of responseText
       .split("\n")
       .map((entry) => entry.trim())
       .filter(Boolean)) {
+      let raw: unknown
+      try {
+        raw = JSON.parse(line) as unknown
+      } catch {
+        chunkCount += 1
+        continue
+      }
+      const patchSeed = extractPatchSeedInPage(raw)
+      if (patchSeed) {
+        patchState = patchSeed
+        chunkCount += 1
+        continue
+      }
+      if (patchState && applyPatchOperationsInPage(patchState, raw)) {
+        const patchText = collectTextInPage(patchState)
+        if (patchText) partialText = patchText
+        chunkCount += 1
+        continue
+      }
       const parsed = parseLine(line)
       if (parsed.text) {
         if (parsed.isPartialTranscript) partialText += parsed.text
