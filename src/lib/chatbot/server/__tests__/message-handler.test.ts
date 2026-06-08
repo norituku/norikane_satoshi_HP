@@ -803,6 +803,64 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
+  it("infers concrete customer identity values without provided sentinels", async () => {
+    const harness = setup()
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "会社名は株式会社サンプル、担当者氏名は田中太郎です。Web CMで尺4分、6月中旬に作業、6月20日までに納品希望です。client@example.com です。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toEqual(
+      expect.objectContaining({
+        hasCustomerIdentity: true,
+        customerName: "田中太郎",
+        companyName: "株式会社サンプル",
+      }),
+    )
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).not.toEqual(
+      expect.objectContaining({
+        customerName: "provided",
+        companyName: "provided",
+      }),
+    )
+  })
+
+  it("keeps identity satisfied without storing provided as a display value", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: { turnCount: 2 },
+        },
+        messages: [],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "会社名と名前は共有済みです。Web CMで尺4分です。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toEqual(
+      expect.objectContaining({
+        hasCustomerIdentity: true,
+      }),
+    )
+    expect(harness.generate.mock.calls[0]?.[0].conversationState.customerName).toBeUndefined()
+    expect(harness.generate.mock.calls[0]?.[0].conversationState.companyName).toBeUndefined()
+  })
+
   it("aligns assistant text with deterministic choice panel question", async () => {
     const harness = setup({
       existingConversation: conversation({

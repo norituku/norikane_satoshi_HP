@@ -75,6 +75,45 @@ const FLOATING_RESIZE_CORNERS = [
   { edge: "nw", className: "left-0 top-0 h-5 w-5 cursor-nwse-resize" },
 ] as const
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object")
+}
+
+function cleanDefaultContactValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === "provided") return undefined
+  return trimmed
+}
+
+function sanitizeBookingCardActiveUi(value: Record<string, unknown>): WidgetUi {
+  if (!isRecord(value.conversationState)) return noUi
+
+  const sanitizedConversationState = { ...value.conversationState }
+  const customerName = cleanDefaultContactValue(sanitizedConversationState.customerName)
+  const companyName = cleanDefaultContactValue(sanitizedConversationState.companyName)
+
+  if (customerName) {
+    sanitizedConversationState.customerName = customerName
+  } else {
+    delete sanitizedConversationState.customerName
+  }
+
+  if (companyName) {
+    sanitizedConversationState.companyName = companyName
+  } else {
+    delete sanitizedConversationState.companyName
+  }
+
+  return { ...value, conversationState: sanitizedConversationState } as WidgetUi
+}
+
+function sanitizeStoredActiveUi(value: unknown): WidgetUi {
+  if (!isRecord(value)) return noUi
+  if (value.kind === "booking-card") return sanitizeBookingCardActiveUi(value)
+  return value as WidgetUi
+}
+
 type StoredWidgetSession = {
   messages: Array<Omit<WidgetMessage, "createdAt"> & { createdAt: string }>
   clientSessionId?: string
@@ -120,7 +159,7 @@ function loadStoredWidgetSession(): {
       messages: messages.length > 0 ? messages : [initialMessage],
       clientSessionId: parsed.clientSessionId,
       conversationId: parsed.conversationId,
-      activeUi: parsed.activeUi ?? noUi,
+      activeUi: sanitizeStoredActiveUi(parsed.activeUi),
       lastResponseTier: parsed.lastResponseTier,
       lastTierAttempts: parsed.lastTierAttempts,
     }
@@ -645,8 +684,8 @@ function ActiveWidgetUi({
         conversationId={conversationId}
         candidates={ui.suggestedSlots}
         estimate={ui.jobContext.workflowEstimate}
-        defaultContactName={ui.conversationState.customerName}
-        defaultCompanyName={ui.conversationState.companyName}
+        defaultContactName={cleanDefaultContactValue(ui.conversationState?.customerName)}
+        defaultCompanyName={cleanDefaultContactValue(ui.conversationState?.companyName)}
         defaultDueDate={ui.jobContext.publicReleaseDate}
         defaultMemo={ui.jobContext.referenceUrls?.join("\n")}
       />

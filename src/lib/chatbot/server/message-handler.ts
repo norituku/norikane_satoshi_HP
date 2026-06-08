@@ -696,7 +696,8 @@ function inferConversationStateFromText(text: string): Partial<ConversationState
   const hasProjectLength = /(?:尺|長さ|length|duration|\d+\s*(?:時間|h|hours?|分|m|min|minutes?))/iu.test(text)
   const hasSchedule = /(?:6月中旬|６月中旬|中旬|納品|公開|希望時期|作業したい|まで|deadline)/iu.test(text)
   const hasContactEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu.test(text)
-  const hasCustomerIdentity = /(?:会社|株式会社|合同会社|担当|名前|氏名|お名前)/u.test(text)
+  const identity = inferCustomerIdentityFromText(text)
+  const hasCustomerIdentity = identity.hasCustomerIdentity
   const hasDeliveryFormat = /(?:納品形式|納品フォーマット|prores|mp4|mov|h\.?264|h\.?265)/iu.test(text)
   const hasMeetingPreference = /(?:打ち合わせ|ミーティング|オンライン|zoom|meet)/iu.test(text)
   const hasWorkSite = /(?:作業場所|立ち会い|リモート|オンライン|スタジオ|現地)/u.test(text)
@@ -714,11 +715,55 @@ function inferConversationStateFromText(text: string): Partial<ConversationState
     hasDesiredSchedule: hasSchedule,
     hasCustomerIdentity,
     contactEmail: hasContactEmail ? text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu)?.[0] : undefined,
-    customerName: hasCustomerIdentity ? "provided" : undefined,
-    companyName: hasCustomerIdentity ? "provided" : undefined,
+    customerName: identity.customerName,
+    companyName: identity.companyName,
     hasDeliveryFormat,
     hasMeetingPreference,
   } as Partial<ConversationState>
+}
+
+function inferCustomerIdentityFromText(text: string): {
+  hasCustomerIdentity: boolean
+  customerName?: string
+  companyName?: string
+} {
+  const companyName =
+    cleanInferredIdentityValue(
+      text.match(/(?:会社名|社名|所属)\s*(?:は|:|：)?\s*([^\n、,。]+)/u)?.[1],
+      "company",
+    ) ??
+    cleanInferredIdentityValue(text.match(/((?:株式会社|合同会社|有限会社)[^\s、,。の]{1,30})/u)?.[1], "company") ??
+    cleanInferredIdentityValue(text.match(/([^\s、,。]{1,30}(?:株式会社|合同会社|有限会社))/u)?.[1], "company")
+
+  const customerName =
+    cleanInferredIdentityValue(
+      text.match(/(?:担当者氏名|担当者名|担当|氏名|お名前|名前)\s*(?:は|:|：)?\s*([^\n、,。]+)/u)?.[1],
+      "person",
+    ) ?? cleanInferredIdentityValue(text.match(/(?:株式会社|合同会社|有限会社)[^\s、,。の]{1,30}の([^\s、,。]+?)(?:です|と申します)?(?:[。\n、,]|$)/u)?.[1], "person")
+
+  return {
+    hasCustomerIdentity: /(?:会社|株式会社|合同会社|有限会社|担当|名前|氏名|お名前)/u.test(text),
+    ...(customerName ? { customerName } : {}),
+    ...(companyName ? { companyName } : {}),
+  }
+}
+
+function cleanInferredIdentityValue(value: string | undefined, kind: "company" | "person"): string | undefined {
+  if (!value) return undefined
+
+  const cleaned = value
+    .replace(/(?:です|でございます|と申します|になります|です。)$/u, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+
+  if (!cleaned || cleaned === "provided") return undefined
+  if (/(?:共有済み|提供済み|取得済み|未定|不明|連絡先|メール|納品形式|打ち合わせ|作業場所|希望|済み)/u.test(cleaned)) {
+    return undefined
+  }
+  if (kind === "company" && cleaned.length > 40) return undefined
+  if (kind === "person" && cleaned.length > 24) return undefined
+
+  return cleaned
 }
 
 function inferJobContextFromText(text: string): Partial<JobContext> {

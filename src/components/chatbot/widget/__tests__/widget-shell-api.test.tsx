@@ -372,6 +372,129 @@ describe("WidgetShell API wiring", () => {
     expect(screen.getByRole("button", { name: "6月10日 午前" })).toBeInTheDocument()
   })
 
+  it("renders booking-card responses without conversationState", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage,
+          assistantMessage: {
+            ...assistantMessage,
+            content: "候補日時から予約できます",
+          },
+          tier: "tier-3-ollama-deepseek",
+          ui: {
+            kind: "booking-card",
+            suggestedSlots: [
+              {
+                start: "2026-06-10T01:00:00.000Z",
+                end: "2026-06-10T02:00:00.000Z",
+                label: "6月10日 午前",
+              },
+            ],
+            jobContext: {
+              finalMedium: "web",
+              workSite: "remote-grading",
+              documentaryAttachment: { kind: "none" },
+              workflowEstimate: { stages: [], totalMinDays: 2, totalMaxDays: 3, riskFlags: [] },
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWidgetShell()
+    submitMessage()
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("")
+    expect(screen.getByLabelText("会社名（任意）")).toHaveValue("")
+  })
+
+  it("sanitizes restored booking-card UI without conversationState", () => {
+    window.localStorage.setItem(
+      "hp-chatbot-session-v1",
+      JSON.stringify({
+        messages: [{ role: "assistant", content: "候補日時から予約できます", createdAt: "2026-06-08T00:00:00.000Z" }],
+        activeUi: {
+          kind: "booking-card",
+          suggestedSlots: [
+            {
+              start: "2026-06-10T01:00:00.000Z",
+              end: "2026-06-10T02:00:00.000Z",
+              label: "6月10日 午前",
+            },
+          ],
+          jobContext: {
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    )
+
+    renderWidgetShell()
+
+    expect(screen.queryByText("候補日時から予約する")).not.toBeInTheDocument()
+  })
+
+  it("does not pass provided sentinels into booking-card default fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage,
+          assistantMessage: {
+            ...assistantMessage,
+            content: "候補日時から予約できます",
+          },
+          tier: "tier-3-ollama-deepseek",
+          ui: {
+            kind: "booking-card",
+            suggestedSlots: [
+              {
+                start: "2026-06-10T01:00:00.000Z",
+                end: "2026-06-10T02:00:00.000Z",
+                label: "6月10日 午前",
+              },
+            ],
+            jobContext: {
+              finalMedium: "web",
+              workSite: "remote-grading",
+              documentaryAttachment: { kind: "none" },
+            },
+            conversationState: {
+              hasFinalMedium: true,
+              hasJobKind: true,
+              hasProjectLength: true,
+              hasAdditionalWork: true,
+              hasDocumentaryAttachments: true,
+              hasWorkSite: true,
+              hasReferenceUrls: true,
+              hasContactEmail: true,
+              hasDesiredSchedule: true,
+              hasCustomerIdentity: true,
+              customerName: "provided",
+              companyName: "provided",
+              turnCount: 3,
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWidgetShell()
+    submitMessage()
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("")
+    expect(screen.getByLabelText("会社名（任意）")).toHaveValue("")
+  })
+
   it("renders InquiryForm for tier4 responses and posts submit-inquiry", async () => {
     const fetchMock = vi
       .fn()
