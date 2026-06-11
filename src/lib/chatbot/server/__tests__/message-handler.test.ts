@@ -111,18 +111,29 @@ function setup(overrides: {
   })
   const userContextLoader = vi.fn().mockResolvedValue(userContext())
   const userContextFormatter = vi.fn().mockReturnValue("本人文脈:\n- 本人だけの過去要約")
+  const candidateWindowFinder = vi.fn().mockResolvedValue([
+    {
+      start: "2026-06-15T01:00:00.000Z",
+      end: "2026-06-15T02:00:00.000Z",
+      label: "6月15日 10:00",
+      note: "1時間候補",
+      available: true,
+    },
+  ])
 
   return {
     repository,
     generate,
     userContextLoader,
     userContextFormatter,
+    candidateWindowFinder,
     operatorNotificationSender: vi.fn().mockResolvedValue({ status: "sent", id: "email_1" }),
     options: {
       repository,
       orchestratorFactory: () => ({ generate, isHealthy: vi.fn() }),
       userContextLoader,
       userContextFormatter,
+      candidateWindowFinder,
     },
   }
 }
@@ -650,7 +661,7 @@ describe("handleChatbotMessage user context", () => {
         sessionId: "session_1",
         userId: "user_a",
         message:
-          "Web CMです。尺4分、ABタイプ2本で、素材は共有リンクで受け渡し、6月中旬に作業、6月20日までに納品希望です。会社名と名前、納品形式、打ち合わせ希望、作業場所、連絡先も共有済みです。",
+          "Web CMです。尺4分、ABタイプ2本で、追加作業はなし、素材は共有リンクで受け渡し、6月中旬に作業、6月20日までに納品希望です。会社名と名前、納品形式、打ち合わせ希望、作業場所、連絡先 client@example.com も共有済みです。",
       },
       harness.options,
     )
@@ -676,6 +687,46 @@ describe("handleChatbotMessage user context", () => {
       ]),
     })
     expect(result.assistantMessage.content).toContain("先に空き状況")
+    expect(harness.candidateWindowFinder).toHaveBeenCalledWith(expect.objectContaining({
+      notBefore: "2026-06-15",
+      busyMode: "block",
+    }))
+  })
+
+  it("keeps asking required slots instead of showing booking calendar before work site and material handoff are ready", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "ライブ2.5hです。搬入は7/1ごろ、納品は8月中で、観客消しと肌修正もあります。会社名と氏名は共有済みです。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasAdditionalWork: true,
+          hasDesiredSchedule: true,
+          hasCustomerIdentity: true,
+          turnCount: 4,
+        },
+        jobContext: {
+          finalMedium: "live",
+          jobKind: "live-60m",
+          projectLengthMinutes: 150,
+          preferredStartDate: "2026-07-01",
+          additionalWork: ["retouch", "skin-retouch"],
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({
+      kind: "continue",
+    })
+    expect(result.ui).not.toMatchObject({ kind: "booking-card" })
+    expect(harness.candidateWindowFinder).not.toHaveBeenCalled()
   })
 
   it("keeps asking required slots instead of showing the email handoff form early", async () => {

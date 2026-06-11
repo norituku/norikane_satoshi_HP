@@ -48,6 +48,7 @@ import {
   hasSentOperatorNotification,
   sendOperatorConsultationNotification,
 } from "@/lib/chatbot/server/operator-notification"
+import { findCandidateWindows } from "@/lib/chatbot/server/availability-finder"
 
 type ChatbotMessageUi =
   | { kind: "none" }
@@ -115,6 +116,7 @@ type HandleChatbotMessageOptions = {
   userContextLoader?: typeof loadUserChatbotContext
   userContextFormatter?: typeof formatUserChatbotContextForPrompt
   operatorNotificationSender?: typeof sendOperatorConsultationNotification
+  candidateWindowFinder?: typeof findCandidateWindows
   dedicatedNotionAiThreadsEnabled?: boolean
 }
 
@@ -263,10 +265,13 @@ async function handleChatbotMessageCore(
     conversationState,
     latestUserMessage: input.message,
   })
-  const routingDecision = chooseRoutingDecision({
-    deterministicRoutingDecision,
-    proposedRoutingDecision: llmResponse.proposedRoutingDecision,
-    conversationState,
+  const routingDecision = await resolveBookingCandidates({
+    routingDecision: chooseRoutingDecision({
+      deterministicRoutingDecision,
+      proposedRoutingDecision: llmResponse.proposedRoutingDecision,
+      conversationState,
+    }),
+    candidateWindowFinder: options.candidateWindowFinder ?? findCandidateWindows,
   })
   const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision })
   const assistantMessage = await repository.appendMessage({
@@ -313,6 +318,33 @@ async function handleChatbotMessageCore(
     tier: llmResponse.tier,
     tierAttempts: summarizeTierAttempts(tierAttemptEvents),
     ui: toMessageUi(routingDecision, llmResponse.tier, conversationState),
+  }
+}
+
+async function resolveBookingCandidates(input: {
+  routingDecision: RoutingDecision
+  candidateWindowFinder: typeof findCandidateWindows
+}): Promise<RoutingDecision> {
+  if (input.routingDecision.kind !== "to-booking-inline") return input.routingDecision
+  if (input.routingDecision.suggestedSlots.length === 0) return input.routingDecision
+  const workflowEstimate = input.routingDecision.jobContext.workflowEstimate
+  if (!workflowEstimate) return input.routingDecision
+
+  try {
+    const suggestedSlots = await input.candidateWindowFinder({
+      jobContext: input.routingDecision.jobContext,
+      workflowEstimate,
+      desiredDeadline: input.routingDecision.jobContext.publicReleaseDate,
+      notBefore: input.routingDecision.jobContext.preferredStartDate,
+      candidateLimit: 31,
+      busyMode: "block",
+    })
+    return {
+      ...input.routingDecision,
+      suggestedSlots,
+    }
+  } catch {
+    return input.routingDecision
   }
 }
 
@@ -833,7 +865,7 @@ function cleanInferredIdentityValue(value: string | undefined, kind: "company" |
 function inferJobContextFromText(text: string): Partial<JobContext> {
   const finalMedium = inferFinalMediumFromText(text)
   const projectLengthMinutes = inferProjectLengthMinutes(text)
-  const preferredStartDate = /(?:6月中旬|６月中旬|中旬|6月中頃|６月中頃)/u.test(text) ? "2026-06-15" : undefined
+  const preferredStartDate = inferPreferredStartDate(text)
   const publicReleaseDate = /(?:6月20日|６月２０日|6\/20|06-20)/u.test(text)
     ? "2026-06-20"
     : /(?:月末|6月末|６月末)/u.test(text)
@@ -848,6 +880,31 @@ function inferJobContextFromText(text: string): Partial<JobContext> {
     ...(preferredStartDate ? { preferredStartDate } : {}),
     ...(publicReleaseDate ? { publicReleaseDate } : {}),
   }
+}
+
+function inferPreferredStartDate(text: string): string | undefined {
+  const isoLike = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(20\d{2})[\/.-](\d{1,2})[\/.-](\d{1,2})/u)
+  if (isoLike?.[1] && isoLike[2] && isoLike[3]) return formatIsoDate(isoLike[1], isoLike[2], isoLike[3])
+
+  const slash = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})\/(\d{1,2})/u)
+  if (slash?.[1] && slash[2]) return formatIsoDate("2026", slash[1], slash[2])
+
+  const monthDay = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})月(\d{1,2})日/u)
+  if (monthDay?.[1] && monthDay[2]) return formatIsoDate("2026", monthDay[1], monthDay[2])
+
+  const earlyMonth = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})月上旬/u)
+  if (earlyMonth?.[1]) return formatIsoDate("2026", earlyMonth[1], "1")
+
+  if (/(?:6月中旬|６月中旬|中旬|6月中頃|６月中頃)/u.test(text)) return "2026-06-15"
+  return undefined
+}
+
+function formatIsoDate(year: string, month: string, day: string): string {
+  return [
+    year,
+    month.padStart(2, "0"),
+    day.padStart(2, "0"),
+  ].join("-")
 }
 
 function inferProjectLengthMinutes(text: string): number | undefined {

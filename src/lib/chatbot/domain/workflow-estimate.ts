@@ -39,6 +39,7 @@ export type CandidateWindow = {
   end: string
   label: string
   note?: string
+  available?: boolean
 }
 
 export type JobContext = {

@@ -34,7 +34,8 @@ type ApiResponse = {
 }
 
 const API_PATH = "/api/chatbot/create-booking-from-chat"
-const MAX_VISIBLE_CANDIDATES = 12
+const MAX_VISIBLE_CANDIDATES = 31
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000
 
 function parseApiResponse(value: unknown): ApiResponse {
   if (!value || typeof value !== "object") return {}
@@ -57,38 +58,94 @@ function formatCandidateDate(value: string): string {
   }).format(date)
 }
 
-function formatCandidateTimeRange(candidate: CandidateWindow): string {
-  const start = new Date(candidate.start)
-  const end = new Date(candidate.end)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return candidate.label
-  if (isMultiDayCandidate(start, end)) return "連続日程"
-
-  const formatter = new Intl.DateTimeFormat("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Tokyo",
-  })
-  return `${formatter.format(start)}-${formatter.format(end)}`
-}
-
 function isMultiDayCandidate(start: Date, end: Date): boolean {
   return formatCandidateDate(start.toISOString()) !== formatCandidateDate(end.toISOString())
 }
 
-function buildCandidateSeatMap(candidates: CandidateWindow[]) {
-  const dates = Array.from(new Set(candidates.map((candidate) => formatCandidateDate(candidate.start))))
-  const timeRanges = Array.from(new Set(candidates.map(formatCandidateTimeRange)))
-  const slotByCell = new Map<string, { candidate: CandidateWindow; index: number }>()
+function jstDateKey(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return typeof value === "string" ? value : ""
+  const jst = new Date(date.getTime() + JST_OFFSET_MS)
+  return [
+    String(jst.getUTCFullYear()),
+    String(jst.getUTCMonth() + 1).padStart(2, "0"),
+    String(jst.getUTCDate()).padStart(2, "0"),
+  ].join("-")
+}
+
+function jstDateFromKey(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(Date.UTC(year, month - 1, day) - JST_OFFSET_MS)
+}
+
+function addJstDays(date: Date, days: number): Date {
+  const key = jstDateKey(date)
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days) - JST_OFFSET_MS)
+}
+
+function formatCalendarDayLabel(key: string): string {
+  const date = jstDateFromKey(key)
+  if (Number.isNaN(date.getTime())) return key
+  return new Intl.DateTimeFormat("ja-JP", {
+    day: "numeric",
+    timeZone: "Asia/Tokyo",
+  }).format(date)
+}
+
+function formatCalendarMonthLabel(key: string): string {
+  const date = jstDateFromKey(key)
+  if (Number.isNaN(date.getTime())) return "候補カレンダー"
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "long",
+    timeZone: "Asia/Tokyo",
+  }).format(date)
+}
+
+function buildMonthKeys(candidates: CandidateWindow[]) {
+  const firstKey = candidates[0] ? jstDateKey(candidates[0].start) : jstDateKey(new Date())
+  const firstDate = jstDateFromKey(firstKey)
+  const jst = new Date(firstDate.getTime() + JST_OFFSET_MS)
+  const monthStart = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), 1) - JST_OFFSET_MS)
+  const nextMonthStart = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + 1, 1) - JST_OFFSET_MS)
+  const keys: string[] = []
+
+  for (let cursor = monthStart; cursor.getTime() < nextMonthStart.getTime(); cursor = addJstDays(cursor, 1)) {
+    keys.push(jstDateKey(cursor))
+  }
+
+  return keys
+}
+
+function buildCandidateCalendar(candidates: CandidateWindow[]) {
+  const candidateByStartDate = new Map<string, { candidate: CandidateWindow; index: number }>()
 
   candidates.forEach((candidate, index) => {
-    slotByCell.set(`${formatCandidateDate(candidate.start)}|${formatCandidateTimeRange(candidate)}`, {
-      candidate,
-      index,
-    })
+    if (candidate.available === false) return
+    candidateByStartDate.set(jstDateKey(candidate.start), { candidate, index })
   })
 
-  return { dates, timeRanges, slotByCell }
+  return {
+    monthLabel: formatCalendarMonthLabel(candidates[0]?.start ?? new Date().toISOString()),
+    dayKeys: buildMonthKeys(candidates),
+    candidateByStartDate,
+  }
+}
+
+function selectedDateKeys(candidate: CandidateWindow | null) {
+  if (!candidate) return new Set<string>()
+  const start = new Date(candidate.start)
+  const end = new Date(candidate.end)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return new Set<string>()
+  const keys = new Set<string>()
+  const last = isMultiDayCandidate(start, end) ? addJstDays(end, -1) : start
+
+  for (let cursor = start; cursor.getTime() <= last.getTime(); cursor = addJstDays(cursor, 1)) {
+    keys.add(jstDateKey(cursor))
+  }
+
+  return keys
 }
 
 export function ChatbotBookingCard({
@@ -105,7 +162,7 @@ export function ChatbotBookingCard({
   onRequireLogin,
 }: ChatbotBookingCardProps) {
   const visibleCandidates = useMemo(() => candidates.slice(0, MAX_VISIBLE_CANDIDATES), [candidates])
-  const candidateSeatMap = useMemo(() => buildCandidateSeatMap(visibleCandidates), [visibleCandidates])
+  const candidateCalendar = useMemo(() => buildCandidateCalendar(visibleCandidates), [visibleCandidates])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(visibleCandidates.length === 1 ? 0 : null)
   const [projectTitle, setProjectTitle] = useState(defaultProjectTitle)
   const [dueDate, setDueDate] = useState(defaultDueDate)
@@ -121,6 +178,7 @@ export function ChatbotBookingCard({
   const projectTitleRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedSlot = selectedIndex === null ? null : visibleCandidates[selectedIndex] ?? null
+  const selectedKeys = useMemo(() => selectedDateKeys(selectedSlot), [selectedSlot])
   const canSubmit = Boolean(selectedSlot && projectTitle.trim() && contactName.trim() && agreed && !submitting)
 
   useEffect(() => {
@@ -213,58 +271,69 @@ export function ChatbotBookingCard({
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold text-hp">仮キープ候補</legend>
-          <div className="overflow-x-auto rounded-[16px]" aria-label="仮キープ候補の座席選択">
-            <div
-              className="grid min-w-[520px] gap-2"
-              style={{ gridTemplateColumns: `minmax(5.5rem,0.8fr) repeat(${Math.max(candidateSeatMap.dates.length, 1)}, minmax(8rem,1fr))` }}
-            >
-              <div className="text-xs font-medium text-hp-muted">枠</div>
-              {candidateSeatMap.dates.map((date) => (
-                <div key={date} className="text-center text-xs font-semibold text-hp">
-                  {date}
-                </div>
-              ))}
-              {candidateSeatMap.timeRanges.map((timeRange) => (
-                <div key={timeRange} className="contents">
-                  <div className="flex items-center text-xs font-medium text-hp-muted">{timeRange}</div>
-                  {candidateSeatMap.dates.map((date) => {
-                    const slot = candidateSeatMap.slotByCell.get(`${date}|${timeRange}`)
-                    if (!slot) {
-                      return (
-                        <button
-                          key={`${date}-${timeRange}-empty`}
-                          type="button"
-                          disabled
-                          className="glass-btn min-h-16 px-3 py-2 text-center text-xs opacity-35"
-                          aria-disabled="true"
-                        >
-                          空きなし
-                        </button>
-                      )
-                    }
-
-                    const selected = selectedIndex === slot.index
-                    return (
-                      <button
-                        key={`${slot.candidate.start}-${slot.candidate.end}`}
-                        type="button"
-                        className={[
-                          "glass-btn min-h-16 px-3 py-2 text-center text-sm",
-                          selected ? "border-[var(--accent-primary)] bg-white/75 shadow-[0_0_24px_rgba(139,127,255,0.25)]" : "",
-                        ].join(" ")}
-                        aria-pressed={selected}
-                        onClick={() => setSelectedIndex(slot.index)}
-                      >
-                        <span className="block font-semibold text-hp">{slot.candidate.label}</span>
-                        {slot.candidate.note ? (
-                          <span className="block text-xs font-normal text-hp-muted">{slot.candidate.note}</span>
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
+          <div className="rounded-[16px] border border-white/55 bg-white/35 p-3" aria-label="仮キープ候補のカレンダー選択">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-hp">{candidateCalendar.monthLabel}</p>
+              <p className="text-xs text-hp-muted">空き日だけ選択できます</p>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-hp-muted" aria-hidden="true">
+              {["月", "火", "水", "木", "金", "土", "日"].map((day) => (
+                <span key={day}>{day}</span>
               ))}
             </div>
+            <div className="mt-1.5 grid grid-cols-7 gap-1.5">
+              {candidateCalendar.dayKeys.map((dateKey) => {
+                const slot = candidateCalendar.candidateByStartDate.get(dateKey)
+                const selected = Boolean(slot && selectedIndex === slot.index)
+                const inSelectedRange = selectedKeys.has(dateKey)
+
+                if (!slot) {
+                  return (
+                    <button
+                      key={dateKey}
+                      type="button"
+                      disabled
+                      className={[
+                        "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs text-hp-muted",
+                        inSelectedRange
+                          ? "border-[var(--accent-primary)] bg-white/55 opacity-70"
+                          : "border-white/45 bg-white/25 opacity-35",
+                      ].join(" ")}
+                      data-selected-range={inSelectedRange ? "true" : undefined}
+                      aria-label={`${dateKey} 空きなし`}
+                      aria-disabled="true"
+                    >
+                      {formatCalendarDayLabel(dateKey)}
+                    </button>
+                  )
+                }
+
+                return (
+                  <button
+                    key={dateKey}
+                    type="button"
+                    className={[
+                      "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
+                      selected || inSelectedRange
+                        ? "border-[var(--accent-primary)] bg-white/80 text-hp shadow-[0_0_24px_rgba(117,104,214,0.22)]"
+                        : "border-white/65 bg-white/55 text-hp hover:bg-white/75",
+                    ].join(" ")}
+                    data-selected-range={inSelectedRange ? "true" : undefined}
+                    aria-label={`${dateKey} 空き`}
+                    aria-pressed={selected}
+                    onClick={() => setSelectedIndex(slot.index)}
+                  >
+                    <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
+                    <span className="block text-[10px] text-hp-muted">空き</span>
+                  </button>
+                )
+              })}
+            </div>
+            {selectedSlot ? (
+              <p className="mt-3 text-xs leading-relaxed text-hp-muted" aria-live="polite">
+                選択中: {selectedSlot.label}
+              </p>
+            ) : null}
           </div>
         </fieldset>
 

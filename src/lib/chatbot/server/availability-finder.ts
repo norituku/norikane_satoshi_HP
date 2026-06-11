@@ -39,7 +39,10 @@ export async function findCandidateWindows(args: {
   jobContext: JobContext
   workflowEstimate: WorkflowEstimate
   desiredDeadline?: string
+  notBefore?: string
   lookaheadWeeks?: number
+  candidateLimit?: number
+  busyMode?: "score" | "block"
   now?: Date
   freeBusyFetcher?: FreeBusyFetcher
   attendanceConflictResolver?: AttendanceConflictResolver
@@ -48,7 +51,7 @@ export async function findCandidateWindows(args: {
   assertWorkSite(args.jobContext.workSite, now)
 
   const lookaheadWeeks = args.lookaheadWeeks ?? DEFAULT_LOOKAHEAD_WEEKS
-  const searchFrom = startOfJstDay(now)
+  const searchFrom = maxDate(startOfJstDay(now), args.notBefore ? parseStartDate(args.notBefore) : null)
   const searchTo = new Date(now.getTime() + lookaheadWeeks * 7 * DAY_MS)
   const deadline = args.desiredDeadline ? parseDeadline(args.desiredDeadline) : null
   const neededBusinessDays = Math.max(1, Math.ceil(args.workflowEstimate.totalMinDays))
@@ -65,17 +68,19 @@ export async function findCandidateWindows(args: {
     searchTo,
     neededBusinessDays,
     deadline,
+    busyMode: args.busyMode ?? "score",
     busyIntervals: busyIntervals.map(normalizeInterval).filter(isValidInterval),
     attendanceIntervals: attendanceIntervals.map(normalizeInterval).filter(isValidInterval),
   })
 
   return candidates
     .sort((a, b) => b.score - a.score || a.start.getTime() - b.start.getTime())
-    .slice(0, CANDIDATE_LIMIT)
+    .slice(0, args.candidateLimit ?? CANDIDATE_LIMIT)
     .map((candidate) => ({
       start: candidate.start.toISOString(),
       end: candidate.end.toISOString(),
       label: `${formatJstDate(candidate.start)} - ${formatJstDate(addJstDays(candidate.end, -1))}`,
+      available: true,
       note: [
         `businessDays=${neededBusinessDays}`,
         `busyRatio=${candidate.busyRatio.toFixed(2)}`,
@@ -210,6 +215,21 @@ function parseDeadline(value: string): Date {
   return parsed
 }
 
+function parseStartDate(value: string): Date {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00.000+09:00`)
+    : new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ChatbotAvailabilityError(
+      "work-site-unspecified",
+      "notBefore must be an ISO 8601 string or ISO date string.",
+    )
+  }
+
+  return startOfJstDay(parsed)
+}
+
 type Interval = {
   start: Date
   end: Date
@@ -226,6 +246,7 @@ function buildCandidateWindows(args: {
   searchTo: Date
   neededBusinessDays: number
   deadline: Date | null
+  busyMode: "score" | "block"
   busyIntervals: Interval[]
   attendanceIntervals: Interval[]
 }): ScoredCandidate[] {
@@ -241,6 +262,7 @@ function buildCandidateWindows(args: {
     if (window.end.getTime() > args.searchTo.getTime()) continue
     if (args.deadline && window.end.getTime() > args.deadline.getTime()) continue
     if (args.attendanceIntervals.some((interval) => overlaps(window, interval))) continue
+    if (args.busyMode === "block" && args.busyIntervals.some((interval) => overlaps(window, interval))) continue
 
     const busyMs = args.busyIntervals.reduce((sum, interval) => sum + overlapMs(window, interval), 0)
     const durationMs = window.end.getTime() - window.start.getTime()
@@ -336,6 +358,11 @@ function isBusinessDay(date: Date): boolean {
 function startOfJstDay(date: Date): Date {
   const parts = getJstDateParts(date)
   return jstDate(parts.year, parts.month, parts.day)
+}
+
+function maxDate(a: Date, b: Date | null): Date {
+  if (!b) return a
+  return a.getTime() >= b.getTime() ? a : b
 }
 
 function addJstDays(date: Date, days: number): Date {

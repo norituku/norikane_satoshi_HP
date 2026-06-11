@@ -269,6 +269,9 @@ function shouldPrioritizeSchedule(
     conversationState.hasJobKind &&
     conversationState.hasProjectLength &&
     Boolean(conversationState.hasMaterialHandoff) &&
+    conversationState.hasAdditionalWork &&
+    conversationState.hasWorkSite &&
+    conversationState.hasContactEmail &&
     (conversationState.hasFinalMedium || jobContext.finalMedium === "web") &&
     isCandidateWindowJob(jobContext)
   )
@@ -315,6 +318,7 @@ function buildOneHourCandidateWindows(jobContext: JobContext) {
       start: start.toISOString(),
       end: end.toISOString(),
       label: formatJstOneHourCandidateLabel(start),
+      available: true,
       note: "1時間候補",
     }
   })
@@ -334,6 +338,7 @@ function buildDateCandidateWindows(jobContext: JobContext) {
       start: start.toISOString(),
       end: end.toISOString(),
       label: `${formatJstDateCandidateLabel(start)} - ${formatJstDateCandidateLabel(end)}`,
+      available: true,
       note: `日付候補 / 仮キープ ${neededBusinessDays}営業日`,
     }
   })

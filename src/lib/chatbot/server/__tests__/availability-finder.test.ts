@@ -114,6 +114,39 @@ describe("findCandidateWindows", () => {
     expect(windows).toHaveLength(3)
   })
 
+  it("does not return candidates before the material handoff lower bound", async () => {
+    const windows = await findCandidateWindows({
+      jobContext: jobContext(),
+      workflowEstimate: workflowEstimate(1),
+      notBefore: "2026-07-01",
+      now: new Date("2026-06-15T10:00:00+09:00"),
+      freeBusyFetcher: freeBusy(),
+      attendanceConflictResolver: attendance(),
+    })
+
+    expect(windows).toHaveLength(3)
+    expect(windows.every((window) => new Date(window.start) >= new Date("2026-06-30T15:00:00.000Z"))).toBe(true)
+    expect(windows.map((window) => window.label)).not.toContain("2026-06-15 - 2026-06-15")
+  })
+
+  it("blocks starts whose continuous keep range overlaps calendar busy slots", async () => {
+    const windows = await findCandidateWindows({
+      jobContext: jobContext(),
+      workflowEstimate: workflowEstimate(2),
+      now: NOW_AFTER_STUDIO,
+      busyMode: "block",
+      freeBusyFetcher: freeBusy([
+        {
+          start: "2026-10-01T15:00:00.000Z",
+          end: "2026-10-02T15:00:00.000Z",
+        },
+      ]),
+      attendanceConflictResolver: attendance(),
+    })
+
+    expect(windows[0]?.label).toBe("2026-10-05 - 2026-10-06")
+  })
+
   it("filters out windows that end after desiredDeadline", async () => {
     const windows = await findCandidateWindows({
       jobContext: jobContext(),

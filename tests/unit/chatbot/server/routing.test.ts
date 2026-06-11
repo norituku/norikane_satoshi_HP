@@ -316,7 +316,7 @@ describe("chatbot fallback router", () => {
     })
   })
 
-  it("keeps the tight deadline boundary inclusive and the next day as continue", () => {
+  it("keeps the tight deadline boundary inclusive and requires contact before booking on the next day", () => {
     const boundary = decideRoutingFallback({
       jobContext: jobContext(),
       conversationState: conversationState({ daysUntilStart: tightDeadlineThresholdDays }),
@@ -334,7 +334,7 @@ describe("chatbot fallback router", () => {
       reason: "tight-deadline",
     })
     expect(nextDay).toMatchObject({
-      kind: "to-booking-inline",
+      kind: "continue",
     })
   })
 

@@ -71,19 +71,19 @@ describe("ChatbotBookingCard", () => {
     renderCard()
 
     expect(screen.getByText("候補日時から予約する")).toBeInTheDocument()
-    expect(screen.getByLabelText("仮キープ候補の座席選択")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /6月10日 午前/ })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "6月11日 午後" })).toBeInTheDocument()
+    expect(screen.getByLabelText("仮キープ候補のカレンダー選択")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "2026-06-10 空き" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "2026-06-11 空き" })).toBeInTheDocument()
     expect(screen.getByLabelText("会社名（任意）")).toHaveValue("株式会社サンプル")
     expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("田中")
     expect(screen.getByPlaceholderText("作品名または案件名（イニシャル表記も可）")).toBeInTheDocument()
     expect(screen.getByText("利用規約と予約内容に同意します（必須）。")).toBeInTheDocument()
   })
 
-  it("renders unavailable candidate cells as disabled seat cells", () => {
+  it("renders unavailable calendar days as disabled cells", () => {
     renderCard()
 
-    const unavailableCells = screen.getAllByRole("button", { name: "空きなし" })
+    const unavailableCells = screen.getAllByRole("button", { name: /空きなし/ })
     expect(unavailableCells.length).toBeGreaterThan(0)
     expect(unavailableCells[0]).toBeDisabled()
   })
@@ -100,10 +100,26 @@ describe("ChatbotBookingCard", () => {
       ],
     })
 
-    const candidate = screen.getByRole("button", { name: /6月14日 - 6月23日/ })
-    expect(screen.getByText("連続日程")).toBeInTheDocument()
+    const candidate = screen.getByRole("button", { name: "2026-06-14 空き" })
     expect(candidate).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByText("日付候補 / 仮キープ 8営業日")).toBeInTheDocument()
+    expect(screen.getByText("選択中: 6月14日 - 6月23日")).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-selected-range="true"]').length).toBeGreaterThan(1)
+  })
+
+  it("does not render internal candidate notes or booking names in the calendar UI", () => {
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-14T01:00:00.000Z",
+          end: "2026-06-15T09:00:00.000Z",
+          label: "6月14日 - 6月15日",
+          note: "Existing booking: Secret Client Project",
+        },
+      ],
+    })
+
+    expect(screen.getByRole("button", { name: "2026-06-14 空き" })).toBeInTheDocument()
+    expect(screen.queryByText(/Secret Client Project/)).not.toBeInTheDocument()
   })
 
   it("prefills supplemental notes without mixing them into identity fields", () => {
@@ -135,7 +151,7 @@ describe("ChatbotBookingCard", () => {
     const fetchMock = mockFetch(200, { bookingGroupId: "group_1", bookingIds: ["slot_1"] })
     renderCard()
 
-    fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-10 空き" }))
     fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
@@ -178,7 +194,7 @@ describe("ChatbotBookingCard", () => {
     const onRequireLogin = vi.fn()
     renderCard({ onRequireLogin })
 
-    fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-10 空き" }))
     fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
@@ -192,7 +208,7 @@ describe("ChatbotBookingCard", () => {
     const onBooked = vi.fn()
     renderCard({ onBooked })
 
-    fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-10 空き" }))
     fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
