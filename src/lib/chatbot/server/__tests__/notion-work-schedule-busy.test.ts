@@ -108,6 +108,56 @@ describe("getNotionWorkScheduleBusyIntervals", () => {
     ])
   })
 
+  it("keeps a near-midnight timed row on the same JST calendar date", async () => {
+    mocks.query.mockResolvedValueOnce({
+      results: [
+        page("near-midnight", {
+          start: "2026-06-30T23:30:00+09:00",
+          end: null,
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    await expect(
+      getNotionWorkScheduleBusyIntervals({
+        from: "2026-06-30T00:00:00.000Z",
+        to: "2026-07-01T15:00:00.000Z",
+      }),
+    ).resolves.toEqual([
+      {
+        start: "2026-06-30T14:30:00.000Z",
+        end: "2026-06-30T15:00:00.000Z",
+      },
+    ])
+  })
+
+  it("keeps a timed range precise across the JST month boundary", async () => {
+    mocks.query.mockResolvedValueOnce({
+      results: [
+        page("month-boundary", {
+          start: "2026-06-30T23:30:00+09:00",
+          end: "2026-07-01T00:30:00+09:00",
+        }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    await expect(
+      getNotionWorkScheduleBusyIntervals({
+        from: "2026-06-30T00:00:00.000Z",
+        to: "2026-07-01T15:00:00.000Z",
+      }),
+    ).resolves.toEqual([
+      {
+        start: "2026-06-30T14:30:00.000Z",
+        end: "2026-06-30T15:30:00.000Z",
+      },
+    ])
+  })
+
   it("does not expose work row names or customer fields", async () => {
     mocks.query.mockResolvedValueOnce({
       results: [

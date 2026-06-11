@@ -33,6 +33,14 @@ const estimate: WorkflowEstimate = {
   riskFlags: [],
 }
 
+const jobContext = {
+  jobKind: "cm-30s",
+  finalMedium: "web",
+  workSite: "remote-grading",
+  documentaryAttachment: { kind: "none" },
+  workflowEstimate: estimate,
+} satisfies ComponentProps<typeof ChatbotBookingCard>["jobContext"]
+
 function mockFetch(status: number, body: unknown) {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
@@ -88,6 +96,85 @@ describe("ChatbotBookingCard", () => {
     expect(unavailableCells[0]).toBeDisabled()
   })
 
+  it("aligns month dates to the weekday header instead of starting every month at Monday", () => {
+    renderCard({
+      candidates: [
+        {
+          start: "2026-08-03T01:00:00.000Z",
+          end: "2026-08-03T02:00:00.000Z",
+          label: "8月3日 午前",
+        },
+      ],
+    })
+
+    const grid = screen.getByTestId("chatbot-booking-month-grid")
+    expect(screen.getByText("2026年8月")).toBeInTheDocument()
+    expect(grid.children[5]).toHaveAttribute("aria-label", "2026-08-01 空きなし")
+    expect(grid.children[7]).toHaveAttribute("aria-label", "2026-08-03 空き")
+  })
+
+  it("shows the month header and limits navigation to one month before or after the initial month", () => {
+    renderCard()
+
+    const previous = screen.getByRole("button", { name: "前月を表示" })
+    const next = screen.getByRole("button", { name: "翌月を表示" })
+    expect(screen.getByText("2026年6月")).toBeInTheDocument()
+    expect(previous).toBeEnabled()
+    expect(next).toBeEnabled()
+
+    fireEvent.click(previous)
+    expect(screen.getByText("2026年5月")).toBeInTheDocument()
+    expect(previous).toBeDisabled()
+
+    fireEvent.click(next)
+    fireEvent.click(next)
+    expect(screen.getByText("2026年7月")).toBeInTheDocument()
+    expect(next).toBeDisabled()
+  })
+
+  it("loads candidates for the displayed month when navigating forward", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/api/chatbot/booking-candidates") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            candidates: [
+              {
+                start: "2026-07-03T01:00:00.000Z",
+                end: "2026-07-03T02:00:00.000Z",
+                label: "7月3日 午前",
+              },
+            ],
+          }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ bookingGroupId: "group_1", bookingIds: ["slot_1"] }),
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderCard({ jobContext })
+    fireEvent.click(screen.getByRole("button", { name: "翌月を表示" }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/chatbot/booking-candidates",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: expect.any(String),
+        }),
+      )
+    })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ month: "2026-07" })
+    expect(await screen.findByRole("button", { name: "2026-07-03 空き" })).toBeInTheDocument()
+  })
+
   it("renders multi-day date candidates as keepable continuous seats", () => {
     renderCard({
       candidates: [
@@ -104,6 +191,25 @@ describe("ChatbotBookingCard", () => {
     expect(candidate).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByText("選択中: 6月14日 - 6月23日")).toBeInTheDocument()
     expect(document.querySelectorAll('[data-selected-range="true"]').length).toBeGreaterThan(1)
+  })
+
+  it("keeps a selected range visible when navigating across months", () => {
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-30T01:00:00.000Z",
+          end: "2026-07-04T09:00:00.000Z",
+          label: "6月30日 - 7月4日",
+          note: "日付候補 / 仮キープ",
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-30 空き" }))
+    fireEvent.click(screen.getByRole("button", { name: "翌月を表示" }))
+
+    expect(screen.getByText("選択中: 6月30日 - 7月4日")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "2026-07-01 空きなし" })).toHaveAttribute("data-selected-range", "true")
   })
 
   it("does not render internal candidate notes or booking names in the calendar UI", () => {

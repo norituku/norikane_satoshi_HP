@@ -774,9 +774,11 @@ function ActiveWidgetUi({
   if (ui.kind === "booking-card") {
     return (
       <ChatbotBookingCard
+        key={ui.suggestedSlots.map((slot) => slot.start).join("|")}
         conversationId={conversationId}
         candidates={ui.suggestedSlots}
         estimate={ui.jobContext.workflowEstimate}
+        jobContext={ui.jobContext}
         defaultContactName={cleanDefaultContactValue(ui.conversationState?.customerName, "person")}
         defaultCompanyName={cleanDefaultContactValue(ui.conversationState?.companyName, "company")}
         defaultDueDate={ui.jobContext.publicReleaseDate}

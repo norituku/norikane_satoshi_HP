@@ -1,12 +1,13 @@
 "use client"
 
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { DemoStage } from "@/components/chatbot/demo"
 import { ChatbotLoginCard } from "@/components/chatbot/widget/ChatbotLoginCard"
 import { mapErrorCodeToJa } from "@/lib/booking/domain/api-schema"
 import { bookingOnboardingDemoScript } from "@/lib/chatbot/demo"
-import type { CandidateWindow, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
+import type { CandidateWindow, JobContext, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
 
 type BookingResult = {
   bookingGroupId: string
@@ -16,6 +17,7 @@ type BookingResult = {
 type ChatbotBookingCardProps = {
   conversationId?: string
   estimate?: WorkflowEstimate
+  jobContext?: JobContext
   candidates: CandidateWindow[]
   defaultProjectTitle?: string
   defaultContactName?: string
@@ -33,7 +35,12 @@ type ApiResponse = {
   bookingIds?: string[]
 }
 
+type CandidatesApiResponse = {
+  candidates?: CandidateWindow[]
+}
+
 const API_PATH = "/api/chatbot/create-booking-from-chat"
+const CANDIDATES_API_PATH = "/api/chatbot/booking-candidates"
 const MAX_VISIBLE_CANDIDATES = 31
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
 
@@ -94,7 +101,7 @@ function formatCalendarDayLabel(key: string): string {
 }
 
 function formatCalendarMonthLabel(key: string): string {
-  const date = jstDateFromKey(key)
+  const date = /^\d{4}-\d{2}$/.test(key) ? jstDateFromKey(`${key}-01`) : jstDateFromKey(key)
   if (Number.isNaN(date.getTime())) return "候補カレンダー"
   return new Intl.DateTimeFormat("ja-JP", {
     year: "numeric",
@@ -103,22 +110,43 @@ function formatCalendarMonthLabel(key: string): string {
   }).format(date)
 }
 
-function buildMonthKeys(candidates: CandidateWindow[]) {
-  const firstKey = candidates[0] ? jstDateKey(candidates[0].start) : jstDateKey(new Date())
-  const firstDate = jstDateFromKey(firstKey)
-  const jst = new Date(firstDate.getTime() + JST_OFFSET_MS)
-  const monthStart = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), 1) - JST_OFFSET_MS)
-  const nextMonthStart = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + 1, 1) - JST_OFFSET_MS)
-  const keys: string[] = []
-
-  for (let cursor = monthStart; cursor.getTime() < nextMonthStart.getTime(); cursor = addJstDays(cursor, 1)) {
-    keys.push(jstDateKey(cursor))
-  }
-
-  return keys
+function jstMonthKey(value: string | Date): string {
+  return jstDateKey(value).slice(0, 7)
 }
 
-function buildCandidateCalendar(candidates: CandidateWindow[]) {
+function addJstMonths(monthKey: string, months: number): string {
+  const [year, month] = monthKey.split("-").map(Number)
+  const date = new Date(Date.UTC(year, month - 1 + months, 1) - JST_OFFSET_MS)
+  return jstMonthKey(date)
+}
+
+function getJstWeekday(date: Date): number {
+  return new Date(date.getTime() + JST_OFFSET_MS).getUTCDay()
+}
+
+function buildMonthCells(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number)
+  const monthStart = new Date(Date.UTC(year, month - 1, 1) - JST_OFFSET_MS)
+  const nextMonthStart = new Date(Date.UTC(year, month, 1) - JST_OFFSET_MS)
+  const cells: Array<string | null> = []
+  const leadingBlanks = (getJstWeekday(monthStart) + 6) % 7
+
+  for (let i = 0; i < leadingBlanks; i += 1) {
+    cells.push(null)
+  }
+
+  for (let cursor = monthStart; cursor.getTime() < nextMonthStart.getTime(); cursor = addJstDays(cursor, 1)) {
+    cells.push(jstDateKey(cursor))
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null)
+  }
+
+  return cells
+}
+
+function buildCandidateCalendar(monthKey: string, candidates: CandidateWindow[]) {
   const candidateByStartDate = new Map<string, { candidate: CandidateWindow; index: number }>()
 
   candidates.forEach((candidate, index) => {
@@ -127,8 +155,8 @@ function buildCandidateCalendar(candidates: CandidateWindow[]) {
   })
 
   return {
-    monthLabel: formatCalendarMonthLabel(candidates[0]?.start ?? new Date().toISOString()),
-    dayKeys: buildMonthKeys(candidates),
+    monthLabel: formatCalendarMonthLabel(monthKey),
+    dayCells: buildMonthCells(monthKey),
     candidateByStartDate,
   }
 }
@@ -151,6 +179,7 @@ function selectedDateKeys(candidate: CandidateWindow | null) {
 export function ChatbotBookingCard({
   conversationId,
   estimate,
+  jobContext,
   candidates,
   defaultProjectTitle = "",
   defaultContactName = "",
@@ -162,8 +191,26 @@ export function ChatbotBookingCard({
   onRequireLogin,
 }: ChatbotBookingCardProps) {
   const visibleCandidates = useMemo(() => candidates.slice(0, MAX_VISIBLE_CANDIDATES), [candidates])
-  const candidateCalendar = useMemo(() => buildCandidateCalendar(visibleCandidates), [visibleCandidates])
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(visibleCandidates.length === 1 ? 0 : null)
+  const initialMonthKey = useMemo(
+    () => jstMonthKey(visibleCandidates[0]?.start ?? new Date()),
+    [visibleCandidates],
+  )
+  const [displayedMonthOffset, setDisplayedMonthOffset] = useState(0)
+  const displayedMonthKey = useMemo(
+    () => addJstMonths(initialMonthKey, displayedMonthOffset),
+    [displayedMonthOffset, initialMonthKey],
+  )
+  const [monthCandidateOverrides, setMonthCandidateOverrides] = useState<Record<string, CandidateWindow[]>>({})
+  const displayedCandidates = useMemo(
+    () => monthCandidateOverrides[displayedMonthKey] ?? visibleCandidates.filter((candidate) => jstMonthKey(candidate.start) === displayedMonthKey),
+    [displayedMonthKey, monthCandidateOverrides, visibleCandidates],
+  )
+  const candidateCalendar = useMemo(
+    () => buildCandidateCalendar(displayedMonthKey, displayedCandidates),
+    [displayedCandidates, displayedMonthKey],
+  )
+  const [selectedSlot, setSelectedSlot] = useState<CandidateWindow | null>(visibleCandidates.length === 1 ? visibleCandidates[0] : null)
+  const [monthLoadError, setMonthLoadError] = useState<string | null>(null)
   const [projectTitle, setProjectTitle] = useState(defaultProjectTitle)
   const [dueDate, setDueDate] = useState(defaultDueDate)
   const [companyName, setCompanyName] = useState(defaultCompanyName)
@@ -177,9 +224,45 @@ export function ChatbotBookingCard({
   const [booked, setBooked] = useState<BookingResult | null>(null)
   const projectTitleRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const selectedSlot = selectedIndex === null ? null : visibleCandidates[selectedIndex] ?? null
   const selectedKeys = useMemo(() => selectedDateKeys(selectedSlot), [selectedSlot])
   const canSubmit = Boolean(selectedSlot && projectTitle.trim() && contactName.trim() && agreed && !submitting)
+
+  useEffect(() => {
+    if (displayedMonthOffset === 0) return
+    if (!jobContext || !estimate) return
+    if (monthCandidateOverrides[displayedMonthKey]) return
+
+    let cancelled = false
+
+    fetch(CANDIDATES_API_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobContext,
+        workflowEstimate: estimate,
+        month: displayedMonthKey,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("booking_candidates_failed")
+        return (await response.json()) as CandidatesApiResponse
+      })
+      .then((payload) => {
+        if (cancelled) return
+        setMonthCandidateOverrides((current) => ({
+          ...current,
+          [displayedMonthKey]: Array.isArray(payload.candidates) ? payload.candidates.slice(0, MAX_VISIBLE_CANDIDATES) : [],
+        }))
+        setMonthLoadError(null)
+      })
+      .catch(() => {
+        if (!cancelled) setMonthLoadError("候補の読み込みに失敗しました")
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [displayedMonthKey, displayedMonthOffset, estimate, jobContext, monthCandidateOverrides])
 
   useEffect(() => {
     const textarea = projectTitleRef.current
@@ -213,6 +296,7 @@ export function ChatbotBookingCard({
             start: selectedSlot.start,
             end: selectedSlot.end,
           },
+          jobContext,
           workflowEstimate: estimate,
         }),
       })
@@ -273,18 +357,45 @@ export function ChatbotBookingCard({
           <legend className="text-sm font-semibold text-hp">仮キープ候補</legend>
           <div className="rounded-[16px] border border-white/55 bg-white/35 p-3" aria-label="仮キープ候補のカレンダー選択">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-hp">{candidateCalendar.monthLabel}</p>
+              <button
+                type="button"
+                className="glass-btn flex h-9 w-9 items-center justify-center disabled:opacity-35"
+                aria-label="前月を表示"
+                disabled={displayedMonthOffset <= -1}
+                onClick={() => setDisplayedMonthOffset((value) => Math.max(-1, value - 1))}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <p className="text-sm font-semibold text-hp" aria-live="polite">{candidateCalendar.monthLabel}</p>
+              <button
+                type="button"
+                className="glass-btn flex h-9 w-9 items-center justify-center disabled:opacity-35"
+                aria-label="翌月を表示"
+                disabled={displayedMonthOffset >= 1}
+                onClick={() => setDisplayedMonthOffset((value) => Math.min(1, value + 1))}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-xs text-hp-muted">空き日だけ選択できます</p>
+              {monthLoadError ? (
+                <p className="text-xs text-red-500" role="alert">{monthLoadError}</p>
+              ) : null}
             </div>
             <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-hp-muted" aria-hidden="true">
               {["月", "火", "水", "木", "金", "土", "日"].map((day) => (
                 <span key={day}>{day}</span>
               ))}
             </div>
-            <div className="mt-1.5 grid grid-cols-7 gap-1.5">
-              {candidateCalendar.dayKeys.map((dateKey) => {
+            <div className="mt-1.5 grid grid-cols-7 gap-1.5" data-testid="chatbot-booking-month-grid">
+              {candidateCalendar.dayCells.map((dateKey, cellIndex) => {
+                if (!dateKey) {
+                  return <span key={`blank-${cellIndex}`} aria-hidden="true" />
+                }
+
                 const slot = candidateCalendar.candidateByStartDate.get(dateKey)
-                const selected = Boolean(slot && selectedIndex === slot.index)
+                const selected = Boolean(slot && selectedSlot?.start === slot.candidate.start)
                 const inSelectedRange = selectedKeys.has(dateKey)
 
                 if (!slot) {
@@ -321,7 +432,7 @@ export function ChatbotBookingCard({
                     data-selected-range={inSelectedRange ? "true" : undefined}
                     aria-label={`${dateKey} 空き`}
                     aria-pressed={selected}
-                    onClick={() => setSelectedIndex(slot.index)}
+                    onClick={() => setSelectedSlot(slot.candidate)}
                   >
                     <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
                     <span className="block text-[10px] text-hp-muted">空き</span>
