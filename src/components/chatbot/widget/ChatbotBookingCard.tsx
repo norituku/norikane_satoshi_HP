@@ -131,7 +131,7 @@ function buildMonthCells(monthKey: string) {
   const monthStart = new Date(Date.UTC(year, month - 1, 1) - JST_OFFSET_MS)
   const nextMonthStart = new Date(Date.UTC(year, month, 1) - JST_OFFSET_MS)
   const cells: Array<string | null> = []
-  const leadingBlanks = (getJstWeekday(monthStart) + 6) % 7
+  const leadingBlanks = getJstWeekday(monthStart)
 
   for (let i = 0; i < leadingBlanks; i += 1) {
     cells.push(null)
@@ -388,14 +388,17 @@ export function ChatbotBookingCard({
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold text-hp" aria-live="polite">{selectedSlots.length}／{requiredDays}</p>
+            <div className="mb-3 flex min-h-4 items-center justify-end gap-3">
               {monthLoadError ? (
                 <p className="text-xs text-red-500" role="alert">{monthLoadError}</p>
               ) : null}
             </div>
-            <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-hp-muted" aria-hidden="true">
-              {["月", "火", "水", "木", "金", "土", "日"].map((day) => (
+            <div
+              className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-hp-muted"
+              aria-hidden="true"
+              data-testid="chatbot-booking-weekday-header"
+            >
+              {["日", "月", "火", "水", "木", "金", "土"].map((day) => (
                 <span key={day}>{day}</span>
               ))}
             </div>

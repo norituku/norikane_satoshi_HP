@@ -204,7 +204,7 @@ describe("chatbot fallback router", () => {
     expect(result).toMatchObject({
       kind: "to-booking-inline",
       suggestedSlots: expect.arrayContaining([
-        expect.objectContaining({ note: "日付候補 / 仮キープ 7営業日" }),
+        expect.objectContaining({ note: "日付候補 / 仮キープ 7日" }),
       ]),
       jobContext: expect.objectContaining({
         workflowEstimate: expect.objectContaining({
@@ -242,7 +242,7 @@ describe("chatbot fallback router", () => {
       suggestedSlots: expect.arrayContaining([
         expect.objectContaining({
           label: expect.stringContaining(" - "),
-          note: "日付候補 / 仮キープ 9営業日",
+          note: "日付候補 / 仮キープ 9日",
         }),
       ]),
       jobContext: expect.objectContaining({

@@ -159,8 +159,8 @@ describe("findCandidateWindows", () => {
 
     expect(windows.map((window) => window.label)).toEqual([
       "2026-10-01 単日",
-      "2026-10-05 単日",
-      "2026-10-06 単日",
+      "2026-10-03 単日",
+      "2026-10-04 単日",
     ])
   })
 
@@ -190,7 +190,7 @@ describe("findCandidateWindows", () => {
     expect(windows).toEqual([])
   })
 
-  it("rounds totalMinDays up to business days", async () => {
+  it("rounds totalMinDays up to required days", async () => {
     const windows = await findCandidateWindows({
       jobContext: jobContext(),
       workflowEstimate: workflowEstimate(1.2),
@@ -202,7 +202,7 @@ describe("findCandidateWindows", () => {
     expect(windows[0]?.label).toBe("2026-10-01 単日")
   })
 
-  it("skips Saturday and Sunday as selectable days", async () => {
+  it("includes Saturday and Sunday as selectable days", async () => {
     const windows = await findCandidateWindows({
       jobContext: jobContext(),
       workflowEstimate: workflowEstimate(2),
@@ -211,7 +211,11 @@ describe("findCandidateWindows", () => {
       attendanceConflictResolver: attendance(),
     })
 
-    expect(windows.slice(0, 2).map((window) => window.label)).toEqual(["2026-10-02 単日", "2026-10-05 単日"])
+    expect(windows.slice(0, 3).map((window) => window.label)).toEqual([
+      "2026-10-02 単日",
+      "2026-10-03 単日",
+      "2026-10-04 単日",
+    ])
   })
 
   it("uses an 8 week default lookahead", async () => {
@@ -287,7 +291,7 @@ describe("findCandidateWindows", () => {
       attendanceConflictResolver: attendance(),
     })
 
-    expect(windows[0]?.note).toContain("businessDays=1")
+    expect(windows[0]?.note).toContain("requiredDays=1")
     expect(windows[0]?.note).toContain("busyRatio=0.00")
     expect(windows[0]?.note).toContain("deadlineSlackDays=")
     expect(windows[0]?.note).toContain("attendanceConflicts=0")

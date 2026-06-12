@@ -329,45 +329,31 @@ function buildDateCandidateWindows(jobContext: JobContext) {
   const base = new Date(`${startDate}T10:00:00+09:00`)
   const offsets = [0, 1, 2]
   const estimate = jobContext.workflowEstimate ?? buildWorkflowEstimate(jobContext)
-  const neededBusinessDays = Math.max(1, Math.ceil(estimate.totalMinDays))
+  const neededDays = Math.max(1, Math.ceil(estimate.totalMinDays))
 
   return offsets.map((offset) => {
-    const start = nextBusinessDay(new Date(base.getTime() + offset * 24 * 60 * 60 * 1000))
-    const end = endOfBusinessWindow(start, neededBusinessDays)
+    const start = new Date(base.getTime() + offset * 24 * 60 * 60 * 1000)
+    const end = endOfDateWindow(start, neededDays)
     return {
       start: start.toISOString(),
       end: end.toISOString(),
       label: `${formatJstDateCandidateLabel(start)} - ${formatJstDateCandidateLabel(end)}`,
       available: true,
-      note: `日付候補 / 仮キープ ${neededBusinessDays}営業日`,
+      note: `日付候補 / 仮キープ ${neededDays}日`,
     }
   })
 }
 
-function endOfBusinessWindow(start: Date, neededBusinessDays: number): Date {
+function endOfDateWindow(start: Date, neededDays: number): Date {
   let cursor = start
   let counted = 0
 
-  while (counted < neededBusinessDays) {
-    if (isBusinessDay(cursor)) counted += 1
-    if (counted < neededBusinessDays) cursor = addJstDays(cursor, 1)
+  while (counted < neededDays) {
+    counted += 1
+    if (counted < neededDays) cursor = addJstDays(cursor, 1)
   }
 
   return new Date(cursor.getTime() + 8 * 60 * 60 * 1000)
-}
-
-function nextBusinessDay(date: Date): Date {
-  let cursor = date
-  while (!isBusinessDay(cursor)) {
-    cursor = addJstDays(cursor, 1)
-  }
-  return cursor
-}
-
-function isBusinessDay(date: Date): boolean {
-  const jstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000)
-  const day = jstDate.getUTCDay()
-  return day !== 0 && day !== 6
 }
 
 function addJstDays(date: Date, days: number): Date {

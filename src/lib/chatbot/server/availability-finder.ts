@@ -64,7 +64,7 @@ export async function findCandidateCalendar(args: CandidateSearchArgs): Promise<
   const searchFrom = maxDate(startOfJstDay(now), args.notBefore ? parseStartDate(args.notBefore) : null)
   const searchTo = new Date(now.getTime() + lookaheadWeeks * 7 * DAY_MS)
   const deadline = args.desiredDeadline ? parseDeadline(args.desiredDeadline) : null
-  const neededBusinessDays = Math.max(1, Math.ceil(args.workflowEstimate.totalMinDays))
+  const neededDays = Math.max(1, Math.ceil(args.workflowEstimate.totalMinDays))
   const fetcher = args.freeBusyFetcher ?? defaultFreeBusyFetcher
   const resolver = args.attendanceConflictResolver ?? defaultAttendanceConflictResolver
 
@@ -77,7 +77,6 @@ export async function findCandidateCalendar(args: CandidateSearchArgs): Promise<
   const candidates = buildCandidateWindows({
     searchFrom,
     searchTo,
-    neededBusinessDays,
     deadline,
     busyMode: args.busyMode ?? "score",
     busyIntervals: normalizedBusyIntervals,
@@ -94,7 +93,7 @@ export async function findCandidateCalendar(args: CandidateSearchArgs): Promise<
         label: `${formatJstDate(candidate.start)} 単日`,
         available: true,
         note: [
-          `businessDays=${neededBusinessDays}`,
+          `requiredDays=${neededDays}`,
           `busyRatio=${candidate.busyRatio.toFixed(2)}`,
           deadline ? `deadlineSlackDays=${candidate.deadlineSlackDays.toFixed(1)}` : null,
           "attendanceConflicts=0",
@@ -214,7 +213,6 @@ type ScoredCandidate = Interval & {
 function buildCandidateWindows(args: {
   searchFrom: Date
   searchTo: Date
-  neededBusinessDays: number
   deadline: Date | null
   busyMode: "score" | "block"
   busyIntervals: Interval[]
@@ -226,8 +224,6 @@ function buildCandidateWindows(args: {
     cursor.getTime() < args.searchTo.getTime();
     cursor = addJstDays(cursor, 1)
   ) {
-    if (!isBusinessDay(cursor)) continue
-
     const window = createDayWindow(cursor)
     if (window.end.getTime() > args.searchTo.getTime()) continue
     if (args.deadline && window.end.getTime() > args.deadline.getTime()) continue
@@ -328,11 +324,6 @@ function overlapMs(a: Interval, b: Interval): number {
   return Math.max(0, Math.min(a.end.getTime(), b.end.getTime()) - Math.max(a.start.getTime(), b.start.getTime()))
 }
 
-function isBusinessDay(date: Date): boolean {
-  const day = getJstDay(date)
-  return day !== 0 && day !== 6
-}
-
 function startOfJstDay(date: Date): Date {
   const parts = getJstDateParts(date)
   return jstDate(parts.year, parts.month, parts.day)
@@ -350,10 +341,6 @@ function addJstDays(date: Date, days: number): Date {
 
 function jstDate(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month - 1, day) - JST_OFFSET_MS)
-}
-
-function getJstDay(date: Date): number {
-  return new Date(date.getTime() + JST_OFFSET_MS).getUTCDay()
 }
 
 function getJstDateParts(date: Date): { year: number; month: number; day: number } {

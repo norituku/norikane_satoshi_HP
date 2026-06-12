@@ -114,7 +114,37 @@ describe("ChatbotBookingCard", () => {
     expect(document.body).not.toHaveTextContent("Customer")
   })
 
-  it("aligns month dates to the weekday header instead of starting every month at Monday", () => {
+  it("renders the calendar with a Sunday-start weekday header", () => {
+    renderCard()
+
+    const header = screen.getByTestId("chatbot-booking-weekday-header")
+    expect(Array.from(header.children).map((child) => child.textContent)).toEqual(["日", "月", "火", "水", "木", "金", "土"])
+  })
+
+  it.each([
+    ["2026-02", "2026-02-01", 0],
+    ["2026-06", "2026-06-01", 1],
+    ["2026-09", "2026-09-01", 2],
+    ["2026-04", "2026-04-01", 3],
+    ["2026-01", "2026-01-01", 4],
+    ["2026-05", "2026-05-01", 5],
+    ["2026-08", "2026-08-01", 6],
+  ])("aligns %s month dates to the Sunday-start weekday header", (_month, firstDay, expectedIndex) => {
+    renderCard({
+      candidates: [
+        {
+          start: `${firstDay}T01:00:00.000Z`,
+          end: `${firstDay}T02:00:00.000Z`,
+          label: `${firstDay} 午前`,
+        },
+      ],
+    })
+
+    const grid = screen.getByTestId("chatbot-booking-month-grid")
+    expect(grid.children[expectedIndex]).toHaveAttribute("aria-label", `${firstDay} 選択可`)
+  })
+
+  it("aligns month dates to the Sunday-start weekday header instead of starting every month at Monday", () => {
     renderCard({
       candidates: [
         {
@@ -127,8 +157,8 @@ describe("ChatbotBookingCard", () => {
 
     const grid = screen.getByTestId("chatbot-booking-month-grid")
     expect(screen.getByText("2026年8月")).toBeInTheDocument()
-    expect(grid.children[5]).toHaveAttribute("aria-label", "2026-08-01 空き・開始不可")
-    expect(grid.children[7]).toHaveAttribute("aria-label", "2026-08-03 選択可")
+    expect(grid.children[6]).toHaveAttribute("aria-label", "2026-08-01 空き・開始不可")
+    expect(grid.children[8]).toHaveAttribute("aria-label", "2026-08-03 選択可")
   })
 
   it("shows the month header and limits navigation to one month before or after the initial month", () => {
@@ -217,7 +247,31 @@ describe("ChatbotBookingCard", () => {
 
     expect(screen.getByRole("button", { name: "2026-06-10 選択可" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "2026-06-12 選択可" })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getAllByText("2／2").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("2／2")).toHaveLength(1)
+  })
+
+  it("allows Saturday and Sunday selections and counts them toward the required days", () => {
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-13T01:00:00.000Z",
+          end: "2026-06-14T01:00:00.000Z",
+          label: "6月13日 単日",
+        },
+        {
+          start: "2026-06-14T01:00:00.000Z",
+          end: "2026-06-15T01:00:00.000Z",
+          label: "6月14日 単日",
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-13 選択可" }))
+    fireEvent.click(screen.getByRole("button", { name: "2026-06-14 選択可" }))
+
+    expect(screen.getByRole("button", { name: "2026-06-13 選択可" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "2026-06-14 選択可" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getAllByText("2／2")).toHaveLength(1)
   })
 
   it("keeps disjoint selected days visible when navigating across months", () => {
@@ -240,7 +294,7 @@ describe("ChatbotBookingCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "翌月を表示" }))
     fireEvent.click(screen.getByRole("button", { name: "2026-07-01 選択可" }))
 
-    expect(screen.getAllByText("2／2").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("2／2")).toHaveLength(1)
     expect(screen.getByRole("button", { name: "2026-07-01 選択可" })).toHaveAttribute("data-selected", "true")
   })
 
