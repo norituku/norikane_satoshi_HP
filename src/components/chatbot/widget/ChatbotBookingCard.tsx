@@ -194,7 +194,8 @@ export function ChatbotBookingCard({
     [visibleCandidates],
   )
   const [displayedMonthOffset, setDisplayedMonthOffset] = useState(0)
-  const requiredDays = requiredDayCount(estimate)
+  const effectiveEstimate = estimate ?? jobContext?.workflowEstimate
+  const requiredDays = requiredDayCount(effectiveEstimate)
   const displayedMonthKey = useMemo(
     () => addJstMonths(initialMonthKey, displayedMonthOffset),
     [displayedMonthOffset, initialMonthKey],
@@ -236,7 +237,7 @@ export function ChatbotBookingCard({
   const canSubmit = Boolean(selectedSlots.length === requiredDays && projectTitle.trim() && contactName.trim() && agreed && !submitting)
 
   useEffect(() => {
-    if (!jobContext || !estimate) return
+    if (!jobContext || !effectiveEstimate) return
     if (monthCandidateOverrides[displayedMonthKey]) return
 
     let cancelled = false
@@ -246,7 +247,7 @@ export function ChatbotBookingCard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jobContext,
-        workflowEstimate: estimate,
+        workflowEstimate: effectiveEstimate,
         month: displayedMonthKey,
       }),
     })
@@ -273,7 +274,7 @@ export function ChatbotBookingCard({
     return () => {
       cancelled = true
     }
-  }, [displayedMonthKey, displayedMonthOffset, estimate, jobContext, monthCandidateOverrides, monthBusyDateKeyOverrides])
+  }, [displayedMonthKey, displayedMonthOffset, effectiveEstimate, jobContext, monthCandidateOverrides, monthBusyDateKeyOverrides])
 
   useEffect(() => {
     const textarea = projectTitleRef.current
@@ -308,7 +309,7 @@ export function ChatbotBookingCard({
             end: slot.end,
           })),
           jobContext,
-          workflowEstimate: estimate,
+          workflowEstimate: effectiveEstimate,
         }),
       })
       const payload = parseApiResponse(await response.json().catch(() => ({})))
@@ -351,8 +352,8 @@ export function ChatbotBookingCard({
         <p className="mt-2 text-sm leading-relaxed text-hp-muted">
           素材搬入時期と納品希望日が決まっている場合は、候補を仮キープして予約内容を送信できます。
         </p>
-        {estimateText(estimate) ? (
-          <p className="mt-2 text-xs font-medium text-hp-muted">{estimateText(estimate)}</p>
+        {estimateText(effectiveEstimate) ? (
+          <p className="mt-2 text-xs font-medium text-hp-muted">{estimateText(effectiveEstimate)}</p>
         ) : null}
       </div>
 

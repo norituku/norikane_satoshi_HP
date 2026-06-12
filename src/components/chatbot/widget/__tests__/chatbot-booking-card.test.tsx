@@ -342,6 +342,80 @@ describe("ChatbotBookingCard", () => {
     expect(document.body).not.toHaveTextContent("不可")
   })
 
+  it("uses jobContext workflow estimates when refreshing the current month candidates", async () => {
+    vi.setSystemTime(new Date("2026-06-12T12:00:00+09:00"))
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/api/chatbot/booking-candidates") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            candidates: [
+              {
+                start: "2026-06-13T15:00:00.000Z",
+                end: "2026-06-14T15:00:00.000Z",
+                label: "6月14日 単日",
+              },
+              {
+                start: "2026-06-16T15:00:00.000Z",
+                end: "2026-06-17T15:00:00.000Z",
+                label: "6月17日 単日",
+              },
+              {
+                start: "2026-06-17T15:00:00.000Z",
+                end: "2026-06-18T15:00:00.000Z",
+                label: "6月18日 単日",
+              },
+            ],
+            busyDateKeys: ["2026-06-12", "2026-06-13", "2026-06-15", "2026-06-16", "2026-06-19", "2026-06-24", "2026-06-26"],
+          }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ bookingGroupId: "group_1", bookingIds: ["slot_1"] }),
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderCard({
+      candidates: [],
+      estimate: undefined,
+      jobContext,
+    })
+
+    const june14 = await screen.findByRole("button", { name: "2026-06-14 選択可" })
+    const june17 = await screen.findByRole("button", { name: "2026-06-17 選択可" })
+    const june18 = await screen.findByRole("button", { name: "2026-06-18 選択可" })
+    const june12 = screen.getByRole("button", { name: "2026-06-12 埋まり" })
+    const june10 = screen.getByRole("button", { name: "2026-06-10 空き・開始不可" })
+
+    expect(june14).toHaveAttribute("data-calendar-state", "startable")
+    expect(june14).toHaveClass("hover:bg-white/85")
+    expect(june17).toHaveAttribute("data-calendar-state", "startable")
+    expect(june18).toHaveAttribute("data-calendar-state", "startable")
+    expect(june12).toBeDisabled()
+    expect(june12).toHaveAttribute("data-calendar-state", "busy")
+    expect(june10).toBeDisabled()
+    expect(june10).toHaveAttribute("data-calendar-state", "past")
+    expect(june10).not.toHaveClass("hover:bg-white/85")
+
+    fireEvent.click(june14)
+    fireEvent.click(june17)
+    expect(june14).toHaveAttribute("aria-pressed", "true")
+    expect(june17).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getAllByText("2／2")).toHaveLength(1)
+
+    const monthCall = fetchMock.mock.calls.find((call) => String(call[0]) === "/api/chatbot/booking-candidates")
+    expect(monthCall).toBeTruthy()
+    expect(JSON.parse(String(monthCall?.[1]?.body))).toMatchObject({
+      month: "2026-06",
+      workflowEstimate: expect.objectContaining({ totalMaxDays: 2 }),
+    })
+  })
+
   it("allows disjoint selected days around a busy day", () => {
     renderCard({
       candidates: [
