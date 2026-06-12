@@ -1203,7 +1203,7 @@ describe("handleChatbotMessage user context", () => {
     expect(result.routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
   })
 
-  it("sends the operator notification once when handoff slots are complete", async () => {
+  it("does not send the operator notification when the booking form is only displayed", async () => {
     const harness = setup()
 
     const result = await handleChatbotMessage(
@@ -1229,15 +1229,8 @@ describe("handleChatbotMessage user context", () => {
     )
 
     expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
-    expect(harness.operatorNotificationSender).toHaveBeenCalledTimes(1)
-    expect(harness.operatorNotificationSender).toHaveBeenCalledWith(
-      expect.objectContaining({
-        trigger: "chat-completed",
-        conversationState: expect.objectContaining({ contactEmail: "client@example.com" }),
-        jobContext: expect.objectContaining({ finalMedium: "web" }),
-      }),
-    )
-    expect(harness.repository.appendMessage).toHaveBeenCalledWith(
+    expect(harness.operatorNotificationSender).not.toHaveBeenCalled()
+    expect(harness.repository.appendMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conv_1",
         role: "system",

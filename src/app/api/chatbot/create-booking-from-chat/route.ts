@@ -6,6 +6,7 @@ import { respondInternalError } from "@/lib/api/server/error-response"
 import { bookingApiSchema, type BookingApiInput } from "@/lib/booking/domain/api-schema"
 import { createBookingFromApiInput } from "@/lib/booking/server/create-booking"
 import { BookingConflictError } from "@/lib/booking/server/errors"
+import { sendOperatorConsultationNotification } from "@/lib/chatbot/server/operator-notification"
 import { linkChatToBookingGroup } from "@/lib/chatbot/server/repository"
 
 export const runtime = "nodejs"
@@ -82,6 +83,50 @@ function bodyWithLinkWarning(body: unknown): unknown {
   }
 }
 
+function formatJstDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).format(date)
+}
+
+function stringField(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "-"
+}
+
+function buildOperatorFreeText(input: z.infer<typeof chatbotBookingRequestSchema>, userEmail: string): string {
+  const selectedSlots = normalizeSelectedSlots(input)
+  const jobContext = input.jobContext && typeof input.jobContext === "object" ? input.jobContext as Record<string, unknown> : {}
+  return [
+    "予約フォーム送信済み",
+    `選択日程: ${selectedSlots.map((slot) => formatJstDate(slot.start)).join(" / ")}`,
+    `案件名: ${input.projectTitle}`,
+    `案件種別: ${stringField(jobContext.jobKind)}`,
+    `氏名: ${input.contactName}`,
+    `会社名: ${input.companyName?.trim() || "-"}`,
+    `連絡先メール: ${userEmail}`,
+    `電話番号: ${input.phone?.trim() || "-"}`,
+    `納期: ${input.dueDate?.trim() || "-"}`,
+    `補足: ${input.memo?.trim() || "-"}`,
+    "同意済み: はい",
+  ].join("\n")
+}
+
+async function warnOnOperatorNotificationFailure(task: Promise<unknown>) {
+  try {
+    await task
+  } catch (error) {
+    console.warn("Chatbot booking operator notification failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 export async function POST(request: NextRequest) {
   const session = await auth()
   const userId = session?.user?.id
@@ -128,6 +173,23 @@ export async function POST(request: NextRequest) {
   try {
     const result = await createBookingFromApiInput({ input, userId, userEmail })
     const bookingGroupId = bookingGroupIdFromBody(result.body)
+    if (result.status >= 200 && result.status < 300 && bookingGroupId) {
+      await warnOnOperatorNotificationFailure(
+        sendOperatorConsultationNotification({
+          trigger: "booking-submitted",
+          jobContext: parsed.data.jobContext && typeof parsed.data.jobContext === "object"
+            ? parsed.data.jobContext
+            : undefined,
+          fallback: {
+            customerName: parsed.data.contactName,
+            companyName: parsed.data.companyName,
+            contactEmail: userEmail,
+          },
+          freeText: buildOperatorFreeText(parsed.data, userEmail),
+        }),
+      )
+    }
+
     if (result.status >= 200 && result.status < 300 && bookingGroupId && parsed.data.conversationId) {
       try {
         await linkChatToBookingGroup({

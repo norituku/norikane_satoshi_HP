@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight } from "lucide-react"
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { DemoStage } from "@/components/chatbot/demo"
@@ -389,7 +389,7 @@ export function ChatbotBookingCard({
               </button>
             </div>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-hp-muted">空き日と開始可否を分けて表示しています</p>
+              <p className="text-xs font-semibold text-hp" aria-live="polite">{selectedSlots.length}／{requiredDays}</p>
               {monthLoadError ? (
                 <p className="text-xs text-red-500" role="alert">{monthLoadError}</p>
               ) : null}
@@ -416,7 +416,7 @@ export function ChatbotBookingCard({
                       type="button"
                       disabled
                       className={[
-                        "min-h-11 rounded-[12px] border border-[var(--text-muted)] bg-[var(--text-muted)] px-1.5 py-2 text-xs text-white/95 opacity-85",
+                        "relative min-h-11 overflow-hidden rounded-[12px] border border-[var(--text-muted)] bg-[var(--text-muted)] px-1.5 py-2 text-xs text-white/95 opacity-85",
                         selected ? "ring-2 ring-[var(--accent-primary)] ring-offset-1 ring-offset-white/60" : "",
                       ].join(" ")}
                       data-calendar-state="busy"
@@ -425,7 +425,7 @@ export function ChatbotBookingCard({
                       aria-disabled="true"
                     >
                       <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
-                      <span className="block text-[10px] text-white/85">埋まり</span>
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 h-0.5 w-9 -translate-x-1/2 -translate-y-1/2 rotate-[-28deg] rounded-full bg-white/80" aria-hidden="true" />
                     </button>
                   )
                 }
@@ -436,7 +436,7 @@ export function ChatbotBookingCard({
                       key={dateKey}
                       type="button"
                       className={[
-                        "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
+                        "relative min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
                         selected
                           ? "border-[var(--accent-primary)] bg-white/65 text-hp"
                           : "border-white/55 bg-white/40 text-hp-muted hover:bg-white/55",
@@ -445,10 +445,10 @@ export function ChatbotBookingCard({
                       data-selected={selected ? "true" : undefined}
                       aria-label={`${dateKey} 空き・開始不可`}
                       aria-disabled="true"
-                      onClick={() => setCalendarHint("この日は搬入前・リードタイム内・営業外のため選択できません")}
+                      onClick={() => setCalendarHint("不可")}
                     >
                       <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
-                      <span className="block text-[10px] text-hp-muted">開始不可</span>
+                      <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full border border-[var(--text-muted)]" aria-hidden="true" />
                     </button>
                   )
                 }
@@ -460,7 +460,7 @@ export function ChatbotBookingCard({
                     className={[
                       "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
                       selected
-                        ? "border-[var(--accent-primary)] bg-white/80 text-hp shadow-[0_0_24px_rgba(117,104,214,0.22)]"
+                        ? "border-[var(--accent-primary)] bg-white/80 text-hp shadow-[0_0_24px_rgba(139,127,255,0.30)]"
                         : "border-white/65 bg-white/55 text-hp hover:bg-white/75",
                     ].join(" ")}
                     data-selected={selected ? "true" : undefined}
@@ -475,7 +475,7 @@ export function ChatbotBookingCard({
                           return current.filter((selectedSlot) => jstDateKey(selectedSlot.start) !== dateKey)
                         }
                         if (current.length >= requiredDays) {
-                          setCalendarHint(`必要日数 ${requiredDays}日はすでに選択済みです`)
+                          setCalendarHint("上限")
                           return current
                         }
                         setCalendarHint(null)
@@ -484,23 +484,20 @@ export function ChatbotBookingCard({
                     }}
                   >
                     <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
-                    <span className="block text-[10px] text-hp-muted">選択可</span>
+                    <span className="mx-auto mt-1 flex h-4 w-4 items-center justify-center rounded-full border border-[var(--accent-primary)] bg-white/70" aria-hidden="true">
+                      {selected ? <Check className="h-3 w-3 text-[var(--accent-primary)]" /> : null}
+                    </span>
                   </button>
                 )
               })}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-hp-muted" aria-label="仮キープ候補カレンダーの凡例">
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full border border-white/65 bg-white/55" aria-hidden="true" />
-                選択可
+            <div className="mt-3 flex flex-wrap gap-2" aria-label="仮キープ候補カレンダーの凡例">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-[8px] border border-white/65 bg-white/55" aria-label="選択可" />
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-[8px] border border-white/55 bg-white/40" aria-label="空き・開始不可">
+                <span className="h-1.5 w-1.5 rounded-full border border-[var(--text-muted)]" aria-hidden="true" />
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full border border-white/55 bg-white/40" aria-hidden="true" />
-                空き・開始不可
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
-                埋まり
+              <span className="relative inline-flex h-5 w-5 overflow-hidden rounded-[8px] border border-[var(--text-muted)] bg-[var(--text-muted)]" aria-label="埋まり">
+                <span className="absolute left-1/2 top-1/2 h-0.5 w-6 -translate-x-1/2 -translate-y-1/2 rotate-[-28deg] rounded-full bg-white/80" aria-hidden="true" />
               </span>
             </div>
             {calendarHint ? (
@@ -509,7 +506,8 @@ export function ChatbotBookingCard({
               </p>
             ) : null}
             <p className="mt-3 text-xs leading-relaxed text-hp-muted" aria-live="polite">
-              {selectedSlots.length}／{requiredDays}日選択中{selectedSlots.length > 0 ? `: ${formatSelectedSlots(selectedSlots)}` : ""}
+              <span className="font-semibold text-hp">{selectedSlots.length}／{requiredDays}</span>
+              {selectedSlots.length > 0 ? <span className="ml-2">{formatSelectedSlots(selectedSlots)}</span> : null}
             </p>
           </div>
         </fieldset>

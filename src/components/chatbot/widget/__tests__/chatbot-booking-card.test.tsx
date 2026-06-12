@@ -97,7 +97,7 @@ describe("ChatbotBookingCard", () => {
     expect(unavailableCells[0]).toHaveAttribute("data-calendar-state", "free-unstartable")
 
     fireEvent.click(unavailableCells[0])
-    expect(screen.getByText("この日は搬入前・リードタイム内・営業外のため選択できません")).toBeInTheDocument()
+    expect(screen.getByText("不可")).toBeInTheDocument()
   })
 
   it("renders timed work busy days as non-startable busy cells without exposing private details", () => {
@@ -106,7 +106,10 @@ describe("ChatbotBookingCard", () => {
     const busyCell = screen.getByRole("button", { name: "2026-06-12 埋まり" })
     expect(busyCell).toBeDisabled()
     expect(busyCell).toHaveAttribute("data-calendar-state", "busy")
-    expect(screen.getByLabelText("仮キープ候補カレンダーの凡例")).toHaveTextContent("埋まり")
+    expect(screen.getByLabelText("仮キープ候補カレンダーの凡例")).not.toHaveTextContent("埋まり")
+    expect(document.body).not.toHaveTextContent("選択可")
+    expect(document.body).not.toHaveTextContent("開始不可")
+    expect(document.body).not.toHaveTextContent("埋まり")
     expect(document.body).not.toHaveTextContent("Secret")
     expect(document.body).not.toHaveTextContent("Customer")
   })
@@ -214,7 +217,7 @@ describe("ChatbotBookingCard", () => {
 
     expect(screen.getByRole("button", { name: "2026-06-10 選択可" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "2026-06-12 選択可" })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByText(/2／2日選択中/)).toBeInTheDocument()
+    expect(screen.getAllByText("2／2").length).toBeGreaterThan(0)
   })
 
   it("keeps disjoint selected days visible when navigating across months", () => {
@@ -237,7 +240,7 @@ describe("ChatbotBookingCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "翌月を表示" }))
     fireEvent.click(screen.getByRole("button", { name: "2026-07-01 選択可" }))
 
-    expect(screen.getByText(/2／2日選択中/)).toBeInTheDocument()
+    expect(screen.getAllByText("2／2").length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: "2026-07-01 選択可" })).toHaveAttribute("data-selected", "true")
   })
 
@@ -257,7 +260,7 @@ describe("ChatbotBookingCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "2026-06-11 選択可" }))
     fireEvent.click(screen.getByRole("button", { name: "2026-06-12 選択可" }))
 
-    expect(screen.getByText("必要日数 2日はすでに選択済みです")).toBeInTheDocument()
+    expect(screen.getByText("上限")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "2026-06-12 選択可" })).toHaveAttribute("aria-pressed", "false")
   })
 

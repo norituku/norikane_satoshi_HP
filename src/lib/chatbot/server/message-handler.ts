@@ -416,7 +416,6 @@ async function maybeSendOperatorNotification(input: {
   operatorNotificationSender: typeof sendOperatorConsultationNotification
 }): Promise<void> {
   if (
-    input.routingDecision.kind !== "to-booking-inline" &&
     input.routingDecision.kind !== "to-direct-contact" &&
     input.routingDecision.kind !== "to-email"
   ) return

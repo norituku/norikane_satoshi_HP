@@ -15,7 +15,7 @@ export type OperatorNotificationResult =
   | { status: "failed"; reason: "send-failed" }
 
 export type OperatorNotificationInput = {
-  trigger: "chat-completed" | "inquiry-form"
+  trigger: "chat-completed" | "inquiry-form" | "booking-submitted"
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
   fallback?: Parameters<typeof formatConsultationSummary>[0]["fallback"]
@@ -75,7 +75,9 @@ function buildOperatorNotificationLines(input: OperatorNotificationInput): strin
 }
 
 function buildSubject(input: OperatorNotificationInput): string {
-  const triggerLabel = input.trigger === "chat-completed" ? "相談完了" : "問い合わせフォーム"
+  const triggerLabel = input.trigger === "booking-submitted"
+    ? "予約送信"
+    : input.trigger === "chat-completed" ? "相談完了" : "問い合わせフォーム"
   const contact = input.conversationState?.customerName ?? input.fallback?.customerName
   return `【チャットボット${triggerLabel}通知】${contact ? `${contact} 様` : "相談内容"}`
 }

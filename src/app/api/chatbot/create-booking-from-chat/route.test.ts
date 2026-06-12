@@ -44,10 +44,12 @@ async function loadPost(session: { user?: { id?: string; email?: string } } | nu
     },
   })
   const linkChatToBookingGroup = vi.fn().mockResolvedValue(undefined)
+  const sendOperatorConsultationNotification = vi.fn().mockResolvedValue({ status: "sent", id: "email_1" })
 
   vi.doMock("@/auth", () => ({ auth }))
   vi.doMock("@/lib/booking/server/create-booking", () => ({ createBookingFromApiInput }))
   vi.doMock("@/lib/chatbot/server/repository", () => ({ linkChatToBookingGroup }))
+  vi.doMock("@/lib/chatbot/server/operator-notification", () => ({ sendOperatorConsultationNotification }))
 
   const route = await import("./route")
   return {
@@ -55,6 +57,7 @@ async function loadPost(session: { user?: { id?: string; email?: string } } | nu
     auth,
     createBookingFromApiInput,
     linkChatToBookingGroup,
+    sendOperatorConsultationNotification,
   }
 }
 
@@ -72,6 +75,7 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" })
     expect(route.createBookingFromApiInput).not.toHaveBeenCalled()
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
   })
 
   it("returns 400 for an invalid body", async () => {
@@ -83,6 +87,7 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
     const payload = await response.json()
     expect(payload.error).toBe("invalid_request")
     expect(route.createBookingFromApiInput).not.toHaveBeenCalled()
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
   })
 
   it("calls the shared booking service with the session email", async () => {
@@ -156,6 +161,57 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
     })
   })
 
+  it("sends the operator notification only after an agreed booking submit with form details", async () => {
+    const route = await loadPost()
+
+    const response = await route.POST(request(validChatBooking({
+      selectedSlot: undefined,
+      selectedSlots: [
+        {
+          start: "2026-06-10T15:00:00.000Z",
+          end: "2026-06-11T15:00:00.000Z",
+        },
+        {
+          start: "2026-06-12T15:00:00.000Z",
+          end: "2026-06-13T15:00:00.000Z",
+        },
+      ],
+      phone: "090-0000-0000",
+      jobContext: { jobKind: "live-60m", finalMedium: "web" },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.sendOperatorConsultationNotification).toHaveBeenCalledTimes(1)
+    expect(route.sendOperatorConsultationNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: "booking-submitted",
+        fallback: expect.objectContaining({
+          customerName: "Satoshi",
+          companyName: "NCS",
+          contactEmail: "satoshi@example.com",
+        }),
+        freeText: expect.stringContaining("予約フォーム送信済み"),
+      }),
+    )
+    const freeText = route.sendOperatorConsultationNotification.mock.calls[0]?.[0]?.freeText
+    expect(freeText).toContain("選択日程:")
+    expect(freeText).toContain("案件種別: live-60m")
+    expect(freeText).toContain("氏名: Satoshi")
+    expect(freeText).toContain("連絡先メール: satoshi@example.com")
+    expect(freeText).toContain("電話番号: 090-0000-0000")
+    expect(freeText).toContain("同意済み: はい")
+  })
+
+  it("does not send the operator notification when agreement is missing", async () => {
+    const route = await loadPost()
+
+    const response = await route.POST(request(validChatBooking({ agreed: false })))
+
+    expect(response.status).toBe(400)
+    expect(route.createBookingFromApiInput).not.toHaveBeenCalled()
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
+  })
+
   it("maps shared conflict and calendar_unavailable statuses", async () => {
     const route = await loadPost()
     const { BookingConflictError } = await import("@/lib/booking/server/errors")
@@ -165,6 +221,7 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
 
     expect(conflictResponse.status).toBe(409)
     await expect(conflictResponse.json()).resolves.toEqual({ error: "slot_taken" })
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
 
     route.createBookingFromApiInput.mockResolvedValueOnce({
       status: 502,
@@ -178,5 +235,6 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
       error: "calendar_unavailable",
       bookingGroupId: "group_2",
     })
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
   })
 })
