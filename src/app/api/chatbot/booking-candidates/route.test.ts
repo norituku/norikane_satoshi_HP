@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 function request(body: unknown) {
   return new NextRequest("http://localhost/api/chatbot/booking-candidates", {
@@ -56,6 +56,12 @@ async function loadPost() {
 afterEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  vi.useRealTimers()
+})
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-06-12T00:30:00+09:00"))
 })
 
 describe("POST /api/chatbot/booking-candidates", () => {
@@ -71,7 +77,7 @@ describe("POST /api/chatbot/booking-candidates", () => {
       desiredDeadline: "2026-08-01",
       notBefore: "2026-07-01",
       busyFrom: "2026-07-01",
-      now: new Date("2026-07-01T00:00:00.000+09:00"),
+      now: new Date("2026-06-12T00:30:00+09:00"),
       lookaheadWeeks: 9,
       candidateLimit: 31,
       busyMode: "block",
@@ -109,6 +115,54 @@ describe("POST /api/chatbot/booking-candidates", () => {
       expect.objectContaining({
         notBefore: "2026-07-12",
         busyFrom: "2026-07-01",
+      }),
+    )
+  })
+
+  it("clamps the requested month lower bound to the current JST date", async () => {
+    const route = await loadPost()
+
+    const response = await route.POST(request(validBody({
+      month: "2026-06",
+      jobContext: {
+        jobKind: "cm-30s",
+        finalMedium: "web",
+        workSite: "remote-grading",
+        documentaryAttachment: { kind: "none" },
+        publicReleaseDate: "2026-08-01",
+      },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.findCandidateCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notBefore: "2026-06-12",
+        busyFrom: "2026-06-01",
+        now: new Date("2026-06-12T00:30:00+09:00"),
+      }),
+    )
+  })
+
+  it("uses the JST date boundary when clamping a month request", async () => {
+    vi.setSystemTime(new Date("2026-05-31T15:30:00.000Z"))
+    const route = await loadPost()
+
+    const response = await route.POST(request(validBody({
+      month: "2026-06",
+      jobContext: {
+        jobKind: "cm-30s",
+        finalMedium: "web",
+        workSite: "remote-grading",
+        documentaryAttachment: { kind: "none" },
+        publicReleaseDate: "2026-08-01",
+      },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.findCandidateCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notBefore: "2026-06-01",
+        now: new Date("2026-05-31T15:30:00.000Z"),
       }),
     )
   })

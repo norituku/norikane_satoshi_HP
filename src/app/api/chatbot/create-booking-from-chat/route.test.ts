@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 function request(body: unknown) {
   return new NextRequest("http://localhost/api/chatbot/create-booking-from-chat", {
@@ -64,6 +64,12 @@ async function loadPost(session: { user?: { id?: string; email?: string } } | nu
 afterEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  vi.useRealTimers()
+})
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-06-01T00:00:00+09:00"))
 })
 
 describe("POST /api/chatbot/create-booking-from-chat", () => {
@@ -88,6 +94,54 @@ describe("POST /api/chatbot/create-booking-from-chat", () => {
     expect(payload.error).toBe("invalid_request")
     expect(route.createBookingFromApiInput).not.toHaveBeenCalled()
     expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
+  })
+
+  it("rejects selected slots before the current JST date", async () => {
+    vi.setSystemTime(new Date("2026-06-12T00:30:00+09:00"))
+    const route = await loadPost()
+
+    const response = await route.POST(request(validChatBooking({
+      selectedSlot: {
+        start: "2026-06-11T01:00:00.000Z",
+        end: "2026-06-12T01:00:00.000Z",
+      },
+    })))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_request",
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: ["selectedSlot", "start"] }),
+      ]),
+    })
+    expect(route.createBookingFromApiInput).not.toHaveBeenCalled()
+    expect(route.sendOperatorConsultationNotification).not.toHaveBeenCalled()
+  })
+
+  it("allows a selected slot that starts on the current JST date boundary", async () => {
+    vi.setSystemTime(new Date("2026-06-11T15:30:00.000Z"))
+    const route = await loadPost()
+
+    const response = await route.POST(request(validChatBooking({
+      selectedSlot: {
+        start: "2026-06-11T15:00:00.000Z",
+        end: "2026-06-12T15:00:00.000Z",
+      },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.createBookingFromApiInput).toHaveBeenCalledWith({
+      input: expect.objectContaining({
+        selectedSlots: [
+          {
+            start: "2026-06-11T15:00:00.000Z",
+            end: "2026-06-12T15:00:00.000Z",
+          },
+        ],
+      }),
+      userId: "user_1",
+      userEmail: "satoshi@example.com",
+    })
   })
 
   it("calls the shared booking service with the session email", async () => {

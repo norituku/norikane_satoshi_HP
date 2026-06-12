@@ -364,6 +364,8 @@ describe("WidgetShell API wiring", () => {
   })
 
   it("renders ChatbotBookingCard for booking-card responses", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date("2025-12-01T00:00:00+09:00"))
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(

@@ -74,12 +74,15 @@ function renderCard(props: Partial<ComponentProps<typeof ChatbotBookingCard>> = 
 
 describe("ChatbotBookingCard", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date("2025-12-01T00:00:00+09:00"))
     mockFetch(200, { bookingGroupId: "group_1", bookingIds: ["slot_1"] })
   })
 
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it("renders the top candidate windows", () => {
@@ -101,6 +104,50 @@ describe("ChatbotBookingCard", () => {
     const dateCell = screen.getByRole("button", { name: "2026-06-10 選択可" })
     expect(dateCell).toHaveTextContent(/^10$/)
     expect(dateCell).not.toHaveTextContent("日")
+  })
+
+  it("marks selectable cells with a stronger hover target surface", () => {
+    renderCard()
+
+    const dateCell = screen.getByRole("button", { name: "2026-06-10 選択可" })
+    expect(dateCell).toHaveClass("hover:bg-white/85")
+    expect(dateCell).toHaveClass("hover:scale-[1.04]")
+    expect(dateCell).toHaveClass("hover:ring-2")
+    expect(dateCell).not.toHaveClass("bg-[var(--accent-primary)]")
+  })
+
+  it("keeps past date cells inert even when stale candidate data includes them", () => {
+    vi.setSystemTime(new Date("2026-06-12T00:30:00+09:00"))
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-11T01:00:00.000Z",
+          end: "2026-06-12T01:00:00.000Z",
+          label: "6月11日 単日",
+        },
+        {
+          start: "2026-06-12T01:00:00.000Z",
+          end: "2026-06-13T01:00:00.000Z",
+          label: "6月12日 単日",
+        },
+      ],
+    })
+
+    const pastCell = screen.getByRole("button", { name: "2026-06-11 空き・開始不可" })
+    const todayCell = screen.getByRole("button", { name: "2026-06-12 選択可" })
+    expect(pastCell).toBeDisabled()
+    expect(pastCell).toHaveAttribute("data-calendar-state", "past")
+    expect(pastCell).toHaveClass("cursor-default")
+    expect(pastCell).not.toHaveClass("hover:bg-white/85")
+    expect(pastCell).not.toHaveClass("hover:ring-2")
+
+    pastCell.focus()
+    expect(document.activeElement).not.toBe(pastCell)
+    fireEvent.click(pastCell)
+    expect(pastCell).not.toHaveAttribute("data-selected", "true")
+
+    fireEvent.click(todayCell)
+    expect(todayCell).toHaveAttribute("aria-pressed", "true")
   })
 
   it("renders free but unstartable calendar days separately from busy cells", () => {

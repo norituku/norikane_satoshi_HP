@@ -12,6 +12,19 @@ import { linkChatToBookingGroup } from "@/lib/chatbot/server/repository"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+
+function jstDateKey(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return typeof value === "string" ? value : ""
+  const jst = new Date(date.getTime() + JST_OFFSET_MS)
+  return [
+    String(jst.getUTCFullYear()),
+    String(jst.getUTCMonth() + 1).padStart(2, "0"),
+    String(jst.getUTCDate()).padStart(2, "0"),
+  ].join("-")
+}
+
 const selectedSlotSchema = z
   .object({
     start: z.string().datetime(),
@@ -25,6 +38,13 @@ const selectedSlotSchema = z
         code: "custom",
         message: "終了時刻は開始時刻より後にしてください",
         path: ["end"],
+      })
+    }
+    if (jstDateKey(value.start) < jstDateKey(new Date())) {
+      context.addIssue({
+        code: "custom",
+        message: "過去の日付は選択できません",
+        path: ["start"],
       })
     }
   })

@@ -82,6 +82,10 @@ function jstDateKey(value: string | Date): string {
   ].join("-")
 }
 
+function todayJstDateKey(): string {
+  return jstDateKey(new Date())
+}
+
 function jstDateFromKey(key: string): Date {
   const [year, month, day] = key.split("-").map(Number)
   return new Date(Date.UTC(year, month - 1, day) - JST_OFFSET_MS)
@@ -227,6 +231,7 @@ export function ChatbotBookingCard({
   const [booked, setBooked] = useState<BookingResult | null>(null)
   const projectTitleRef = useRef<HTMLTextAreaElement | null>(null)
 
+  const currentJstDateKey = todayJstDateKey()
   const selectedKeys = useMemo(() => selectedDateKeys(selectedSlots), [selectedSlots])
   const canSubmit = Boolean(selectedSlots.length === requiredDays && projectTitle.trim() && contactName.trim() && agreed && !submitting)
 
@@ -406,6 +411,7 @@ export function ChatbotBookingCard({
                 const slot = candidateCalendar.candidateByStartDate.get(dateKey)
                 const busy = candidateCalendar.busyDateKeySet.has(dateKey)
                 const selected = selectedKeys.has(dateKey)
+                const past = dateKey < currentJstDateKey
 
                 if (busy) {
                   return (
@@ -414,7 +420,7 @@ export function ChatbotBookingCard({
                       type="button"
                       disabled
                       className={[
-                        "relative min-h-11 overflow-hidden rounded-[12px] border border-[var(--text-muted)] bg-[var(--text-muted)] px-1.5 py-2 text-xs text-white/95 opacity-85",
+                        "relative min-h-11 cursor-default overflow-hidden rounded-[12px] border border-[var(--text-muted)] bg-[var(--text-muted)] px-1.5 py-2 text-xs text-white/95 opacity-85",
                         selected ? "ring-2 ring-[var(--accent-primary)] ring-offset-1 ring-offset-white/60" : "",
                       ].join(" ")}
                       data-calendar-state="busy"
@@ -428,19 +434,21 @@ export function ChatbotBookingCard({
                   )
                 }
 
-                if (!slot) {
+                if (past || !slot) {
                   return (
                     <button
                       key={dateKey}
                       type="button"
                       disabled
                       className={[
-                        "relative min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
+                        "relative min-h-11 cursor-default rounded-[12px] border px-1.5 py-2 text-xs transition",
                         selected
                           ? "border-[var(--accent-primary)] bg-[var(--accent-primary)] font-bold text-white ring-2 ring-[var(--accent-primary)]/35 ring-inset"
-                          : "border-white/55 bg-white/35 text-hp-muted opacity-70",
+                          : past
+                            ? "border-white/45 bg-white/30 text-hp-muted opacity-45"
+                            : "border-white/55 bg-white/35 text-hp-muted opacity-70",
                       ].join(" ")}
-                      data-calendar-state="free-unstartable"
+                      data-calendar-state={past ? "past" : "free-unstartable"}
                       data-selected={selected ? "true" : undefined}
                       aria-label={`${dateKey} 空き・開始不可`}
                       aria-disabled="true"
@@ -455,10 +463,10 @@ export function ChatbotBookingCard({
                     key={dateKey}
                     type="button"
                     className={[
-                      "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
+                      "min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition duration-150 ease-out",
                       selected
                         ? "border-[var(--accent-primary)] bg-[var(--accent-primary)] font-bold text-white ring-2 ring-[var(--accent-primary)]/35 ring-inset shadow-[0_0_24px_rgba(117,104,214,0.24)]"
-                        : "border-white/65 bg-white/55 text-hp hover:bg-white/75",
+                        : "border-white/65 bg-white/55 text-hp hover:-translate-y-0.5 hover:scale-[1.04] hover:border-[var(--accent-primary)] hover:bg-white/85 hover:ring-2 hover:ring-[var(--accent-primary)]/45 hover:ring-inset hover:shadow-[0_0_24px_rgba(139,127,255,0.24)] focus-visible:border-[var(--accent-primary)] focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/45 focus-visible:ring-inset",
                     ].join(" ")}
                     data-selected={selected ? "true" : undefined}
                     data-calendar-state="startable"
