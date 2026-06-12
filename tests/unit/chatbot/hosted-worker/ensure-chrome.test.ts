@@ -129,7 +129,7 @@ describe("hosted worker Chrome inspection", () => {
         runtimeInspector: async () => ({
           targetUrl: targetUrlIncludes,
           preferredModelAvailable: true,
-          selectedModel: "fabre-5",
+          selectedModel: "apricot-sorbet-high",
         }),
       }),
     ).resolves.toMatchObject({
