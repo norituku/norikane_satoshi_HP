@@ -56,7 +56,7 @@ export function resolveHostedWorkerChromeConfig(
       env.CHATBOT_HOSTED_WORKER_NOTION_THREAD_URL ??
       env.NOTION_AI_CHATBOT_THREAD_URL ??
       getNotionAiChatbotThreadUrl({ NOTION_AI_CHATBOT_THREAD_URL: env.NOTION_AI_CHATBOT_THREAD_URL }),
-    preferredModel: env.CHATBOT_HOSTED_WORKER_NOTION_MODEL ?? tier1ObservedNotionAiModel,
+    preferredModel: tier1ObservedNotionAiModel,
     chromeProfileDir:
       env.CHATBOT_HOSTED_WORKER_CHROME_PROFILE_DIR ??
       path.join(homedir(), ".cc-notion", "chrome-profiles", "hosted-worker-notion-ai"),

@@ -84,7 +84,7 @@ function buildPayloadForRequest(request: ChatbotLlmRequest) {
       contextPageId: "context-page-id",
       threadId: "thread-id",
       selectedModel: "ignored-page-model",
-      availableModels: ["apricot-sorbet-high"],
+      availableModels: ["fabre-5"],
       modelFromUser: true,
     },
     idFactory: () => ids.shift() ?? "extra-id",
@@ -173,7 +173,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         contextPageId: "context-page-id",
         threadId: "thread-id",
         selectedModel: "ignored-page-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
         modelFromUser: true,
       },
       idFactory: () => ids.shift() ?? "extra-id",
@@ -216,7 +216,7 @@ describe("Tier1ChromeNotionAiClient", () => {
       type: "config",
       value: {
         type: "workflow",
-        model: "apricot-sorbet-high",
+        model: "fabre-5",
         modelFromUser: true,
       },
     })
@@ -317,7 +317,7 @@ describe("Tier1ChromeNotionAiClient", () => {
               "isHipaa": false,
               "isMobile": false,
               "isOnboardingAgent": false,
-              "model": "apricot-sorbet-high",
+              "model": "fabre-5",
               "modelFromUser": true,
               "searchScopes": [
                 {
@@ -422,7 +422,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         userId: "user-id",
         contextPageId: "context-page-id",
         threadId: "fixed-page-thread-id",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
       },
       idFactory: () => ids.shift() ?? "extra-id",
     })
@@ -445,7 +445,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         contextPageId: "context-page-id",
         threadId: "fixed-page-thread-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
       },
       {
         ok: false,
@@ -549,13 +549,13 @@ describe("Tier1ChromeNotionAiClient", () => {
       transcriptMessages: 3,
       promptLines: 7,
       promptChars: 155,
-      postDataBytes: 2966,
+      postDataBytes: 2954,
     })
     expect(afterMetrics).toEqual({
       transcriptMessages: 3,
       promptLines: 2,
       promptChars: 84,
-      postDataBytes: 2889,
+      postDataBytes: 2877,
     })
     expect(afterPrompt.split("\n")).toEqual([
       "confirmed_facts: 媒体=web / 案件種別=cm-30s / 作業場所=remote-grading",
@@ -705,7 +705,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
         modelFromUser: true,
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
@@ -726,7 +726,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(evaluate.mock.calls[0][1]).toBe(tier1ChromeNotionAiDefaults.connectTimeoutMs)
     expect(evaluate.mock.calls[1][1]).toBe(tier1ChromeNotionAiDefaults.requestTimeoutMs)
     expect(evaluate.mock.calls[1][0]).toContain("/api/v3/runInferenceTranscript")
-    expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
+    expect(evaluate.mock.calls[1][0]).toContain("fabre-5")
   })
 
   it("uses a long inference timeout without extending runtime-context evaluation", async () => {
@@ -735,7 +735,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
         modelFromUser: true,
       },
       { ok: true, rawText: "12秒を超えても完了しました。", chunkCount: 1 },
@@ -776,7 +776,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
       },
     ])
     const missingTargetClient = new Tier1ChromeNotionAiClient({
@@ -786,7 +786,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     const healthyClient = new Tier1ChromeNotionAiClient({
       fetchClient: cdpFetch(),
       sessionFactory: async () => healthySession,
-      preferredModel: "apricot-sorbet-high",
+      preferredModel: "fabre-5",
     })
 
     await expect(healthyClient.isHealthy()).resolves.toBe(true)
@@ -816,7 +816,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
     ])
@@ -844,7 +844,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["fabre-5"],
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
     ])
@@ -937,7 +937,7 @@ describe("Tier1ChromeNotionAiClient", () => {
             spaceId: "space-id",
             userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["apricot-sorbet-high"],
+            availableModels: ["fabre-5"],
           },
         ]),
       preferredModel: "preferred-policy-model",
@@ -958,7 +958,7 @@ describe("Tier1ChromeNotionAiClient", () => {
             spaceId: "space-id",
             userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["apricot-sorbet-high"],
+            availableModels: ["fabre-5"],
           },
           { ok: true, rawText: "", chunkCount: 1 },
         ]),

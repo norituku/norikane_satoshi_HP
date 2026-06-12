@@ -97,6 +97,7 @@ function cleanDefaultContactValue(value: unknown, kind: "company" | "person"): s
 }
 
 type BookingCardJobContext = Extract<WidgetUi, { kind: "booking-card" }>["jobContext"]
+type BookingCardConversationState = Extract<WidgetUi, { kind: "booking-card" }>["conversationState"]
 
 const additionalWorkMemoLabels: Record<NonNullable<BookingCardJobContext["additionalWork"]>[number], string> = {
   retouch: "消し物/レタッチ",
@@ -110,12 +111,42 @@ const workSiteMemoLabels: Record<BookingCardJobContext["workSite"], string> = {
   "on-site": "現地/ポスプロ常駐",
 }
 
-function buildBookingSupplementalNote(jobContext: BookingCardJobContext): string {
+const finalMediumMemoLabels: Record<BookingCardJobContext["finalMedium"], string> = {
+  ott: "配信/OTT",
+  cinema: "劇場",
+  "tv-broadcast": "TV",
+  live: "ライブ",
+  web: "Web",
+  "vertical-sns": "縦型/SNS",
+  other: "その他",
+}
+
+const jobKindMemoLabels: Record<NonNullable<BookingCardJobContext["jobKind"]>, string> = {
+  "cm-30s": "CM 30秒",
+  "mv-5m": "MV 5分",
+  "feature-90m": "本編 90分",
+  "drama-first": "ドラマ初回",
+  "drama-follow-up": "ドラマ 2話目以降",
+  "vertical-60s": "縦型 60秒",
+  "live-60m": "ライブ",
+}
+
+function buildBookingSupplementalNote(
+  jobContext: BookingCardJobContext,
+  conversationState?: BookingCardConversationState,
+): string {
   return [
+    conversationState?.companyName ? `会社名: ${conversationState.companyName}` : undefined,
+    conversationState?.customerName ? `担当者氏名: ${conversationState.customerName}` : undefined,
+    conversationState?.contactEmail ? `連絡先メール: ${conversationState.contactEmail}` : undefined,
+    `最終媒体: ${finalMediumMemoLabels[jobContext.finalMedium]}`,
+    jobContext.jobKind ? `案件種類: ${jobKindMemoLabels[jobContext.jobKind]}` : undefined,
     formatProjectLengthMemo(jobContext.projectLengthMinutes),
     formatAdditionalWorkMemo(jobContext.additionalWork),
     formatWorkSiteMemo(jobContext.workSite),
-    jobContext.preferredStartDate ? `素材搬入/受け取り時期: ${jobContext.preferredStartDate}` : undefined,
+    jobContext.preferredStartDate
+      ? `素材搬入/受け取り時期: ${jobContext.preferredStartDate}${jobContext.preferredStartDateApproximate ? " 目安" : ""}`
+      : undefined,
     jobContext.publicReleaseDate ? `納品希望日: ${jobContext.publicReleaseDate}` : undefined,
     ...(jobContext.referenceUrls ?? []),
   ].filter((item): item is string => Boolean(item)).join("\n")
@@ -802,7 +833,7 @@ function ActiveWidgetUi({
         defaultContactName={cleanDefaultContactValue(ui.conversationState?.customerName, "person")}
         defaultCompanyName={cleanDefaultContactValue(ui.conversationState?.companyName, "company")}
         defaultDueDate={ui.jobContext.publicReleaseDate}
-        defaultMemo={buildBookingSupplementalNote(ui.jobContext)}
+        defaultMemo={buildBookingSupplementalNote(ui.jobContext, ui.conversationState)}
       />
     )
   }

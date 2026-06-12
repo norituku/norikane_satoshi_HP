@@ -421,9 +421,15 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "2026-06-10 選択可" })).toBeInTheDocument()
-    expect(screen.getByLabelText("補足ノート（任意）")).toHaveValue(
-      "尺: 2.5h\n追加作業: 消し物/レタッチ / 肌修正\n作業場所: リモート\n素材搬入/受け取り時期: 2026-06-15\n納品希望日: 2026-06-30",
-    )
+    const memo = screen.getByLabelText("補足ノート（任意）") as HTMLTextAreaElement
+    expect(memo.value).toContain("会社名: 株式会社サンプル")
+    expect(memo.value).toContain("担当者氏名: 田中")
+    expect(memo.value).toContain("最終媒体: Web")
+    expect(memo.value).toContain("尺: 2.5h")
+    expect(memo.value).toContain("追加作業: 消し物/レタッチ / 肌修正")
+    expect(memo.value).toContain("作業場所: リモート")
+    expect(memo.value).toContain("素材搬入/受け取り時期: 2026-06-15")
+    expect(memo.value).toContain("納品希望日: 2026-06-30")
     expect(screen.getByLabelText("会社名（任意）")).toHaveValue("株式会社サンプル")
     expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("田中")
   })
@@ -640,6 +646,76 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
     expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("")
     expect(screen.getByLabelText("会社名（任意）")).toHaveValue("")
+  })
+
+  it("prefills booking form fields and notes from the current conversation only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        if (String(input) === "/api/chatbot/booking-candidates") {
+          return Promise.resolve(mockJsonResponse({ candidates: [], busyDateKeys: [] }))
+        }
+
+        return Promise.resolve(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            userMessage,
+            assistantMessage: {
+              ...assistantMessage,
+              content: "候補日時から予約できます",
+            },
+            tier: "tier-3-ollama-deepseek",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [
+                {
+                  start: "2026-06-14T15:00:00.000Z",
+                  end: "2026-06-15T15:00:00.000Z",
+                  label: "6月15日 単日",
+                },
+              ],
+              jobContext: {
+                jobKind: "live-60m",
+                finalMedium: "live",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                projectLengthMinutes: 150,
+                preferredStartDate: "2026-06-15",
+                preferredStartDateApproximate: true,
+                publicReleaseDate: "2026-07-31",
+                workflowEstimate: { stages: [], totalMinDays: 7, totalMaxDays: 8, riskFlags: [] },
+              },
+              conversationState: {
+                hasCustomerIdentity: true,
+                hasFinalMedium: true,
+                hasJobKind: true,
+                hasProjectLength: true,
+                hasMaterialHandoff: true,
+                hasWorkSite: true,
+                hasContactEmail: true,
+                hasDesiredSchedule: true,
+                companyName: "テスト株式会社",
+                customerName: "テストユーザー",
+                contactEmail: "test@example.com",
+                turnCount: 8,
+              },
+            },
+          }),
+        )
+      }),
+    )
+
+    renderWidgetShell()
+    submitMessage()
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("会社名（任意）")).toHaveValue("テスト株式会社")
+    expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("テストユーザー")
+    expect(screen.getByLabelText("納期（任意）")).toHaveValue("2026-07-31")
+    const memo = screen.getByLabelText("補足ノート（任意）") as HTMLTextAreaElement
+    expect(memo.value).toContain("連絡先メール: test@example.com")
+    expect(memo.value).toContain("案件種類: ライブ")
+    expect(memo.value).toContain("素材搬入/受け取り時期: 2026-06-15 目安")
   })
 
   it("does not pass job-kind or company-like values into booking-card contact defaults", async () => {

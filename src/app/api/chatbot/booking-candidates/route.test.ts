@@ -119,6 +119,31 @@ describe("POST /api/chatbot/booking-candidates", () => {
     )
   })
 
+  it("does not hard-block earlier open days for approximate material handoff dates", async () => {
+    const route = await loadPost()
+
+    const response = await route.POST(request(validBody({
+      jobContext: {
+        jobKind: "live-60m",
+        finalMedium: "live",
+        workSite: "remote-grading",
+        documentaryAttachment: { kind: "none" },
+        publicReleaseDate: "2026-07-31",
+        preferredStartDate: "2026-06-15",
+        preferredStartDateApproximate: true,
+      },
+      month: "2026-06",
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.findCandidateCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notBefore: "2026-06-12",
+        busyFrom: "2026-06-01",
+      }),
+    )
+  })
+
   it("clamps the requested month lower bound to the current JST date", async () => {
     const route = await loadPost()
 

@@ -73,6 +73,24 @@ describe("normalizeChatbotLlmResponse", () => {
     ).toBe("公開時期を教えてください。")
   })
 
+  it("aligns free-text workflow day ranges to the deterministic job estimate", () => {
+    expect(
+      sanitizeChatbotLlmText("ライブ2時間半規模の工程目安は17〜20日です。素材状況を確認します。", {
+        routingDecision: {
+          kind: "continue",
+          nextQuestion: "素材状況を確認します。",
+        },
+        jobContext: {
+          jobKind: "live-60m",
+          finalMedium: "live",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+          projectLengthMinutes: 150,
+        },
+      }),
+    ).toContain("工程目安は7〜8日")
+  })
+
   it("keeps only the body after a think block", () => {
     expect(sanitizeChatbotLlmText("<think>確認方針。</think>\n\n最終媒体と尺を教えてください。")).toBe(
       "最終媒体と尺を教えてください。",

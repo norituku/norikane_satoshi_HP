@@ -688,9 +688,37 @@ describe("handleChatbotMessage user context", () => {
     })
     expect(result.assistantMessage.content).toContain("先に空き状況")
     expect(harness.candidateWindowFinder).toHaveBeenCalledWith(expect.objectContaining({
-      notBefore: "2026-06-15",
+      notBefore: undefined,
       busyMode: "block",
     }))
+  })
+
+  it("keeps deterministic booking-card ui when the LLM falls back to tier4", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "フォームに切り替えます",
+      tier: "tier-4-form-fallback",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "フォームに切り替えます" },
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "ライブ2時間半のカラグレです。素材は共有リンクで6月中旬に搬入、納期は7月中、追加作業は観客消しと肌修正、リモート作業でお願いします。会社名はテスト株式会社、担当者はテストユーザー、メールは client@example.com です。",
+      },
+      harness.options,
+    )
+
+    expect(result.tier).toBe("tier-4-form-fallback")
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      suggestedSlots: expect.arrayContaining([
+        expect.objectContaining({ label: "6月15日 10:00", note: "1時間候補" }),
+      ]),
+    })
   })
 
   it("keeps asking required slots instead of showing booking calendar before work site and material handoff are ready", async () => {
@@ -964,6 +992,87 @@ describe("handleChatbotMessage user context", () => {
       expect.objectContaining({
         customerName: "provided",
         companyName: "provided",
+      }),
+    )
+  })
+
+  it("infers July deadline text and keeps broad June handoff dates approximate", async () => {
+    const harness = setup()
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "会社名はテスト株式会社、担当者氏名はテストユーザーです。ライブ2時間半のカラグレで、素材は6月中旬にオンライン共有、納期は7月中です。test@example.com です。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toEqual(
+      expect.objectContaining({
+        hasCustomerIdentity: true,
+        customerName: "テストユーザー",
+        companyName: "テスト株式会社",
+        contactEmail: "test@example.com",
+      }),
+    )
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toEqual(
+      expect.objectContaining({
+        finalMedium: "live",
+        jobKind: "live-60m",
+        projectLengthMinutes: 150,
+        preferredStartDate: "2026-06-15",
+        preferredStartDateApproximate: true,
+        publicReleaseDate: "2026-07-31",
+      }),
+    )
+  })
+
+  it("keeps live workflow estimates consistent on non-booking turns", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            hasCustomerIdentity: true,
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: true,
+            turnCount: 3,
+          },
+          jobContext: {
+            finalMedium: "live",
+            jobKind: "live-60m",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "ライブ2時間半規模の工程目安は17〜20日です。素材の受け渡し方法を教えてください。",
+      tier: "tier-3-ollama-deepseek",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "素材の受け渡し方法を教えてください。" },
+    })
+
+    await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "ライブ2時間半です" },
+      harness.options,
+    )
+
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "assistant",
+        content: expect.stringContaining("工程目安は7〜8日"),
+      }),
+    )
+    expect(harness.repository.appendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "assistant",
+        content: expect.stringContaining("17〜20日"),
       }),
     )
   })

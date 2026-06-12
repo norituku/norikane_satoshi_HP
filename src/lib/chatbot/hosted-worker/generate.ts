@@ -107,7 +107,7 @@ function createTier1Response(
         process.env.CHATBOT_HOSTED_WORKER_GENERATE_TIMEOUT_MS,
         tier1ChromeNotionAiDefaults.requestTimeoutMs,
       ),
-      preferredModel: process.env.CHATBOT_HOSTED_WORKER_NOTION_MODEL ?? tier1ObservedNotionAiModel,
+      preferredModel: tier1ObservedNotionAiModel,
     })
 
   return client.generate(request)

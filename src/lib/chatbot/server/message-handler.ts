@@ -281,7 +281,7 @@ async function handleChatbotMessageCore(
     }),
     candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
   })
-  const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision })
+  const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision, jobContext })
   const assistantMessage = await repository.appendMessage({
     conversationId: conversation.id,
     role: "assistant",
@@ -343,7 +343,9 @@ async function resolveBookingCandidates(input: {
       jobContext: input.routingDecision.jobContext,
       workflowEstimate,
       desiredDeadline: input.routingDecision.jobContext.publicReleaseDate,
-      notBefore: input.routingDecision.jobContext.preferredStartDate,
+      notBefore: input.routingDecision.jobContext.preferredStartDateApproximate
+        ? undefined
+        : input.routingDecision.jobContext.preferredStartDate,
       candidateLimit: 31,
       busyMode: "block",
     }))
@@ -702,8 +704,9 @@ function toMessageUi(
   tier: ChatbotLlmResponse["tier"],
   conversationState: ConversationState,
 ): ChatbotMessageUi {
-  if (tier === "tier-4-form-fallback") return { kind: "tier4-inquiry-form" }
-  if (!routingDecision) return { kind: "none" }
+  const fallbackUi: ChatbotMessageUi =
+    tier === "tier-4-form-fallback" ? { kind: "tier4-inquiry-form" } : { kind: "none" }
+  if (!routingDecision) return fallbackUi
 
   if (routingDecision.kind === "continue" && routingDecision.presentChoices) {
     return { kind: "choice-panel", choiceSet: routingDecision.presentChoices }
@@ -742,7 +745,7 @@ function toMessageUi(
     }
   }
 
-  return { kind: "none" }
+  return fallbackUi
 }
 
 function buildConversationSummary(jobContext: JobContext, conversationState: ConversationState): ConversationSummary {
@@ -879,45 +882,84 @@ function inferJobContextFromText(text: string): Partial<JobContext> {
   const finalMedium = inferFinalMediumFromText(text)
   const projectLengthMinutes = inferProjectLengthMinutes(text)
   const preferredStartDate = inferPreferredStartDate(text)
-  const publicReleaseDate = /(?:6月20日|６月２０日|6\/20|06-20)/u.test(text)
-    ? "2026-06-20"
-    : /(?:月末|6月末|６月末)/u.test(text)
-      ? "2026-06-30"
-      : undefined
+  const publicReleaseDate = inferPublicReleaseDate(text)
 
   return {
     ...(finalMedium ? { finalMedium } : {}),
     ...(/(?:web\s*cm|cm)/iu.test(text) ? { jobKind: "cm-30s" as const } : {}),
     ...(finalMedium === "live" && projectLengthMinutes !== undefined ? { jobKind: "live-60m" as const } : {}),
     ...(projectLengthMinutes ? { projectLengthMinutes } : {}),
-    ...(preferredStartDate ? { preferredStartDate } : {}),
+    ...(preferredStartDate ? { preferredStartDate: preferredStartDate.date } : {}),
+    ...(preferredStartDate?.approximate ? { preferredStartDateApproximate: true } : {}),
     ...(publicReleaseDate ? { publicReleaseDate } : {}),
   }
 }
 
-function inferPreferredStartDate(text: string): string | undefined {
+function inferPreferredStartDate(text: string): { date: string; approximate?: boolean } | undefined {
   const isoLike = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(20\d{2})[\/.-](\d{1,2})[\/.-](\d{1,2})/u)
-  if (isoLike?.[1] && isoLike[2] && isoLike[3]) return formatIsoDate(isoLike[1], isoLike[2], isoLike[3])
+  if (isoLike?.[1] && isoLike[2] && isoLike[3]) return { date: formatIsoDate(isoLike[1], isoLike[2], isoLike[3]) }
 
   const slash = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})\/(\d{1,2})/u)
-  if (slash?.[1] && slash[2]) return formatIsoDate("2026", slash[1], slash[2])
+  if (slash?.[1] && slash[2]) return { date: formatIsoDate("2026", slash[1], slash[2]) }
 
   const monthDay = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})月(\d{1,2})日/u)
-  if (monthDay?.[1] && monthDay[2]) return formatIsoDate("2026", monthDay[1], monthDay[2])
+  if (monthDay?.[1] && monthDay[2]) return { date: formatIsoDate("2026", monthDay[1], monthDay[2]) }
 
   const earlyMonth = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2})月上旬/u)
-  if (earlyMonth?.[1]) return formatIsoDate("2026", earlyMonth[1], "1")
+  if (earlyMonth?.[1]) return { date: formatIsoDate("2026", earlyMonth[1], "1"), approximate: true }
 
-  if (/(?:6月中旬|６月中旬|中旬|6月中頃|６月中頃)/u.test(text)) return "2026-06-15"
+  const middleMonth = text.match(/(?:搬入|受け取り|受取|作業|開始)?[^\n。、,]*(\d{1,2}|[１２３４５６７８９]|[一二三四五六七八九])月(?:中旬|中頃|なかば)/u)
+  if (middleMonth?.[1]) return { date: formatIsoDate("2026", normalizeMonthNumber(middleMonth[1]), "15"), approximate: true }
+
+  const withinMonth = text.match(/(?:搬入|受け取り|受取|作業|開始)[^\n。、,]*(\d{1,2}|[１２３４５６７８９]|[一二三四五六七八九])月中/u)
+  if (withinMonth?.[1]) return { date: formatIsoDate("2026", normalizeMonthNumber(withinMonth[1]), "1"), approximate: true }
+  return undefined
+}
+
+function inferPublicReleaseDate(text: string): string | undefined {
+  const isoLike = text.match(/(?:納品|納期|公開|リリース|締切|締め切り)[^\n。、,]*(20\d{2})[\/.-](\d{1,2})[\/.-](\d{1,2})/u)
+  if (isoLike?.[1] && isoLike[2] && isoLike[3]) return formatIsoDate(isoLike[1], isoLike[2], isoLike[3])
+
+  const slash = text.match(/(?:納品|納期|公開|リリース|締切|締め切り)[^\n。、,]*(\d{1,2})\/(\d{1,2})/u)
+  if (slash?.[1] && slash[2]) return formatIsoDate("2026", slash[1], slash[2])
+
+  const monthDay =
+    text.match(/(?:納品|納期|公開|リリース|締切|締め切り)[^\n。、,]*(\d{1,2})月(\d{1,2})日/u) ??
+    text.match(/(\d{1,2})月(\d{1,2})日[^\n。、,]*(?:納品|納期|公開|リリース|締切|締め切り)/u)
+  if (monthDay?.[1] && monthDay[2]) return formatIsoDate("2026", monthDay[1], monthDay[2])
+
+  const monthEnd = text.match(/(?:(\d{1,2}|[１２３４５６７８９]|[一二三四五六七八九])月末|(?:納品|納期|公開|リリース|締切|締め切り)[^\n。、,]*(\d{1,2}|[１２３４５６７８９]|[一二三四五六七八九])月中)/u)
+  const month = monthEnd?.[1] ?? monthEnd?.[2]
+  if (month) return formatIsoDate("2026", normalizeMonthNumber(month), String(lastDayOfMonth(2026, Number(normalizeMonthNumber(month)))))
+
   return undefined
 }
 
 function formatIsoDate(year: string, month: string, day: string): string {
   return [
     year,
-    month.padStart(2, "0"),
+    normalizeMonthNumber(month).padStart(2, "0"),
     day.padStart(2, "0"),
   ].join("-")
+}
+
+function normalizeMonthNumber(value: string): string {
+  const normalized = value
+    .replace(/[０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace("一", "1")
+    .replace("二", "2")
+    .replace("三", "3")
+    .replace("四", "4")
+    .replace("五", "5")
+    .replace("六", "6")
+    .replace("七", "7")
+    .replace("八", "8")
+    .replace("九", "9")
+  return normalized
+}
+
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
 }
 
 function inferProjectLengthMinutes(text: string): number | undefined {
