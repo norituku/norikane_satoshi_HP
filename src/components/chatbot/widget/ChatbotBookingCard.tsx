@@ -235,7 +235,6 @@ export function ChatbotBookingCard({
   const canSubmit = Boolean(selectedSlots.length === requiredDays && projectTitle.trim() && contactName.trim() && agreed && !submitting)
 
   useEffect(() => {
-    if (displayedMonthOffset === 0) return
     if (!jobContext || !estimate) return
     if (monthCandidateOverrides[displayedMonthKey]) return
 
@@ -438,6 +437,7 @@ export function ChatbotBookingCard({
                     <button
                       key={dateKey}
                       type="button"
+                      disabled
                       className={[
                         "relative min-h-11 rounded-[12px] border px-1.5 py-2 text-xs transition",
                         selected
@@ -448,7 +448,6 @@ export function ChatbotBookingCard({
                       data-selected={selected ? "true" : undefined}
                       aria-label={`${dateKey} 空き・開始不可`}
                       aria-disabled="true"
-                      onClick={() => setCalendarHint("不可")}
                     >
                       <span className="block font-semibold">{formatCalendarDayLabel(dateKey)}</span>
                       <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full border border-[var(--text-muted)]" aria-hidden="true" />
@@ -493,15 +492,6 @@ export function ChatbotBookingCard({
                   </button>
                 )
               })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2" aria-label="仮キープ候補カレンダーの凡例">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-[8px] border border-white/65 bg-white/55" aria-label="選択可" />
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-[8px] border border-white/55 bg-white/40" aria-label="空き・開始不可">
-                <span className="h-1.5 w-1.5 rounded-full border border-[var(--text-muted)]" aria-hidden="true" />
-              </span>
-              <span className="relative inline-flex h-5 w-5 overflow-hidden rounded-[8px] border border-[var(--text-muted)] bg-[var(--text-muted)]" aria-label="埋まり">
-                <span className="absolute left-1/2 top-1/2 h-0.5 w-6 -translate-x-1/2 -translate-y-1/2 rotate-[-28deg] rounded-full bg-white/80" aria-hidden="true" />
-              </span>
             </div>
             {calendarHint ? (
               <p className="mt-3 text-xs leading-relaxed text-hp-muted" role="status" aria-live="polite">

@@ -93,11 +93,11 @@ describe("ChatbotBookingCard", () => {
 
     const unavailableCells = screen.getAllByRole("button", { name: /空き・開始不可/ })
     expect(unavailableCells.length).toBeGreaterThan(0)
-    expect(unavailableCells[0]).toHaveAttribute("aria-disabled", "true")
+    expect(unavailableCells[0]).toBeDisabled()
     expect(unavailableCells[0]).toHaveAttribute("data-calendar-state", "free-unstartable")
 
     fireEvent.click(unavailableCells[0])
-    expect(screen.getByText("不可")).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("不可")
   })
 
   it("renders timed work busy days as non-startable busy cells without exposing private details", () => {
@@ -106,10 +106,11 @@ describe("ChatbotBookingCard", () => {
     const busyCell = screen.getByRole("button", { name: "2026-06-12 埋まり" })
     expect(busyCell).toBeDisabled()
     expect(busyCell).toHaveAttribute("data-calendar-state", "busy")
-    expect(screen.getByLabelText("仮キープ候補カレンダーの凡例")).not.toHaveTextContent("埋まり")
+    expect(screen.queryByLabelText("仮キープ候補カレンダーの凡例")).not.toBeInTheDocument()
     expect(document.body).not.toHaveTextContent("選択可")
     expect(document.body).not.toHaveTextContent("開始不可")
     expect(document.body).not.toHaveTextContent("埋まり")
+    expect(document.body).not.toHaveTextContent("不可")
     expect(document.body).not.toHaveTextContent("Secret")
     expect(document.body).not.toHaveTextContent("Customer")
   })
@@ -210,19 +211,72 @@ describe("ChatbotBookingCard", () => {
     renderCard({ jobContext })
     fireEvent.click(screen.getByRole("button", { name: "翌月を表示" }))
 
+    let julyCall: (typeof fetchMock.mock.calls)[number] | undefined
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/chatbot/booking-candidates",
-        expect.objectContaining({
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: expect.any(String),
-        }),
-      )
+      julyCall = fetchMock.mock.calls.find((call) => {
+        const [, init] = call
+        if (!init || typeof init !== "object" || !("body" in init)) return false
+        return JSON.parse(String(init.body)).month === "2026-07"
+      })
+      expect(julyCall).toBeTruthy()
     })
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ month: "2026-07" })
+    expect(julyCall).toBeTruthy()
     expect(await screen.findByRole("button", { name: "2026-07-03 選択可" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "2026-07-08 埋まり" })).toHaveAttribute("data-calendar-state", "busy")
+  })
+
+  it("refreshes the initial month and allows Saturday and Sunday cells from the month API", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/api/chatbot/booking-candidates") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            candidates: [
+              {
+                start: "2026-06-13T01:00:00.000Z",
+                end: "2026-06-14T01:00:00.000Z",
+                label: "6月13日 単日",
+              },
+              {
+                start: "2026-06-14T01:00:00.000Z",
+                end: "2026-06-15T01:00:00.000Z",
+                label: "6月14日 単日",
+              },
+            ],
+            busyDateKeys: [],
+          }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ bookingGroupId: "group_1", bookingIds: ["slot_1"] }),
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-12T01:00:00.000Z",
+          end: "2026-06-13T01:00:00.000Z",
+          label: "6月12日 単日",
+        },
+      ],
+      jobContext,
+    })
+
+    const saturday = await screen.findByRole("button", { name: "2026-06-13 選択可" })
+    const sunday = await screen.findByRole("button", { name: "2026-06-14 選択可" })
+    fireEvent.click(saturday)
+    fireEvent.click(sunday)
+
+    expect(saturday).toHaveAttribute("aria-pressed", "true")
+    expect(sunday).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getAllByText("2／2")).toHaveLength(1)
+    expect(document.body).not.toHaveTextContent("不可")
   })
 
   it("allows disjoint selected days around a busy day", () => {

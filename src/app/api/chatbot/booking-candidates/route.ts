@@ -58,6 +58,17 @@ const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
 })
 
+function laterIsoDate(left: string, right?: string): string {
+  if (!right) return left
+  const leftDate = new Date(`${left}T00:00:00.000+09:00`)
+  const rightDate = /^\d{4}-\d{2}-\d{2}$/.test(right)
+    ? new Date(`${right}T00:00:00.000+09:00`)
+    : new Date(right)
+
+  if (Number.isNaN(rightDate.getTime())) return left
+  return rightDate.getTime() > leftDate.getTime() ? right : left
+}
+
 export async function POST(request: NextRequest) {
   let raw: unknown
   try {
@@ -82,7 +93,7 @@ export async function POST(request: NextRequest) {
       jobContext: parsed.data.jobContext,
       workflowEstimate: parsed.data.workflowEstimate,
       desiredDeadline: parsed.data.jobContext.publicReleaseDate,
-      notBefore: `${parsed.data.month}-01`,
+      notBefore: laterIsoDate(`${parsed.data.month}-01`, parsed.data.jobContext.preferredStartDate),
       now: new Date(`${parsed.data.month}-01T00:00:00.000+09:00`),
       lookaheadWeeks: 9,
       candidateLimit: 31,

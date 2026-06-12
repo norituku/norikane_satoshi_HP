@@ -89,6 +89,28 @@ describe("POST /api/chatbot/booking-candidates", () => {
     })
   })
 
+  it("keeps the material handoff lower bound when loading a month", async () => {
+    const route = await loadPost()
+
+    const response = await route.POST(request(validBody({
+      jobContext: {
+        jobKind: "cm-30s",
+        finalMedium: "web",
+        workSite: "remote-grading",
+        documentaryAttachment: { kind: "none" },
+        publicReleaseDate: "2026-08-01",
+        preferredStartDate: "2026-07-12",
+      },
+    })))
+
+    expect(response.status).toBe(200)
+    expect(route.findCandidateCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notBefore: "2026-07-12",
+      }),
+    )
+  })
+
   it("rejects invalid month requests before reading availability", async () => {
     const route = await loadPost()
 
