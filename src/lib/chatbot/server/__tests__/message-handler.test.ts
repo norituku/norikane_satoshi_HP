@@ -844,7 +844,7 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
-  it("logs the shadow comparison and executes create_booking only when the rule path matches", async () => {
+  it("logs the safety route and executes create_booking when dispatcher safety allows it", async () => {
     const harness = setup()
     const createBookingFromApiInput = vi.fn().mockResolvedValue({
       status: 200,
@@ -875,7 +875,7 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=create_booking rule=to-booking-inline match=true")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=create_booking safety=to-booking-inline allowed=true")
     expect(createBookingFromApiInput).toHaveBeenCalledWith({
       input: bookingInput(),
       userId: "user_a",
@@ -932,7 +932,7 @@ describe("handleChatbotMessage user context", () => {
         systemPrompt: expect.stringContaining("dispatcher用の分類JSON"),
       }),
     )
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=create_booking rule=to-booking-inline match=true")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=create_booking safety=to-booking-inline allowed=true")
     expect(createBookingFromApiInput).toHaveBeenCalledWith({
       input: bookingInput(),
       userId: "user_a",
@@ -967,11 +967,61 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=create_booking rule=to-booking-inline match=true")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=create_booking safety=to-booking-inline allowed=true")
     expect(createBookingFromApiInput).not.toHaveBeenCalled()
     expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
     expect(result.ui).toMatchObject({ kind: "booking-card" })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalled()
+  })
+
+  it("keeps direct-contact safety ahead of executable tool JSON", async () => {
+    const harness = setup()
+    const createBookingFromApiInput = vi.fn()
+    const toolShadowLogger = vi.fn()
+    harness.generate.mockResolvedValueOnce({
+      rawText: JSON.stringify({
+        tool: "create_booking",
+        args: { input: bookingInput() },
+      }),
+      tier: "tier-1-chrome-notion-ai",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        userEmail: "customer@example.com",
+        message: "CM 30秒のカラーグレーディングです。料金と契約条件も教えてください。",
+        conversationState: {
+          asksPricing: true,
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasMaterialHandoff: true,
+          hasWorkSite: true,
+          hasCustomerIdentity: true,
+          hasDesiredSchedule: true,
+          turnCount: 3,
+        },
+        jobContext: {
+          jobKind: "cm-30s",
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+        },
+      },
+      {
+        ...harness.options,
+        createBookingFromApiInput,
+        toolShadowLogger,
+      },
+    )
+
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=create_booking safety=to-direct-contact allowed=false")
+    expect(createBookingFromApiInput).not.toHaveBeenCalled()
+    expect(result.routingDecision).toMatchObject({ kind: "to-direct-contact", reason: "pricing" })
+    expect(result.ui).toMatchObject({ kind: "direct-contact-card", reason: "pricing" })
   })
 
   it("keeps rule fallback when the LLM output is not strict tool JSON", async () => {
@@ -1062,7 +1112,7 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=show_booking_card rule=activeUi:booking-card match=true")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=show_booking_card safety=to-booking-inline allowed=true")
     expect(result.routingDecision).toMatchObject({
       kind: "to-booking-inline",
       busyDateKeys: ["2026-06-21"],
@@ -1112,7 +1162,7 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=get_estimate rule=workflowEstimate:available match=true")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=get_estimate safety=continue allowed=true")
     expect(createBookingFromApiInput).not.toHaveBeenCalled()
     expect(result.assistantMessage.content).toMatch(/^作業目安は\d+(?:\.\d+)?〜\d+(?:\.\d+)?日です。$/u)
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(

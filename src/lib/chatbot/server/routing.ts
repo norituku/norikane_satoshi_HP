@@ -294,12 +294,8 @@ function shouldPrioritizeSchedule(
     conversationState.hasWorkSite &&
     Boolean(conversationState.hasCustomerIdentity) &&
     (conversationState.hasFinalMedium || jobContext.finalMedium === "web") &&
-    isCandidateWindowJob(jobContext)
+    (isOneHourCandidateJob(jobContext) || isDateCandidateJob(jobContext))
   )
-}
-
-function isCandidateWindowJob(jobContext: JobContext): boolean {
-  return isOneHourCandidateJob(jobContext) || isDateCandidateJob(jobContext)
 }
 
 function isOneHourCandidateJob(jobContext: JobContext): boolean {

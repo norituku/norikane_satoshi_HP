@@ -308,7 +308,6 @@ async function handleChatbotMessageCore(
   const toolDispatchResult = await handlePhaseOneToolCall({
     rawText: toolCallRawText,
     routingDecision,
-    jobContext,
     context: {
       userId: input.userId,
       userEmail: input.userEmail,
@@ -452,19 +451,22 @@ function shouldReadPhaseTwoToolCall(input: {
 async function handlePhaseOneToolCall(input: {
   rawText: string
   routingDecision: RoutingDecision
-  jobContext: JobContext
   context: ChatbotToolExecutionContext
   logger?: (message: string) => void
 }): Promise<ChatbotToolDispatchResult | { status: "not-requested" }> {
   const toolCall = parseChatbotToolCallJson(input.rawText)
   if (!toolCall) return { status: "not-requested" }
 
-  const rule = describeToolRuleMatch(input.routingDecision, input.jobContext, toolCall.tool)
-  const logLine = `[shadow] llm=${toolCall.tool} rule=${rule.label} match=${rule.match}`
+  const safetyDenied = input.routingDecision.kind === "to-direct-contact"
+  const logLine = `[tool] llm=${toolCall.tool} safety=${input.routingDecision.kind} allowed=${!safetyDenied}`
   ;(input.logger ?? console.info)(logLine)
 
-  if (!rule.match || !phaseTwoExecutableToolNames.has(toolCall.tool as ChatbotToolName)) {
+  if (!phaseTwoExecutableToolNames.has(toolCall.tool as ChatbotToolName)) {
     return { status: "fallback", reason: "unknown-tool", tool: toolCall.tool }
+  }
+
+  if (safetyDenied) {
+    return { status: "fallback", reason: "safety-denied", tool: toolCall.tool }
   }
 
   return dispatchChatbotToolCall({
@@ -472,36 +474,6 @@ async function handlePhaseOneToolCall(input: {
     args: toolCall.args,
     context: input.context,
   })
-}
-
-function describeToolRuleMatch(
-  routingDecision: RoutingDecision,
-  jobContext: JobContext,
-  toolName: string,
-): { label: string; match: boolean } {
-  if (toolName === "create_booking") {
-    return {
-      label: routingDecision.kind,
-      match: routingDecision.kind === "to-booking-inline",
-    }
-  }
-
-  if (toolName === "show_booking_card") {
-    const bookingCardActive = routingDecision.kind === "to-booking-inline" && routingDecision.suggestedSlots.length > 0
-    return {
-      label: bookingCardActive ? "activeUi:booking-card" : `activeUi:${routingDecision.kind}`,
-      match: bookingCardActive,
-    }
-  }
-
-  if (toolName === "get_estimate") {
-    return {
-      label: jobContext.jobKind ? "workflowEstimate:available" : "workflowEstimate:missing-job-kind",
-      match: Boolean(jobContext.jobKind),
-    }
-  }
-
-  return { label: routingDecision.kind, match: false }
 }
 
 function buildCreateBookingSuccessContent(result: Extract<ChatbotToolDispatchResult, { status: "executed" }>): string {
