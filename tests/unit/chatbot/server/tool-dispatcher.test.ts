@@ -25,12 +25,14 @@ describe("chatbot tool dispatcher", () => {
     expect(formatChatbotToolRegistryForPrompt()).toContain("get_estimate")
   })
 
-  it("can format only Phase 1 executable tools for the prompt", () => {
-    const prompt = formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: ["create_booking"] })
+  it("can format only selected executable tools for the prompt", () => {
+    const prompt = formatChatbotToolRegistryForPrompt(undefined, {
+      enabledToolNames: ["create_booking", "show_booking_card"],
+    })
 
     expect(prompt).toContain("create_booking")
+    expect(prompt).toContain("show_booking_card")
     expect(prompt).toContain("condition:")
-    expect(prompt).not.toContain("show_booking_card")
     expect(prompt).not.toContain("get_estimate")
   })
 

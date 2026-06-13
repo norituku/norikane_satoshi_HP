@@ -183,7 +183,7 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.repository.setConversationNotionAiThreadId).not.toHaveBeenCalled()
   })
 
-  it("injects the Phase 1 create_booking tool definition into the main prompt", async () => {
+  it("injects the Phase 2 tool definitions into the main prompt", async () => {
     const harness = setup()
 
     await handleChatbotMessage(
@@ -194,9 +194,9 @@ describe("handleChatbotMessage user context", () => {
     const systemPrompt = harness.generate.mock.calls[0]?.[0].systemPrompt
     expect(systemPrompt).toContain("利用可能ツール:")
     expect(systemPrompt).toContain("create_booking")
+    expect(systemPrompt).toContain("show_booking_card")
+    expect(systemPrompt).toContain("get_estimate")
     expect(systemPrompt).toContain('{"tool":"create_booking","args":{...}}')
-    expect(systemPrompt).not.toContain("show_booking_card")
-    expect(systemPrompt).not.toContain("get_estimate")
   })
 
   it("uses dedicated Notion AI threads by default", async () => {
@@ -806,6 +806,10 @@ describe("handleChatbotMessage user context", () => {
         proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
       })
       .mockResolvedValueOnce({
+        rawText: '{"tool":"none","args":{}}',
+        tier: "tier-1-chrome-notion-ai",
+      })
+      .mockResolvedValueOnce({
         rawText:
           '{"contactName":"テストユーザー","companyName":"テスト株式会社","contactEmail":"test@example.com","dueDate":"2026-07-31"}',
         tier: "tier-1-chrome-notion-ai",
@@ -821,7 +825,7 @@ describe("handleChatbotMessage user context", () => {
       harness.options,
     )
 
-    expect(harness.generate.mock.calls[1]?.[0]).toEqual(
+    expect(harness.generate.mock.calls[2]?.[0]).toEqual(
       expect.objectContaining({
         systemPrompt: expect.stringContaining("予約フォーム初期値だけをJSON"),
         notionAiThread: {},
@@ -1001,12 +1005,29 @@ describe("handleChatbotMessage user context", () => {
     expect(result.ui).toMatchObject({ kind: "booking-card" })
   })
 
-  it("leaves get_estimate unexecuted in Phase 1 even when the LLM emits tool JSON", async () => {
+  it("executes show_booking_card and uses the dispatcher routing decision for active UI", async () => {
     const harness = setup()
-    const createBookingFromApiInput = vi.fn()
     const toolShadowLogger = vi.fn()
+    const llmSlot = {
+      start: "2026-06-20T01:00:00.000Z",
+      end: "2026-06-20T02:00:00.000Z",
+      label: "6月20日 10:00",
+      available: true,
+    }
     harness.generate.mockResolvedValueOnce({
-      rawText: '{"tool":"get_estimate","args":{"jobContext":{"jobKind":"cm-30s"}}}',
+      rawText: JSON.stringify({
+        tool: "show_booking_card",
+        args: {
+          suggestedSlots: [llmSlot],
+          busyDateKeys: ["2026-06-21"],
+          jobContext: {
+            jobKind: "cm-30s",
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
       tier: "tier-1-chrome-notion-ai",
       proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
     })
@@ -1015,9 +1036,74 @@ describe("handleChatbotMessage user context", () => {
       {
         sessionId: "session_1",
         userId: "user_a",
-        userEmail: "customer@example.com",
         message:
-          "ライブ映像のカラーグレーディング相談です。尺は約2.5h、素材搬入は7/1以降、納品は7月中、作業形態はリモートグレーディングです。担当者はテストユーザー、会社名はテスト株式会社、メールは customer@example.com です。",
+          "CM 30秒のカラーグレーディングです。素材搬入は7/1以降、納品は7月中、作業形態はリモートグレーディングです。",
+        conversationState: {
+          hasDesiredSchedule: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasMaterialHandoff: true,
+          hasWorkSite: true,
+          hasCustomerIdentity: true,
+          hasFinalMedium: true,
+          turnCount: 3,
+        },
+        jobContext: {
+          jobKind: "cm-30s",
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+          preferredStartDate: "2026-07-01",
+        },
+      },
+      {
+        ...harness.options,
+        toolShadowLogger,
+      },
+    )
+
+    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=show_booking_card rule=activeUi:booking-card match=true")
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-booking-inline",
+      busyDateKeys: ["2026-06-21"],
+      suggestedSlots: [llmSlot],
+    })
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      busyDateKeys: ["2026-06-21"],
+      suggestedSlots: [llmSlot],
+    })
+  })
+
+  it("executes get_estimate and persists the dispatcher estimate in conversation context", async () => {
+    const harness = setup()
+    const createBookingFromApiInput = vi.fn()
+    const toolShadowLogger = vi.fn()
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"get_estimate","args":{"jobContext":{"jobKind":"cm-30s","finalMedium":"web","workSite":"remote-grading","documentaryAttachment":{"kind":"none"}}}}',
+      tier: "tier-1-chrome-notion-ai",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "素材の受け渡し方法を教えてください。" },
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        userEmail: "customer@example.com",
+        message: "CM 30秒のカラーグレーディングです。工程目安を知りたいです。",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          turnCount: 2,
+        },
+        jobContext: {
+          jobKind: "cm-30s",
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+        },
       },
       {
         ...harness.options,
@@ -1026,10 +1112,19 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=get_estimate rule=to-booking-inline match=false")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[shadow] llm=get_estimate rule=workflowEstimate:available match=true")
     expect(createBookingFromApiInput).not.toHaveBeenCalled()
-    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
-    expect(result.ui).toMatchObject({ kind: "booking-card" })
+    expect(result.assistantMessage.content).toMatch(/^作業目安は\d+(?:\.\d+)?〜\d+(?:\.\d+)?日です。$/u)
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobContext: expect.objectContaining({
+          workflowEstimate: expect.objectContaining({
+            totalMinDays: expect.any(Number),
+            totalMaxDays: expect.any(Number),
+          }),
+        }),
+      }),
+    )
   })
 
   it("falls back to empty booking form defaults when the JSON LLM read fails", async () => {
@@ -1052,7 +1147,7 @@ describe("handleChatbotMessage user context", () => {
       harness.options,
     )
 
-    expect(harness.generate).toHaveBeenCalledTimes(2)
+    expect(harness.generate).toHaveBeenCalledTimes(3)
     expect(result.ui).toMatchObject({
       kind: "booking-card",
       bookingPrefill: {},

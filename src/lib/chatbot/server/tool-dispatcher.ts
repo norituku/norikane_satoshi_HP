@@ -119,7 +119,7 @@ const showBookingCardTool: ChatbotToolDefinition<
 > = {
   name: "show_booking_card",
   description: "Return the existing booking-card routing decision shape.",
-  executionCondition: "Not executable in Phase 1; the existing deterministic rule path still owns booking-card display.",
+  executionCondition: "Call when the customer is ready to see booking candidates and the deterministic safety route also allows booking-card display.",
   inputSchema: showBookingCardArgsSchema,
   inputJsonExample: '{"suggestedSlots":[{"start":"2026-06-15T01:00:00.000Z","end":"2026-06-15T02:00:00.000Z","label":"6月15日 10:00","available":true}],"jobContext":{"finalMedium":"web","workSite":"remote-grading","documentaryAttachment":{"kind":"none"}}}',
   canExecute: () => ({ allowed: true }),
@@ -139,7 +139,7 @@ const getEstimateTool: ChatbotToolDefinition<
 > = {
   name: "get_estimate",
   description: "Calculate the existing workflow estimate for a validated job context.",
-  executionCondition: "Not executable in Phase 1; the existing deterministic rule path still owns estimate display.",
+  executionCondition: "Call after jobKind is known and the customer needs a workflow duration estimate.",
   inputSchema: getEstimateArgsSchema,
   inputJsonExample: '{"jobContext":{"jobKind":"cm-30s","finalMedium":"web","workSite":"remote-grading","documentaryAttachment":{"kind":"none"}}}',
   canExecute: (args) =>

@@ -39,7 +39,7 @@ import {
 } from "@/lib/chatbot/server/choice-panel-state"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
 import { buildChatbotKnowledgeContext } from "@/lib/chatbot/server/knowledge-context"
-import type { CandidateWindow, ConversationSummary } from "@/lib/chatbot/domain/workflow-estimate"
+import type { CandidateWindow, ConversationSummary, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
 import {
   hasRequiredConsultationNotificationSlots,
   hasRequiredEmailConsultationSlots,
@@ -287,7 +287,7 @@ async function handleChatbotMessageCore(
     conversationState,
     latestUserMessage: input.message,
   })
-  const routingDecision = await resolveBookingCandidates({
+  let routingDecision = await resolveBookingCandidates({
     routingDecision: chooseRoutingDecision({
       deterministicRoutingDecision,
       proposedRoutingDecision: llmResponse.proposedRoutingDecision,
@@ -308,6 +308,7 @@ async function handleChatbotMessageCore(
   const toolDispatchResult = await handlePhaseOneToolCall({
     rawText: toolCallRawText,
     routingDecision,
+    jobContext,
     context: {
       userId: input.userId,
       userEmail: input.userEmail,
@@ -317,6 +318,17 @@ async function handleChatbotMessageCore(
   })
   const toolExecutedCreateBooking =
     toolDispatchResult.status === "executed" && toolDispatchResult.tool === "create_booking"
+  const toolExecutedGetEstimate =
+    toolDispatchResult.status === "executed" && toolDispatchResult.tool === "get_estimate"
+  const toolEstimate = toolExecutedGetEstimate ? workflowEstimateFromToolResult(toolDispatchResult.result) : null
+  const effectiveJobContext = toolEstimate ? { ...jobContext, workflowEstimate: toolEstimate } : jobContext
+  const toolRoutingDecision =
+    toolDispatchResult.status === "executed" && toolDispatchResult.tool === "show_booking_card"
+      ? routingDecisionFromToolResult(toolDispatchResult.result)
+      : null
+  if (toolRoutingDecision) {
+    routingDecision = toolRoutingDecision
+  }
   const normalizedLlmResponse = toolExecutedCreateBooking
     ? {
         content: buildCreateBookingSuccessContent(toolDispatchResult),
@@ -324,7 +336,14 @@ async function handleChatbotMessageCore(
         model: llmResponse.tier,
         finish_reason: "stop" as const,
       }
-    : normalizeChatbotLlmResponse(llmResponse, { routingDecision, jobContext })
+    : toolExecutedGetEstimate && toolEstimate
+      ? {
+          content: buildGetEstimateSuccessContent(toolEstimate),
+          role: "assistant" as const,
+          model: llmResponse.tier,
+          finish_reason: "stop" as const,
+        }
+      : normalizeChatbotLlmResponse(llmResponse, { routingDecision, jobContext: effectiveJobContext })
   const bookingPrefill = toolExecutedCreateBooking
     ? {}
     : await extractBookingFormPrefill({
@@ -349,13 +368,13 @@ async function handleChatbotMessageCore(
       currentQuestion: routingDecision.kind === "continue" ? routingDecision.nextQuestion : null,
       activeChoices: routingDecision.kind === "continue" ? routingDecision.presentChoices ?? null : null,
       conversationState,
-      jobContext,
+      jobContext: routingDecision.kind === "to-booking-inline" ? routingDecision.jobContext : effectiveJobContext,
     })
     await maybeSendOperatorNotification({
       conversation,
       routingDecision,
       conversationState,
-      jobContext,
+      jobContext: effectiveJobContext,
       repository,
       operatorNotificationSender,
     })
@@ -384,7 +403,12 @@ async function handleChatbotMessageCore(
   }
 }
 
-const phaseOneExecutableToolNames = new Set<ChatbotToolName>(["create_booking"])
+const phaseTwoEnabledToolNames: ReadonlyArray<ChatbotToolName> = [
+  "create_booking",
+  "show_booking_card",
+  "get_estimate",
+]
+const phaseTwoExecutableToolNames = new Set<ChatbotToolName>(phaseTwoEnabledToolNames)
 
 async function resolvePhaseOneToolCallRawText(input: {
   rawText: string
@@ -397,8 +421,7 @@ async function resolvePhaseOneToolCallRawText(input: {
   canExecuteCreateBooking: boolean
 }): Promise<string> {
   if (parseChatbotToolCallJson(input.rawText)) return input.rawText
-  if (input.routingDecision.kind !== "to-booking-inline") return input.rawText
-  if (!input.canExecuteCreateBooking) return input.rawText
+  if (!shouldReadPhaseTwoToolCall(input)) return input.rawText
 
   try {
     const response = await enqueueChatbotLlmGeneration(() =>
@@ -417,20 +440,29 @@ async function resolvePhaseOneToolCallRawText(input: {
   }
 }
 
+function shouldReadPhaseTwoToolCall(input: {
+  routingDecision: RoutingDecision
+  jobContext: JobContext
+}): boolean {
+  if (input.routingDecision.kind === "to-booking-inline") return true
+  return Boolean(input.jobContext.jobKind)
+}
+
 async function handlePhaseOneToolCall(input: {
   rawText: string
   routingDecision: RoutingDecision
+  jobContext: JobContext
   context: ChatbotToolExecutionContext
   logger?: (message: string) => void
 }): Promise<ChatbotToolDispatchResult | { status: "not-requested" }> {
   const toolCall = parseChatbotToolCallJson(input.rawText)
   if (!toolCall) return { status: "not-requested" }
 
-  const match = toolCall.tool === "create_booking" && input.routingDecision.kind === "to-booking-inline"
-  const logLine = `[shadow] llm=${toolCall.tool} rule=${input.routingDecision.kind} match=${match}`
+  const rule = describeToolRuleMatch(input.routingDecision, input.jobContext, toolCall.tool)
+  const logLine = `[shadow] llm=${toolCall.tool} rule=${rule.label} match=${rule.match}`
   ;(input.logger ?? console.info)(logLine)
 
-  if (!match || !phaseOneExecutableToolNames.has(toolCall.tool as ChatbotToolName)) {
+  if (!rule.match || !phaseTwoExecutableToolNames.has(toolCall.tool as ChatbotToolName)) {
     return { status: "fallback", reason: "unknown-tool", tool: toolCall.tool }
   }
 
@@ -439,6 +471,36 @@ async function handlePhaseOneToolCall(input: {
     args: toolCall.args,
     context: input.context,
   })
+}
+
+function describeToolRuleMatch(
+  routingDecision: RoutingDecision,
+  jobContext: JobContext,
+  toolName: string,
+): { label: string; match: boolean } {
+  if (toolName === "create_booking") {
+    return {
+      label: routingDecision.kind,
+      match: routingDecision.kind === "to-booking-inline",
+    }
+  }
+
+  if (toolName === "show_booking_card") {
+    const bookingCardActive = routingDecision.kind === "to-booking-inline" && routingDecision.suggestedSlots.length > 0
+    return {
+      label: bookingCardActive ? "activeUi:booking-card" : `activeUi:${routingDecision.kind}`,
+      match: bookingCardActive,
+    }
+  }
+
+  if (toolName === "get_estimate") {
+    return {
+      label: jobContext.jobKind ? "workflowEstimate:available" : "workflowEstimate:missing-job-kind",
+      match: Boolean(jobContext.jobKind),
+    }
+  }
+
+  return { label: routingDecision.kind, match: false }
 }
 
 function buildCreateBookingSuccessContent(result: Extract<ChatbotToolDispatchResult, { status: "executed" }>): string {
@@ -454,6 +516,33 @@ function bookingGroupIdFromToolResult(result: unknown): string | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null
   const bookingGroupId = (body as { bookingGroupId?: unknown }).bookingGroupId
   return typeof bookingGroupId === "string" && bookingGroupId.trim() ? bookingGroupId : null
+}
+
+function workflowEstimateFromToolResult(result: unknown): WorkflowEstimate | null {
+  if (!result || typeof result !== "object") return null
+  const workflowEstimate = (result as { workflowEstimate?: unknown }).workflowEstimate
+  if (!workflowEstimate || typeof workflowEstimate !== "object") return null
+  const totalMinDays = (workflowEstimate as { totalMinDays?: unknown }).totalMinDays
+  const totalMaxDays = (workflowEstimate as { totalMaxDays?: unknown }).totalMaxDays
+  return typeof totalMinDays === "number" && typeof totalMaxDays === "number"
+    ? (workflowEstimate as WorkflowEstimate)
+    : null
+}
+
+function routingDecisionFromToolResult(result: unknown): Extract<RoutingDecision, { kind: "to-booking-inline" }> | null {
+  if (!result || typeof result !== "object") return null
+  const routingDecision = (result as { routingDecision?: unknown }).routingDecision
+  if (!routingDecision || typeof routingDecision !== "object") return null
+  if ((routingDecision as { kind?: unknown }).kind !== "to-booking-inline") return null
+  return routingDecision as Extract<RoutingDecision, { kind: "to-booking-inline" }>
+}
+
+function buildGetEstimateSuccessContent(estimate: WorkflowEstimate): string {
+  return `作業目安は${formatEstimateDays(estimate.totalMinDays)}〜${formatEstimateDays(estimate.totalMaxDays)}日です。`
+}
+
+function formatEstimateDays(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/u, "")
 }
 
 async function extractBookingFormPrefill(input: {
@@ -697,7 +786,7 @@ function buildChatbotSystemPrompt(
     "連絡先を求める場合は、電話番号ではなくメールアドレス（必須）を明示します。電話番号は任意情報として扱います。",
     "ツール呼び出しが必要な場合は、説明文やMarkdownを混ぜず、次の形式のJSONオブジェクトだけを返します: {\"tool\":\"create_booking\",\"args\":{...}}",
     "利用可能ツール:",
-    formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: ["create_booking"] }),
+    formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: phaseTwoEnabledToolNames }),
   ]
 
   if (userContext) {
