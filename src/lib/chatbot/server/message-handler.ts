@@ -430,6 +430,7 @@ async function resolvePhaseOneToolCallRawText(input: {
           messages: input.messages,
           conversationState: input.conversationState,
           jobContext: input.jobContext,
+          routingDecision: input.routingDecision,
           latestUserMessage: input.latestUserMessage,
         }),
       ),

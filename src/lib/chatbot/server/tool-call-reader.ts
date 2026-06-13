@@ -1,4 +1,4 @@
-import type { ChatbotMessageRole, ConversationState, JobContext } from "@/lib/chatbot/domain"
+import type { ChatbotMessageRole, ConversationState, JobContext, RoutingDecision } from "@/lib/chatbot/domain"
 import type { ChatbotLlmRequest } from "@/lib/chatbot/server/llm-client"
 import {
   formatChatbotToolRegistryForPrompt,
@@ -15,6 +15,7 @@ export function createChatbotToolCallReadRequest(input: {
   messages: ReadonlyArray<{ role: ChatbotMessageRole; content: string }>
   conversationState: ConversationState
   jobContext: JobContext
+  routingDecision?: RoutingDecision
   latestUserMessage?: string
 }): ChatbotLlmRequest {
   return {
@@ -24,7 +25,11 @@ export function createChatbotToolCallReadRequest(input: {
       "会話全体を読み取り、アプリ内部dispatcherへ渡せる状態ならJSONを1つ返してください。",
       "返す形式は {\"tool\":\"create_booking\",\"args\":{...}} または {\"tool\":\"show_booking_card\",\"args\":{...}} または {\"tool\":\"get_estimate\",\"args\":{...}} のJSONオブジェクト単体だけです。",
       "ツール不要または必須項目不足なら {\"tool\":\"none\",\"args\":{}} を返してください。",
+      "安全判定コンテキストに bookingCardArgs がある場合、会話として候補提示が自然なら show_booking_card を返し、args は bookingCardArgs をそのまま使ってください。",
+      "工程目安だけが必要な会話なら get_estimate を返し、args は estimateArgs をそのまま使ってください。",
       "説明文、Markdown、コードフェンス、複数JSONは禁止です。",
+      "安全判定コンテキスト:",
+      JSON.stringify(buildToolReadContext(input)),
       "利用可能ツール:",
       formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: phaseTwoToolNames }),
     ].join("\n"),
@@ -36,5 +41,24 @@ export function createChatbotToolCallReadRequest(input: {
     latestUserMessage: input.latestUserMessage,
     temperature: 0,
     maxOutputTokens: 260,
+  }
+}
+
+function buildToolReadContext(input: {
+  routingDecision?: RoutingDecision
+  jobContext: JobContext
+}) {
+  return {
+    ...(input.routingDecision?.kind === "to-booking-inline" && input.routingDecision.suggestedSlots.length > 0
+      ? {
+          activeUiRule: "booking-card",
+          bookingCardArgs: {
+            suggestedSlots: input.routingDecision.suggestedSlots,
+            ...(input.routingDecision.busyDateKeys ? { busyDateKeys: input.routingDecision.busyDateKeys } : {}),
+            jobContext: input.routingDecision.jobContext,
+          },
+        }
+      : { activeUiRule: input.routingDecision?.kind ?? "none" }),
+    ...(input.jobContext.jobKind ? { estimateArgs: { jobContext: input.jobContext } } : {}),
   }
 }
