@@ -147,7 +147,7 @@ describe("Tier1ChromeNotionAiClient", () => {
   it("keeps discovery fail-fast while allowing long Notion AI inference", () => {
     expect(tier1ChromeNotionAiDefaults.connectTimeoutMs).toBe(10000)
     expect(tier1ChromeNotionAiDefaults.requestTimeoutMs).toBe(180000)
-    expect(tier1ChromeNotionAiDefaults.chromeProfileDir).toContain(".chrome-cdp-profile-chatbot")
+    expect(tier1ChromeNotionAiDefaults.chromeProfileDir).toContain(".cc-notion/chrome-profiles/notion-ai")
     expect(tier1ChromeNotionAiDefaults.chromeWaitMs).toBe(30000)
   })
 
@@ -491,7 +491,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(vi.mocked(session.evaluate)).toHaveBeenCalledTimes(3)
   })
 
-  it("creates a dedicated thread record before running the first full prompt on that thread", async () => {
+  it("bootstraps a dedicated thread with the fixed prompt before patching only the first user message", async () => {
     const session = sessionReturning([
       {
         spaceId: "space-id",
@@ -550,8 +550,10 @@ describe("Tier1ChromeNotionAiClient", () => {
     const evaluate = vi.mocked(session.evaluate)
     expect(evaluate).toHaveBeenCalledTimes(3)
     expect(evaluate.mock.calls[1]?.[0]).toContain("threadParentPointer")
-    expect(evaluate.mock.calls[1]?.[0]).not.toContain("Collect only new project intake details.")
-    expect(evaluate.mock.calls[2]?.[0]).toContain("Collect only new project intake details.")
+    expect(evaluate.mock.calls[1]?.[0]).toContain("Collect only new project intake details.")
+    expect(evaluate.mock.calls[1]?.[0]).not.toContain("立ち会い候補を相談したいです")
+    expect(evaluate.mock.calls[2]?.[0]).not.toContain("Collect only new project intake details.")
+    expect(evaluate.mock.calls[2]?.[0]).toContain("立ち会い候補を相談したいです")
     expect(evaluate.mock.calls[2]?.[0]).toContain("dedicated-thread-id")
   })
 
@@ -997,7 +999,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(chromeLauncher).toHaveBeenCalledOnce()
     expect(launchedConfigs[0]).toMatchObject({
       cdpBaseUrl: "http://127.0.0.1:9223",
-      chromeProfileDir: expect.stringContaining(".chrome-cdp-profile-chatbot"),
+      chromeProfileDir: expect.stringContaining(".cc-notion/chrome-profiles/notion-ai"),
     })
   })
 

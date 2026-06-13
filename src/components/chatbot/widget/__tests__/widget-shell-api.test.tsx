@@ -411,6 +411,10 @@ describe("WidgetShell API wiring", () => {
               companyName: "株式会社サンプル",
               turnCount: 3,
             },
+            bookingPrefill: {
+              contactName: "田中",
+              companyName: "株式会社サンプル",
+            },
           },
         }),
       ),
@@ -752,6 +756,12 @@ describe("WidgetShell API wiring", () => {
                 customerName: "テストユーザー",
                 contactEmail: "test@example.com",
                 turnCount: 8,
+              },
+              bookingPrefill: {
+                companyName: "テスト株式会社",
+                contactName: "テストユーザー",
+                contactEmail: "test@example.com",
+                dueDate: "2026-07-31",
               },
             },
           }),

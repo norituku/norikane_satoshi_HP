@@ -1,6 +1,7 @@
 export type {
   ChatbotConversation,
   ChatbotConversationContext,
+  ChatbotBookingPrefill,
   ChatbotMessage,
   ChatbotMessageRole,
   ConversationState,

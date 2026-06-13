@@ -1,5 +1,6 @@
 import type {
   ChatbotConversation,
+  ChatbotBookingPrefill,
   ChatbotMessage,
   ConversationState,
   JobContext,
@@ -66,6 +67,7 @@ type ChatbotMessageUi =
       busyDateKeys?: string[]
       jobContext: JobContext
       conversationState: ConversationState
+      bookingPrefill: ChatbotBookingPrefill
     }
   | {
       kind: "direct-contact-card"
@@ -282,6 +284,14 @@ async function handleChatbotMessageCore(
     candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
   })
   const normalizedLlmResponse = normalizeChatbotLlmResponse(llmResponse, { routingDecision, jobContext })
+  const bookingPrefill = await extractBookingFormPrefill({
+    routingDecision,
+    conversation,
+    userMessage,
+    conversationState,
+    jobContext,
+    orchestrator,
+  })
   const assistantMessage = await repository.appendMessage({
     conversationId: conversation.id,
     role: "assistant",
@@ -325,7 +335,41 @@ async function handleChatbotMessageCore(
     routingDecision,
     tier: llmResponse.tier,
     tierAttempts: summarizeTierAttempts(tierAttemptEvents),
-    ui: toMessageUi(routingDecision, llmResponse.tier, conversationState),
+    ui: toMessageUi(routingDecision, llmResponse.tier, conversationState, bookingPrefill),
+  }
+}
+
+async function extractBookingFormPrefill(input: {
+  routingDecision: RoutingDecision
+  conversation: ChatbotConversation
+  userMessage: ChatbotMessage
+  conversationState: ConversationState
+  jobContext: JobContext
+  orchestrator: ChatbotLlmTierOrchestrator
+}): Promise<ChatbotBookingPrefill> {
+  if (input.routingDecision.kind !== "to-booking-inline") return {}
+  if (input.routingDecision.suggestedSlots.length === 0) return {}
+
+  try {
+    const response = await enqueueChatbotLlmGeneration(() =>
+      input.orchestrator.generate({
+        systemPrompt: [
+          "会話全体を読み取り、予約フォーム初期値だけをJSONで返してください。",
+          "返すキーは contactName, companyName, contactEmail, dueDate の4つだけです。",
+          "会話中に明示されていない値は空文字にしてください。推測補入は禁止です。",
+          "説明文、Markdown、コードフェンスは不要です。",
+        ].join("\n"),
+        messages: [...input.conversation.messages, input.userMessage].map(({ role, content }) => ({ role, content })),
+        conversationState: input.conversationState,
+        jobContext: input.jobContext,
+        temperature: 0,
+        maxOutputTokens: 180,
+      }),
+    )
+
+    return parseBookingPrefillJson(response.rawText)
+  } catch {
+    return {}
   }
 }
 
@@ -702,6 +746,7 @@ function toMessageUi(
   routingDecision: RoutingDecision | undefined,
   tier: ChatbotLlmResponse["tier"],
   conversationState: ConversationState,
+  bookingPrefill: ChatbotBookingPrefill = {},
 ): ChatbotMessageUi {
   const fallbackUi: ChatbotMessageUi =
     tier === "tier-4-form-fallback" ? { kind: "tier4-inquiry-form" } : { kind: "none" }
@@ -725,6 +770,7 @@ function toMessageUi(
       busyDateKeys: routingDecision.busyDateKeys,
       jobContext: routingDecision.jobContext,
       conversationState,
+      bookingPrefill,
     }
   }
 
@@ -781,6 +827,50 @@ function buildUiOpenQuestions(conversationState: ConversationState): string[] {
 
 function conversationText(conversation: ChatbotConversation, userMessage: ChatbotMessage): string {
   return [...conversation.messages, userMessage].map((message) => message.content).join("\n")
+}
+
+function parseBookingPrefillJson(rawText: string): ChatbotBookingPrefill {
+  const jsonText = rawText.match(/\{[\s\S]*\}/u)?.[0]
+  if (!jsonText) return {}
+
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>
+    return {
+      ...stringField(parsed.contactName, 80, "contactName"),
+      ...stringField(parsed.companyName, 120, "companyName"),
+      ...emailField(parsed.contactEmail),
+      ...dateField(parsed.dueDate),
+    }
+  } catch {
+    return {}
+  }
+}
+
+function stringField(
+  value: unknown,
+  maxLength: number,
+  key: "contactName" | "companyName",
+): Pick<ChatbotBookingPrefill, typeof key> | Record<string, never> {
+  if (typeof value !== "string") return {}
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > maxLength) return {}
+  if (/^(?:未入力|未定|不明|なし|null|undefined)$/iu.test(trimmed)) return {}
+  return { [key]: trimmed } as Pick<ChatbotBookingPrefill, typeof key>
+}
+
+function emailField(value: unknown): Pick<ChatbotBookingPrefill, "contactEmail"> | Record<string, never> {
+  if (typeof value !== "string") return {}
+  const trimmed = value.trim()
+  if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/iu.test(trimmed)) return {}
+  return { contactEmail: trimmed }
+}
+
+function dateField(value: unknown): Pick<ChatbotBookingPrefill, "dueDate"> | Record<string, never> {
+  if (typeof value !== "string") return {}
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > 40) return {}
+  if (/^(?:未入力|未定|不明|なし|null|undefined)$/iu.test(trimmed)) return {}
+  return { dueDate: trimmed }
 }
 
 function inferConversationStateFromText(text: string): Partial<ConversationState> {

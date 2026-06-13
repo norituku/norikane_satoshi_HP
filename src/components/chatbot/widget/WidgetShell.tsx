@@ -851,6 +851,7 @@ function ActiveWidgetUi({
 
   if (ui.kind === "booking-card") {
     if (!isCandidateWindowArray(ui.suggestedSlots) || !isRecord(ui.jobContext)) return null
+    const bookingPrefill = ui.bookingPrefill ?? {}
     return (
       <ChatbotBookingCard
         key={ui.suggestedSlots.map((slot) => slot.start).join("|")}
@@ -859,10 +860,10 @@ function ActiveWidgetUi({
         busyDateKeys={ui.busyDateKeys}
         estimate={ui.jobContext.workflowEstimate}
         jobContext={ui.jobContext}
-        defaultContactName={cleanDefaultContactValue(ui.conversationState?.customerName, "person")}
-        defaultCompanyName={cleanDefaultContactValue(ui.conversationState?.companyName, "company")}
-        defaultContactEmail={cleanDefaultEmail(ui.conversationState?.contactEmail)}
-        defaultDueDate={ui.jobContext.publicReleaseDate}
+        defaultContactName={bookingPrefill.contactName}
+        defaultCompanyName={bookingPrefill.companyName}
+        defaultContactEmail={bookingPrefill.contactEmail}
+        defaultDueDate={bookingPrefill.dueDate}
         defaultMemo={buildBookingSupplementalNote(ui.jobContext, ui.conversationState)}
       />
     )

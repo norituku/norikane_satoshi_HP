@@ -1,4 +1,10 @@
-import type { ChatbotMessageRole, ConversationState, JobContext, RoutingDecision } from "@/lib/chatbot/domain"
+import type {
+  ChatbotBookingPrefill,
+  ChatbotMessageRole,
+  ConversationState,
+  JobContext,
+  RoutingDecision,
+} from "@/lib/chatbot/domain"
 
 export type WidgetAssistantMessage = {
   id: string
@@ -16,6 +22,7 @@ export type WidgetUi =
       busyDateKeys?: string[]
       jobContext: JobContext
       conversationState: ConversationState
+      bookingPrefill: ChatbotBookingPrefill
     }
   | {
       kind: "direct-contact-card"

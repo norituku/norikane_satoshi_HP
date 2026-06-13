@@ -762,6 +762,47 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.candidateWindowFinder).toHaveBeenCalled()
   })
 
+  it("uses a JSON LLM read for booking form defaults instead of conversation-state prefill", async () => {
+    const harness = setup()
+    harness.generate
+      .mockResolvedValueOnce({
+        rawText: "候補を出します。",
+        tier: "tier-1-chrome-notion-ai",
+        proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
+      })
+      .mockResolvedValueOnce({
+        rawText:
+          '{"contactName":"テストユーザー","companyName":"テスト株式会社","contactEmail":"test@example.com","dueDate":"2026-07-31"}',
+        tier: "tier-1-chrome-notion-ai",
+      })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "ライブ映像のカラーグレーディング相談です。尺は約2.5h、素材搬入は7/1以降、納品は7月中、作業形態はリモートグレーディングです。担当者はテストユーザー、会社名はテスト株式会社、メールは test@example.com です。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("予約フォーム初期値だけをJSON"),
+        temperature: 0,
+      }),
+    )
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: {
+        contactName: "テストユーザー",
+        companyName: "テスト株式会社",
+        contactEmail: "test@example.com",
+        dueDate: "2026-07-31",
+      },
+    })
+  })
+
   it("keeps asking required slots instead of showing booking calendar before work site and material handoff are ready", async () => {
     const harness = setup()
 

@@ -266,7 +266,7 @@ export const tier1ChromeNotionAiDefaults = {
   connectTimeoutMs: 10000,
   requestTimeoutMs: 180000,
   healthCheckTimeoutMs: 3000,
-  chromeProfileDir: path.join(homedir(), ".chrome-cdp-profile-chatbot"),
+  chromeProfileDir: path.join(homedir(), ".cc-notion", "chrome-profiles", "notion-ai"),
   chromeApp: defaultChromeApp,
   chromeWaitMs: defaultChromeWaitMs,
 } as const
@@ -387,7 +387,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
           runtimeContext,
           preferredModel,
           idFactory: this.idFactory,
-          createThreadOnly: true,
+          bootstrapThreadOnly: true,
         })
         const createResult = await this.evaluate<NotionAiInferenceResult>(
           session,
@@ -410,7 +410,6 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
             runtimeContext,
             preferredModel,
             idFactory: this.idFactory,
-            forceFullPrompt: true,
           })
           result = await this.evaluate<NotionAiInferenceResult>(
             session,
@@ -733,7 +732,7 @@ export function buildRunInferencePayload(input: {
   preferredModel?: string
   idFactory: IdFactory
   contextPageId?: string
-  createThreadOnly?: boolean
+  bootstrapThreadOnly?: boolean
   forceFullPrompt?: boolean
 }): RunInferencePayload {
   const spaceId = input.runtimeContext.spaceId
@@ -777,17 +776,17 @@ export function buildRunInferencePayload(input: {
           currentDatetime,
         }),
       },
-      ...(input.createThreadOnly
-        ? []
-        : [
-            {
-              id: input.idFactory(),
-              type: "user",
-              value: [[buildUserPrompt(input.request, { forceFullPrompt: input.forceFullPrompt })]],
-              userId: input.runtimeContext.userId,
-              createdAt: currentDatetime,
-            },
-          ]),
+      {
+        id: input.idFactory(),
+        type: "user",
+        value: [[
+          input.bootstrapThreadOnly
+            ? buildDedicatedThreadBootstrapPrompt(input.request)
+            : buildUserPrompt(input.request, { forceFullPrompt: input.forceFullPrompt }),
+        ]],
+        userId: input.runtimeContext.userId,
+        createdAt: currentDatetime,
+      },
     ],
     threadId,
     ...(dedicatedThread && !hasExistingThread
@@ -804,7 +803,7 @@ export function buildRunInferencePayload(input: {
     saveAllThreadOperations: true,
     setUnreadState: true,
     createdSource: hasExistingThread ? "workflows" : defaultCreatedSource,
-    threadType: input.createThreadOnly ? "context" : defaultThreadType,
+    threadType: input.bootstrapThreadOnly ? "context" : defaultThreadType,
     isPartialTranscript: hasExistingThread,
     asPatchResponse: true,
     hasHeartbeat: false,
@@ -1056,6 +1055,12 @@ function buildUserPrompt(request: ChatbotLlmRequest, options: { forceFullPrompt?
     .join("\n")
 }
 
+function buildDedicatedThreadBootstrapPrompt(request: ChatbotLlmRequest): string {
+  return [request.systemPrompt, request.knowledgeContext?.notionReferencePrompt]
+    .filter((line): line is string => Boolean(line))
+    .join("\n")
+}
+
 function buildDedicatedThreadPatchPrompt(request: ChatbotLlmRequest): string {
   const latestUserMessage = request.latestUserMessage?.trim()
   if (latestUserMessage) {
@@ -1202,6 +1207,12 @@ export function isNotionAiChatbotTargetUrl(url: string | undefined, targetUrlInc
   try {
     const actualUrl = new URL(url)
     const expectedUrl = new URL(expected)
+    const actualHost = actualUrl.hostname
+    const isNotionAiHome =
+      (actualHost === "app.notion.com" || actualHost.endsWith(".notion.so")) &&
+      actualUrl.pathname === "/ai" &&
+      expectedUrl.searchParams.has("t")
+    if (isNotionAiHome) return true
     const actualThreadId = actualUrl.searchParams.get("t")
     const expectedThreadId = expectedUrl.searchParams.get("t")
 
@@ -1490,19 +1501,21 @@ const runtimeContextExpression = `(() => (async () => {
     const explicitSpaceId = readStorage("LRU:KeyValueStore2:lastVisitedRouteSpaceId");
     if (isUuid(explicitSpaceId)) return explicitSpaceId;
 
-    const spaceIdToShortId = readJson(localStorage.getItem("LRU:KeyValueStore2:spaceIdToShortId"));
+    const spaceIdToShortId = readJson(readStorage("LRU:KeyValueStore2:spaceIdToShortId"));
     const spaceIdToShortIdValue = spaceIdToShortId && typeof spaceIdToShortId === "object" && spaceIdToShortId.value
       ? spaceIdToShortId.value
       : spaceIdToShortId;
     const storedSpaceId = objectKeys(spaceIdToShortIdValue).find((id) => isUuid(id) && id !== userId);
     if (storedSpaceId) return storedSpaceId;
 
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index) || "";
-      const matches = key.match(uuidGlobalPattern) || [];
-      const candidate = matches.find((id) => isUuid(id) && id !== userId);
-      if (candidate) return candidate;
-    }
+    try {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index) || "";
+        const matches = key.match(uuidGlobalPattern) || [];
+        const candidate = matches.find((id) => isUuid(id) && id !== userId);
+        if (candidate) return candidate;
+      }
+    } catch {}
     return undefined;
   };
   const readContextFromGetSpaces = async () => {

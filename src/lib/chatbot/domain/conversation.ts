@@ -70,3 +70,10 @@ export type ConversationState = {
   companyName?: string
   productionOptions?: Array<"captions" | "telops" | "narration" | "music">
 }
+
+export type ChatbotBookingPrefill = {
+  contactName?: string
+  companyName?: string
+  contactEmail?: string
+  dueDate?: string
+}
