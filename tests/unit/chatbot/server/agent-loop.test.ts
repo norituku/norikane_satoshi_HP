@@ -164,6 +164,36 @@ describe("chatbot agent loop", () => {
     expect(logger).toHaveBeenCalledWith("[agent-loop] feedback-timeout reason=chatbot_agent_loop_timeout")
   })
 
+  it("reuses the created Notion AI thread for isolated tool reads and feedback", async () => {
+    const generate = vi
+      .fn(async (request: ChatbotLlmRequest): Promise<ChatbotLlmResponse> => {
+        void request
+        return response("")
+      })
+      .mockResolvedValueOnce(
+        response("候補を確認します。", {
+          notionAiThreadId: "thread-created-a",
+          notionAiThreadCreated: true,
+        }),
+      )
+      .mockResolvedValueOnce(response(JSON.stringify({ tool: "get_estimate", args: { jobContext } })))
+      .mockResolvedValueOnce(response("作業目安は1〜2日です。"))
+
+    await runChatbotAgentLoop({
+      request: { ...baseRequest, notionAiThread: {} },
+      orchestrator: { generate, isHealthy: vi.fn() },
+      generate,
+      resolveRoutingDecision: vi.fn().mockResolvedValue(continueRouting),
+      conversationState,
+      jobContext,
+      latestUserMessage: "工程目安を知りたいです",
+      toolContext: {},
+    })
+
+    expect(generate.mock.calls[1]?.[0].notionAiThread).toEqual({ threadId: "thread-created-a" })
+    expect(generate.mock.calls[2]?.[0].notionAiThread).toEqual({ threadId: "thread-created-a" })
+  })
+
   it("rejects when the loop exceeds its timeout", async () => {
     const generate = vi.fn(
       () => new Promise<ChatbotLlmResponse>(() => undefined),
@@ -185,10 +215,11 @@ describe("chatbot agent loop", () => {
   })
 })
 
-function response(rawText: string): ChatbotLlmResponse {
+function response(rawText: string, diagnostics?: Record<string, unknown>): ChatbotLlmResponse {
   return {
     rawText,
     tier: "tier-1-chrome-notion-ai",
+    ...(diagnostics ? { diagnostics } : {}),
   }
 }
 

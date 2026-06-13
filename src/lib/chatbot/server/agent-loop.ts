@@ -100,6 +100,7 @@ async function runChatbotAgentLoopInternal(
   let toolDispatchResult: ChatbotToolDispatchResult | undefined
   let rawToolText = await resolveAgentToolCallRawText({
     rawText: response.rawText,
+    response,
     routingDecision,
     request,
     orchestrator: input.orchestrator,
@@ -182,6 +183,7 @@ async function runChatbotAgentLoopInternal(
 
 async function resolveAgentToolCallRawText(input: {
   rawText: string
+  response: ChatbotLlmResponse
   routingDecision: RoutingDecision
   request: ChatbotLlmRequest
   orchestrator: ChatbotLlmTierOrchestrator
@@ -203,6 +205,7 @@ async function resolveAgentToolCallRawText(input: {
           jobContext: input.jobContext,
           routingDecision: input.routingDecision,
           latestUserMessage: input.latestUserMessage,
+          notionAiThread: resolveExistingNotionAiThread(input.request, input.response),
         }),
       ),
       input.timeoutMs,
@@ -251,6 +254,8 @@ function buildToolResultFeedbackRequest(input: {
   routingDecision: RoutingDecision
   effectiveJobContext: JobContext
 }): ChatbotLlmRequest {
+  const notionAiThread = resolveExistingNotionAiThread(input.previousRequest, input.previousResponse)
+
   return {
     ...input.previousRequest,
     messages: [
@@ -270,18 +275,19 @@ function buildToolResultFeedbackRequest(input: {
         ].join("\n"),
       },
     ],
-    notionAiThread: resolveNextNotionAiThread(input.previousRequest, input.previousResponse),
+    ...(notionAiThread ? { notionAiThread } : {}),
     forceFullPrompt: true,
   }
 }
 
-function resolveNextNotionAiThread(
+function resolveExistingNotionAiThread(
   request: ChatbotLlmRequest,
   response: ChatbotLlmResponse,
-): ChatbotLlmRequest["notionAiThread"] {
+): { threadId: string } | undefined {
   const createdThreadId = extractCreatedNotionAiThreadId(response)
   if (createdThreadId) return { threadId: createdThreadId }
-  return request.notionAiThread
+  const existingThreadId = request.notionAiThread?.threadId?.trim()
+  return existingThreadId ? { threadId: existingThreadId } : undefined
 }
 
 function extractCreatedNotionAiThreadId(response: ChatbotLlmResponse): string | undefined {

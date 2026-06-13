@@ -13,6 +13,7 @@ const phaseTwoToolNames: ReadonlyArray<ChatbotToolName> = [
 
 export function createChatbotToolCallReadRequest(input: {
   messages: ReadonlyArray<{ role: ChatbotMessageRole; content: string }>
+  notionAiThread?: { threadId: string }
   conversationState: ConversationState
   jobContext: JobContext
   routingDecision?: RoutingDecision
@@ -34,7 +35,7 @@ export function createChatbotToolCallReadRequest(input: {
       formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: phaseTwoToolNames }),
     ].join("\n"),
     messages: input.messages,
-    notionAiThread: {},
+    ...(input.notionAiThread ? { notionAiThread: input.notionAiThread } : {}),
     forceFullPrompt: true,
     conversationState: input.conversationState,
     jobContext: input.jobContext,

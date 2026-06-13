@@ -803,6 +803,10 @@ describe("handleChatbotMessage user context", () => {
       .mockResolvedValueOnce({
         rawText: "候補を出します。",
         tier: "tier-1-chrome-notion-ai",
+        diagnostics: {
+          notionAiThreadId: "thread-created-a",
+          notionAiThreadCreated: true,
+        },
         proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
       })
       .mockResolvedValueOnce({
@@ -828,7 +832,7 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.generate.mock.calls[2]?.[0]).toEqual(
       expect.objectContaining({
         systemPrompt: expect.stringContaining("予約フォーム初期値だけをJSON"),
-        notionAiThread: {},
+        notionAiThread: { threadId: "thread-created-a" },
         forceFullPrompt: true,
         temperature: 0,
       }),
@@ -897,6 +901,10 @@ describe("handleChatbotMessage user context", () => {
       .mockResolvedValueOnce({
         rawText: "候補を出します。",
         tier: "tier-1-chrome-notion-ai",
+        diagnostics: {
+          notionAiThreadId: "thread-created-a",
+          notionAiThreadCreated: true,
+        },
         proposedRoutingDecision: { kind: "continue", nextQuestion: "候補を出します。" },
       })
       .mockResolvedValueOnce({
@@ -927,7 +935,7 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.generate.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         forceFullPrompt: true,
-        notionAiThread: {},
+        notionAiThread: { threadId: "thread-created-a" },
         temperature: 0,
         systemPrompt: expect.stringContaining("dispatcher用の分類JSON"),
       }),

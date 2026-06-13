@@ -384,6 +384,7 @@ async function handleChatbotMessageCore(
         conversationState,
         jobContext,
         orchestrator,
+        notionAiThread: resolveExistingNotionAiThreadForJsonRead(conversation, llmResponse),
       })
   const assistantMessage = await repository.appendMessage({
     conversationId: conversation.id,
@@ -489,6 +490,7 @@ async function extractBookingFormPrefill(input: {
   conversationState: ConversationState
   jobContext: JobContext
   orchestrator: ChatbotLlmTierOrchestrator
+  notionAiThread?: ChatbotLlmRequest["notionAiThread"]
 }): Promise<ChatbotBookingPrefill> {
   if (input.routingDecision.kind !== "to-booking-inline") return {}
   if (input.routingDecision.suggestedSlots.length === 0) return {}
@@ -503,7 +505,7 @@ async function extractBookingFormPrefill(input: {
           "説明文、Markdown、コードフェンスは不要です。",
         ].join("\n"),
         messages: [...input.conversation.messages, input.userMessage].map(({ role, content }) => ({ role, content })),
-        notionAiThread: {},
+        ...(input.notionAiThread ? { notionAiThread: input.notionAiThread } : {}),
         forceFullPrompt: true,
         conversationState: input.conversationState,
         jobContext: input.jobContext,
@@ -516,6 +518,22 @@ async function extractBookingFormPrefill(input: {
   } catch {
     return {}
   }
+}
+
+function resolveExistingNotionAiThreadForJsonRead(
+  conversation: ChatbotConversation,
+  llmResponse: ChatbotLlmResponse,
+): ChatbotLlmRequest["notionAiThread"] {
+  const createdThreadId =
+    llmResponse.tier === "tier-1-chrome-notion-ai" &&
+    llmResponse.diagnostics?.notionAiThreadCreated === true &&
+    typeof llmResponse.diagnostics.notionAiThreadId === "string"
+      ? llmResponse.diagnostics.notionAiThreadId.trim()
+      : ""
+  if (createdThreadId) return { threadId: createdThreadId }
+
+  const existingThreadId = conversation.context.notionAiThreadId?.trim()
+  return existingThreadId ? { threadId: existingThreadId } : undefined
 }
 
 async function resolveBookingCandidates(input: {
