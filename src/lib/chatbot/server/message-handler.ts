@@ -39,6 +39,10 @@ import {
 } from "@/lib/chatbot/server/choice-panel-state"
 import { classifyChatbotTopic } from "@/lib/chatbot/server/topic-gate"
 import { buildChatbotKnowledgeContext } from "@/lib/chatbot/server/knowledge-context"
+import {
+  runChatbotAgentLoop,
+  type ChatbotAgentLoopResult,
+} from "@/lib/chatbot/server/agent-loop"
 import type { CandidateWindow, ConversationSummary, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
 import {
   hasRequiredConsultationNotificationSlots,
@@ -54,14 +58,12 @@ import {
   type CandidateCalendarResult,
 } from "@/lib/chatbot/server/availability-finder"
 import {
-  dispatchChatbotToolCall,
   formatChatbotToolRegistryForPrompt,
   type ChatbotToolDispatchResult,
   type ChatbotToolExecutionContext,
   type ChatbotToolName,
 } from "@/lib/chatbot/server/tool-dispatcher"
-import { createChatbotToolCallReadRequest } from "@/lib/chatbot/server/tool-call-reader"
-import { parseBookingPrefillJson, parseChatbotToolCallJson } from "@/lib/chatbot/server/tool-json"
+import { parseBookingPrefillJson } from "@/lib/chatbot/server/tool-json"
 
 type CandidateWindowFinder =
   | typeof findCandidateCalendar
@@ -274,7 +276,71 @@ async function handleChatbotMessageCore(
       ? {}
       : toConversationNotionAiThread(conversation)
   }
-  const llmResponse = await enqueueChatbotLlmGeneration(() => orchestrator.generate(llmRequest))
+  const deterministicRoutingDecision = decideRoutingFallback({
+    jobContext,
+    conversationState,
+    latestUserMessage: input.message,
+  })
+  let routingDecision = await resolveBookingCandidates({
+    routingDecision: deterministicRoutingDecision,
+    candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
+  })
+  let llmResponse: ChatbotLlmResponse = buildRuleFallbackLlmResponse(routingDecision)
+  let toolDispatchResult: ChatbotAgentLoopResult["toolDispatchResult"] | { status: "not-requested" } = {
+    status: "not-requested",
+  }
+  let effectiveJobContext = jobContext
+
+  if (deterministicRoutingDecision.kind !== "to-direct-contact") {
+    try {
+      const agentLoopResult = await runChatbotAgentLoop({
+        request: llmRequest,
+        orchestrator,
+        generate: (request) => enqueueChatbotLlmGeneration(() => orchestrator.generate(request)),
+        resolveRoutingDecision: async (response) =>
+          resolveBookingCandidates({
+            routingDecision: chooseRoutingDecision({
+              deterministicRoutingDecision,
+              proposedRoutingDecision: response.proposedRoutingDecision,
+              conversationState,
+            }),
+            candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
+          }),
+        conversationState,
+        jobContext,
+        latestUserMessage: input.message,
+        toolContext: {
+          userId: input.userId,
+          userEmail: input.userEmail,
+          createBookingFromApiInput: options.createBookingFromApiInput,
+        },
+        logger: options.toolShadowLogger,
+      })
+      llmResponse = agentLoopResult.llmResponse
+      routingDecision = agentLoopResult.routingDecision
+      effectiveJobContext = agentLoopResult.effectiveJobContext
+      toolDispatchResult = agentLoopResult.toolDispatchResult ?? { status: "not-requested" }
+      await maybePersistAgentLoopNotionAiThread({
+        enabled: dedicatedNotionAiThreadsEnabled,
+        conversation,
+        threadId: agentLoopResult.createdNotionAiThreadId,
+        repository,
+        replaceExistingThread: replaceDedicatedNotionAiThread,
+      })
+    } catch (error) {
+      ;(options.toolShadowLogger ?? console.info)(
+        `[agent-loop] fallback reason=${error instanceof Error ? error.message : String(error)}`,
+      )
+      routingDecision = await resolveBookingCandidates({
+        routingDecision: deterministicRoutingDecision,
+        candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
+      })
+      llmResponse = buildRuleFallbackLlmResponse(routingDecision)
+    }
+  } else {
+    ;(options.toolShadowLogger ?? console.info)("[agent-loop] skipped safety=to-direct-contact")
+  }
+
   await maybePersistDedicatedNotionAiThread({
     enabled: dedicatedNotionAiThreadsEnabled,
     conversation,
@@ -282,55 +348,21 @@ async function handleChatbotMessageCore(
     repository,
     replaceExistingThread: replaceDedicatedNotionAiThread,
   })
-  const deterministicRoutingDecision = decideRoutingFallback({
-    jobContext,
-    conversationState,
-    latestUserMessage: input.message,
-  })
-  let routingDecision = await resolveBookingCandidates({
-    routingDecision: chooseRoutingDecision({
-      deterministicRoutingDecision,
-      proposedRoutingDecision: llmResponse.proposedRoutingDecision,
-      conversationState,
-    }),
-    candidateWindowFinder: options.candidateWindowFinder ?? findCandidateCalendar,
-  })
-  const toolCallRawText = await resolvePhaseOneToolCallRawText({
-    rawText: llmResponse.rawText,
-    routingDecision,
-    messages: llmRequest.messages,
-    conversationState,
-    jobContext,
-    latestUserMessage: input.message,
-    orchestrator,
-    canExecuteCreateBooking: Boolean(input.userId && input.userEmail),
-  })
-  const toolDispatchResult = await handlePhaseOneToolCall({
-    rawText: toolCallRawText,
-    routingDecision,
-    context: {
-      userId: input.userId,
-      userEmail: input.userEmail,
-      createBookingFromApiInput: options.createBookingFromApiInput,
-    },
-    logger: options.toolShadowLogger,
-  })
-  const toolExecutedCreateBooking =
-    toolDispatchResult.status === "executed" && toolDispatchResult.tool === "create_booking"
-  const toolExecutedGetEstimate =
-    toolDispatchResult.status === "executed" && toolDispatchResult.tool === "get_estimate"
-  const toolEstimate = toolExecutedGetEstimate ? workflowEstimateFromToolResult(toolDispatchResult.result) : null
-  const effectiveJobContext = toolEstimate ? { ...jobContext, workflowEstimate: toolEstimate } : jobContext
+  const executedToolDispatchResult = toolDispatchResult.status === "executed" ? toolDispatchResult : null
+  const toolExecutedCreateBooking = executedToolDispatchResult?.tool === "create_booking"
+  const toolExecutedGetEstimate = executedToolDispatchResult?.tool === "get_estimate"
+  const toolEstimate = toolExecutedGetEstimate ? workflowEstimateFromToolResult(executedToolDispatchResult.result) : null
+  effectiveJobContext = toolEstimate ? { ...effectiveJobContext, workflowEstimate: toolEstimate } : effectiveJobContext
   const toolRoutingDecision =
-    toolDispatchResult.status === "executed" && toolDispatchResult.tool === "show_booking_card"
-      ? routingDecisionFromToolResult(toolDispatchResult.result)
+    executedToolDispatchResult?.tool === "show_booking_card"
+      ? routingDecisionFromToolResult(executedToolDispatchResult.result)
       : null
   if (toolRoutingDecision) {
     routingDecision = toolRoutingDecision
   }
   const normalizedLlmResponse = toolExecutedCreateBooking
     ? {
-        content: buildCreateBookingSuccessContent(toolDispatchResult),
+        content: buildCreateBookingSuccessContent(executedToolDispatchResult),
         role: "assistant" as const,
         model: llmResponse.tier,
         finish_reason: "stop" as const,
@@ -407,74 +439,6 @@ const phaseTwoEnabledToolNames: ReadonlyArray<ChatbotToolName> = [
   "show_booking_card",
   "get_estimate",
 ]
-const phaseTwoExecutableToolNames = new Set<ChatbotToolName>(phaseTwoEnabledToolNames)
-
-async function resolvePhaseOneToolCallRawText(input: {
-  rawText: string
-  routingDecision: RoutingDecision
-  messages: ChatbotLlmRequest["messages"]
-  conversationState: ConversationState
-  jobContext: JobContext
-  latestUserMessage: string
-  orchestrator: ChatbotLlmTierOrchestrator
-  canExecuteCreateBooking: boolean
-}): Promise<string> {
-  if (parseChatbotToolCallJson(input.rawText)) return input.rawText
-  if (!shouldReadPhaseTwoToolCall(input)) return input.rawText
-
-  try {
-    const response = await enqueueChatbotLlmGeneration(() =>
-      input.orchestrator.generate(
-        createChatbotToolCallReadRequest({
-          messages: input.messages,
-          conversationState: input.conversationState,
-          jobContext: input.jobContext,
-          routingDecision: input.routingDecision,
-          latestUserMessage: input.latestUserMessage,
-        }),
-      ),
-    )
-    return response.rawText
-  } catch {
-    return input.rawText
-  }
-}
-
-function shouldReadPhaseTwoToolCall(input: {
-  routingDecision: RoutingDecision
-  jobContext: JobContext
-}): boolean {
-  if (input.routingDecision.kind === "to-booking-inline") return true
-  return Boolean(input.jobContext.jobKind)
-}
-
-async function handlePhaseOneToolCall(input: {
-  rawText: string
-  routingDecision: RoutingDecision
-  context: ChatbotToolExecutionContext
-  logger?: (message: string) => void
-}): Promise<ChatbotToolDispatchResult | { status: "not-requested" }> {
-  const toolCall = parseChatbotToolCallJson(input.rawText)
-  if (!toolCall) return { status: "not-requested" }
-
-  const safetyDenied = input.routingDecision.kind === "to-direct-contact"
-  const logLine = `[tool] llm=${toolCall.tool} safety=${input.routingDecision.kind} allowed=${!safetyDenied}`
-  ;(input.logger ?? console.info)(logLine)
-
-  if (!phaseTwoExecutableToolNames.has(toolCall.tool as ChatbotToolName)) {
-    return { status: "fallback", reason: "unknown-tool", tool: toolCall.tool }
-  }
-
-  if (safetyDenied) {
-    return { status: "fallback", reason: "safety-denied", tool: toolCall.tool }
-  }
-
-  return dispatchChatbotToolCall({
-    tool: toolCall.tool,
-    args: toolCall.args,
-    context: input.context,
-  })
-}
 
 function buildCreateBookingSuccessContent(result: Extract<ChatbotToolDispatchResult, { status: "executed" }>): string {
   const bookingGroupId = bookingGroupIdFromToolResult(result.result)
@@ -746,6 +710,39 @@ async function maybePersistDedicatedNotionAiThread(input: {
   })
 }
 
+async function maybePersistAgentLoopNotionAiThread(input: {
+  enabled: boolean
+  conversation: ChatbotConversation
+  threadId?: string
+  repository: ChatbotMessageRepository
+  replaceExistingThread?: boolean
+}): Promise<void> {
+  if (!input.enabled) return
+  if (input.conversation.context.notionAiThreadId && !input.replaceExistingThread) return
+  if (!input.threadId) return
+
+  await input.repository.setConversationNotionAiThreadId({
+    conversationId: input.conversation.id,
+    threadId: input.threadId,
+  })
+}
+
+function buildRuleFallbackLlmResponse(routingDecision: RoutingDecision): ChatbotLlmResponse {
+  const rawText =
+    routingDecision.kind === "continue"
+      ? routingDecision.nextQuestion
+      : routingDecision.kind === "to-direct-contact"
+        ? routingDecision.suggestedMessage
+        : ""
+
+  return {
+    rawText,
+    tier: "tier-4-form-fallback",
+    proposedRoutingDecision: routingDecision,
+    diagnostics: { agentLoopFallback: true },
+  }
+}
+
 function buildChatbotSystemPrompt(
   userContext?: UserChatbotContext | null,
   userContextFormatter: typeof formatUserChatbotContextForPrompt = formatUserChatbotContextForPrompt,
@@ -757,7 +754,8 @@ function buildChatbotSystemPrompt(
     "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
     "呼称は中立に保ち、他顧客の情報を参照または推測しません。",
     "連絡先を求める場合は、電話番号ではなくメールアドレス（必須）を明示します。電話番号は任意情報として扱います。",
-    "ツール呼び出しが必要な場合は、説明文やMarkdownを混ぜず、次の形式のJSONオブジェクトだけを返します: {\"tool\":\"create_booking\",\"args\":{...}}",
+    "ツール呼び出しが必要な場合は、本文末尾に次の形式のJSONオブジェクトを1つ置けます: {\"tool\":\"create_booking\",\"args\":{...}}",
+    "ツールJSONを置く場合も、お客様に見せる通常の返答テキストと共存できます。",
     "利用可能ツール:",
     formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: phaseTwoEnabledToolNames }),
   ]

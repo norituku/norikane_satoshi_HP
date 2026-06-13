@@ -87,6 +87,7 @@ export type {
 } from "@/lib/chatbot/server/tool-dispatcher"
 export {
   parseBookingPrefillJson,
+  parseChatbotAgentToolCallJson,
   parseChatbotJsonObject,
   parseChatbotToolCallJson,
 } from "@/lib/chatbot/server/tool-json"

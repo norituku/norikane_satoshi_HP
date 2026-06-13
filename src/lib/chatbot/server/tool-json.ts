@@ -31,6 +31,31 @@ export function parseChatbotJsonObject(
 
 export function parseChatbotToolCallJson(rawText: string): ChatbotToolCallJson | null {
   const parsed = parseChatbotJsonObject(rawText, { mode: "strict-object" })
+  return toChatbotToolCallJson(parsed)
+}
+
+export function parseChatbotAgentToolCallJson(rawText: string): ChatbotToolCallJson | null {
+  const strict = parseChatbotToolCallJson(rawText)
+  if (strict) return strict
+
+  for (const candidate of extractJsonObjectCandidates(rawText)) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      const toolCall = toChatbotToolCallJson(
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? (parsed as ChatbotJsonObject)
+          : null,
+      )
+      if (toolCall) return toolCall
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+function toChatbotToolCallJson(parsed: ChatbotJsonObject | null): ChatbotToolCallJson | null {
   if (!parsed) return null
 
   const keys = Object.keys(parsed)
@@ -47,6 +72,50 @@ export function parseChatbotToolCallJson(rawText: string): ChatbotToolCallJson |
     tool,
     args: args as ChatbotJsonObject,
   }
+}
+
+function extractJsonObjectCandidates(rawText: string): string[] {
+  const candidates: string[] = []
+  let startIndex = -1
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < rawText.length; index += 1) {
+    const char = rawText[index]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === "\"") {
+      inString = true
+      continue
+    }
+
+    if (char === "{") {
+      if (depth === 0) startIndex = index
+      depth += 1
+      continue
+    }
+
+    if (char !== "}" || depth === 0) continue
+
+    depth -= 1
+    if (depth === 0 && startIndex >= 0) {
+      candidates.push(rawText.slice(startIndex, index + 1))
+      startIndex = -1
+    }
+  }
+
+  return candidates
 }
 
 export function parseBookingPrefillJson(rawText: string): ChatbotBookingPrefill {

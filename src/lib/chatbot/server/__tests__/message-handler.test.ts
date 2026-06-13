@@ -923,7 +923,7 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(harness.generate).toHaveBeenCalledTimes(2)
+    expect(harness.generate).toHaveBeenCalledTimes(3)
     expect(harness.generate.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         forceFullPrompt: true,
@@ -1018,7 +1018,7 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(toolShadowLogger).toHaveBeenCalledWith("[tool] llm=create_booking safety=to-direct-contact allowed=false")
+    expect(toolShadowLogger).toHaveBeenCalledWith("[agent-loop] skipped safety=to-direct-contact")
     expect(createBookingFromApiInput).not.toHaveBeenCalled()
     expect(result.routingDecision).toMatchObject({ kind: "to-direct-contact", reason: "pricing" })
     expect(result.ui).toMatchObject({ kind: "direct-contact-card", reason: "pricing" })
