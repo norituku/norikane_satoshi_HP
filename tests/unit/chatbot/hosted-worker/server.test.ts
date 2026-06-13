@@ -43,7 +43,7 @@ describe("hosted worker HTTP server", () => {
       tier: "tier-2-hosted-chrome-notion-ai",
       cdp: { baseUrl: "http://127.0.0.1:9223", reachable: true },
       notionTarget: { found: false, loginRedirect: false, targetUrlMatches: false },
-      preferredModel: { name: "apricot-sorbet-high" },
+      preferredModel: { name: "acai-budino-high" },
       queue: { ...state.queue },
       errorCode: "target_missing",
     })

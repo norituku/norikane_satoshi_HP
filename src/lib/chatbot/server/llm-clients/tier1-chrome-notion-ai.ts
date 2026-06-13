@@ -240,15 +240,15 @@ const jsonVersionPath = "/json/version"
 const httpGet = "GET"
 const targetTypePage = "page"
 // Notion's runInferenceTranscript API expects internal codenames for picker labels.
-export const tier1Fabre5HighNotionAiModel = "apricot-sorbet-high"
-export const tier1Gpt55NotionAiModel = "opal-quince-medium"
+export const tier1Fable5HighNotionAiModel = "acai-budino-high"
+export const tier1Gpt55NotionAiModel = "opal-quince-high"
 export const tier1Opus48NotionAiModel = "ambrosia-tart-high"
 export const tier1NotionAiModelFallbackChain = [
-  tier1Fabre5HighNotionAiModel,
+  tier1Fable5HighNotionAiModel,
   tier1Gpt55NotionAiModel,
   tier1Opus48NotionAiModel,
 ] as const
-export const tier1ObservedNotionAiModel = tier1Fabre5HighNotionAiModel
+export const tier1ObservedNotionAiModel = tier1Fable5HighNotionAiModel
 const defaultCreatedSource = "assistant"
 const defaultThreadType = "workflow"
 const defaultNotionClientVersion = "unknown"

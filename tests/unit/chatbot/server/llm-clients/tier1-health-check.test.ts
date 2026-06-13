@@ -22,8 +22,8 @@ function healthClient(overrides: {
   return {
     inspectRuntimeContext: vi.fn(async () => ({
       targetUrl: "https://www.notion.so/chat?t=36b13ee3141a8073885d00a99ebb676c&wfv=chat",
-      selectedModel: "apricot-sorbet-high",
-      availableModels: ["apricot-sorbet-high"],
+      selectedModel: "acai-budino-high",
+      availableModels: ["acai-budino-high"],
       preferredModelAvailable: overrides.preferredModelAvailable ?? true,
     })),
     generate: vi.fn(async () => {

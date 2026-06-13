@@ -62,10 +62,10 @@ describe("formatChatbotTierAttemptLogEvent", () => {
         latencyMs: 1200,
         attempt: 1,
         diagnostics: {
-          notionAiModel: "opal-quince-medium",
+          notionAiModel: "opal-quince-high",
           notionAiModelFallbacks: [
             {
-              model: "apricot-sorbet-high",
+              model: "acai-budino-high",
               errorCode: "invalid-output",
               reason: "Model resolution failed.",
             },
@@ -85,10 +85,10 @@ describe("formatChatbotTierAttemptLogEvent", () => {
       latencyMs: 1200,
       attempt: 1,
       diagnostics: {
-        notionAiModel: "opal-quince-medium",
+        notionAiModel: "opal-quince-high",
         notionAiModelFallbacks: [
           {
-            model: "apricot-sorbet-high",
+            model: "acai-budino-high",
             errorCode: "invalid-output",
             reason: "Model resolution failed.",
           },

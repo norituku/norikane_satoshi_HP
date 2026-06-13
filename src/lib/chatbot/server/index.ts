@@ -54,7 +54,7 @@ export {
 export type { ChatbotTierAttemptLogEvent } from "@/lib/chatbot/server/llm-tier-attempt-logger"
 export {
   createTier1ChromeNotionAiClient,
-  tier1Fabre5HighNotionAiModel,
+  tier1Fable5HighNotionAiModel,
   tier1Gpt55NotionAiModel,
   tier1NotionAiModelFallbackChain,
   tier1ObservedNotionAiModel,

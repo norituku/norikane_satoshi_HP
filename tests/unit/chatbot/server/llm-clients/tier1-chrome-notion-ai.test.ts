@@ -87,7 +87,7 @@ function buildPayloadForRequest(request: ChatbotLlmRequest) {
       contextPageId: "context-page-id",
       threadId: "thread-id",
       selectedModel: "ignored-page-model",
-      availableModels: ["apricot-sorbet-high"],
+      availableModels: ["acai-budino-high"],
       modelFromUser: true,
     },
     idFactory: () => ids.shift() ?? "extra-id",
@@ -153,11 +153,11 @@ describe("Tier1ChromeNotionAiClient", () => {
 
   it("keeps the observed Notion AI model fallback chain explicit", () => {
     expect(tier1NotionAiModelFallbackChain).toEqual([
-      "apricot-sorbet-high",
-      "opal-quince-medium",
+      "acai-budino-high",
+      "opal-quince-high",
       "ambrosia-tart-high",
     ])
-    expect(tier1Gpt55NotionAiModel).toBe("opal-quince-medium")
+    expect(tier1Gpt55NotionAiModel).toBe("opal-quince-high")
     expect(tier1Opus48NotionAiModel).toBe("ambrosia-tart-high")
   })
 
@@ -186,7 +186,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         contextPageId: "context-page-id",
         threadId: "thread-id",
         selectedModel: "ignored-page-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
         modelFromUser: true,
       },
       idFactory: () => ids.shift() ?? "extra-id",
@@ -229,7 +229,7 @@ describe("Tier1ChromeNotionAiClient", () => {
       type: "config",
       value: {
         type: "workflow",
-        model: "apricot-sorbet-high",
+        model: "acai-budino-high",
         modelFromUser: true,
       },
     })
@@ -330,7 +330,7 @@ describe("Tier1ChromeNotionAiClient", () => {
               "isHipaa": false,
               "isMobile": false,
               "isOnboardingAgent": false,
-              "model": "apricot-sorbet-high",
+              "model": "acai-budino-high",
               "modelFromUser": true,
               "searchScopes": [
                 {
@@ -435,7 +435,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         userId: "user-id",
         contextPageId: "context-page-id",
         threadId: "fixed-page-thread-id",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
       idFactory: () => ids.shift() ?? "extra-id",
     })
@@ -458,7 +458,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         contextPageId: "context-page-id",
         threadId: "fixed-page-thread-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
       {
         ok: false,
@@ -499,7 +499,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         contextPageId: "context-page-id",
         threadId: "fixed-page-thread-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
       {
         ok: true,
@@ -626,13 +626,13 @@ describe("Tier1ChromeNotionAiClient", () => {
       transcriptMessages: 3,
       promptLines: 7,
       promptChars: 155,
-      postDataBytes: 2966,
+      postDataBytes: 2963,
     })
     expect(afterMetrics).toEqual({
       transcriptMessages: 3,
       promptLines: 2,
       promptChars: 84,
-      postDataBytes: 2889,
+      postDataBytes: 2886,
     })
     expect(afterPrompt.split("\n")).toEqual([
       "confirmed_facts: 媒体=web / 案件種別=cm-30s / 作業場所=remote-grading",
@@ -782,7 +782,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
         modelFromUser: true,
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
@@ -803,22 +803,22 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(evaluate.mock.calls[0][1]).toBe(tier1ChromeNotionAiDefaults.connectTimeoutMs)
     expect(evaluate.mock.calls[1][1]).toBe(tier1ChromeNotionAiDefaults.requestTimeoutMs)
     expect(evaluate.mock.calls[1][0]).toContain("/api/v3/runInferenceTranscript")
-    expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
+    expect(evaluate.mock.calls[1][0]).toContain("acai-budino-high")
   })
 
-  it("falls back from Fabre 5 High to GPT-5.5 when the first model returns invalid output", async () => {
+  it("falls back from Fable 5 High to GPT-5.5 when the first model returns invalid output", async () => {
     const session = sessionReturning([
       {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high", "opal-quince-medium", "ambrosia-tart-high"],
+        availableModels: ["acai-budino-high", "opal-quince-high", "ambrosia-tart-high"],
         modelFromUser: true,
       },
       {
         ok: false,
         code: "invalid-output",
-        message: 'Model resolution failed for "apricot-sorbet-high".',
+        message: 'Model resolution failed for "acai-budino-high".',
       },
       { ok: true, rawText: "GPT-5.5で復旧しました。", chunkCount: 1 },
     ])
@@ -831,12 +831,12 @@ describe("Tier1ChromeNotionAiClient", () => {
     await expect(client.generate(llmRequest())).resolves.toMatchObject({
       rawText: "GPT-5.5で復旧しました。",
       diagnostics: {
-        notionAiModel: "opal-quince-medium",
+        notionAiModel: "opal-quince-high",
         notionAiModelFallbacks: [
           {
-            model: "apricot-sorbet-high",
+            model: "acai-budino-high",
             errorCode: "invalid-output",
-            reason: 'Model resolution failed for "apricot-sorbet-high".',
+            reason: 'Model resolution failed for "acai-budino-high".',
           },
         ],
       },
@@ -844,8 +844,8 @@ describe("Tier1ChromeNotionAiClient", () => {
 
     const evaluate = vi.mocked(session.evaluate)
     expect(evaluate).toHaveBeenCalledTimes(3)
-    expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
-    expect(evaluate.mock.calls[2][0]).toContain("opal-quince-medium")
+    expect(evaluate.mock.calls[1][0]).toContain("acai-budino-high")
+    expect(evaluate.mock.calls[2][0]).toContain("opal-quince-high")
   })
 
   it("falls back from GPT-5.5 to Opus 4.8 only after the second model also fails", async () => {
@@ -854,18 +854,18 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high", "opal-quince-medium", "ambrosia-tart-high"],
+        availableModels: ["acai-budino-high", "opal-quince-high", "ambrosia-tart-high"],
         modelFromUser: true,
       },
       {
         ok: false,
         code: "invalid-output",
-        message: 'Model resolution failed for "apricot-sorbet-high".',
+        message: 'Model resolution failed for "acai-budino-high".',
       },
       {
         ok: false,
         code: "invalid-output",
-        message: 'Model resolution failed for "opal-quince-medium".',
+        message: 'Model resolution failed for "opal-quince-high".',
       },
       { ok: true, rawText: "Opus 4.8で復旧しました。", chunkCount: 1 },
     ])
@@ -880,16 +880,16 @@ describe("Tier1ChromeNotionAiClient", () => {
       diagnostics: {
         notionAiModel: "ambrosia-tart-high",
         notionAiModelFallbacks: [
-          { model: "apricot-sorbet-high", errorCode: "invalid-output" },
-          { model: "opal-quince-medium", errorCode: "invalid-output" },
+          { model: "acai-budino-high", errorCode: "invalid-output" },
+          { model: "opal-quince-high", errorCode: "invalid-output" },
         ],
       },
     })
 
     const evaluate = vi.mocked(session.evaluate)
     expect(evaluate).toHaveBeenCalledTimes(4)
-    expect(evaluate.mock.calls[1][0]).toContain("apricot-sorbet-high")
-    expect(evaluate.mock.calls[2][0]).toContain("opal-quince-medium")
+    expect(evaluate.mock.calls[1][0]).toContain("acai-budino-high")
+    expect(evaluate.mock.calls[2][0]).toContain("opal-quince-high")
     expect(evaluate.mock.calls[3][0]).toContain("ambrosia-tart-high")
   })
 
@@ -899,7 +899,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
         modelFromUser: true,
       },
       { ok: true, rawText: "12秒を超えても完了しました。", chunkCount: 1 },
@@ -940,7 +940,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
     ])
     const missingTargetClient = new Tier1ChromeNotionAiClient({
@@ -950,7 +950,7 @@ describe("Tier1ChromeNotionAiClient", () => {
     const healthyClient = new Tier1ChromeNotionAiClient({
       fetchClient: cdpFetch(),
       sessionFactory: async () => healthySession,
-      preferredModel: "apricot-sorbet-high",
+      preferredModel: "acai-budino-high",
     })
 
     await expect(healthyClient.isHealthy()).resolves.toBe(true)
@@ -980,7 +980,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
     ])
@@ -1008,7 +1008,7 @@ describe("Tier1ChromeNotionAiClient", () => {
         spaceId: "space-id",
         userId: "user-id",
         selectedModel: "notion-current-model",
-        availableModels: ["apricot-sorbet-high"],
+        availableModels: ["acai-budino-high"],
       },
       { ok: true, rawText: "候補日を確認しました。", chunkCount: 1 },
     ])
@@ -1102,7 +1102,7 @@ describe("Tier1ChromeNotionAiClient", () => {
             spaceId: "space-id",
             userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["apricot-sorbet-high"],
+            availableModels: ["acai-budino-high"],
           },
         ]),
       preferredModel: "preferred-policy-model",
@@ -1123,11 +1123,11 @@ describe("Tier1ChromeNotionAiClient", () => {
             spaceId: "space-id",
             userId: "user-id",
             selectedModel: "notion-current-model",
-            availableModels: ["apricot-sorbet-high"],
+            availableModels: ["acai-budino-high"],
           },
           { ok: true, rawText: "", chunkCount: 1 },
         ]),
-      preferredModel: "apricot-sorbet-high",
+      preferredModel: "acai-budino-high",
     })
 
     await expectLlmError(client.generate(llmRequest()), {
