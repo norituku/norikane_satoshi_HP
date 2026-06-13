@@ -55,6 +55,17 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
   if (conversationState.outOfScope) return directContact("out-of-scope")
   if (conversationState.turnCount >= complexConversationTurnThreshold) return directContact("complex")
 
+  if (
+    conversationState.daysUntilStart !== undefined &&
+    conversationState.daysUntilStart <= tightishDeadlineMaxDays &&
+    !conversationState.hasContactEmail
+  ) {
+    return {
+      kind: "continue",
+      nextQuestion: "素材搬入時期と納品希望日を確認するため 1 点伸ばさせて下さい",
+    }
+  }
+
   if (shouldPrioritizeSchedule(jobContext, conversationState)) {
     return {
       kind: "to-booking-inline",
@@ -63,16 +74,6 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
         ...jobContext,
         workflowEstimate: jobContext.workflowEstimate ?? buildWorkflowEstimate(jobContext),
       },
-    }
-  }
-
-  if (
-    conversationState.daysUntilStart !== undefined &&
-    conversationState.daysUntilStart <= tightishDeadlineMaxDays
-  ) {
-    return {
-      kind: "continue",
-      nextQuestion: "素材搬入時期と納品希望日を確認するため 1 点伸ばさせて下さい",
     }
   }
 
@@ -269,9 +270,8 @@ function shouldPrioritizeSchedule(
     conversationState.hasJobKind &&
     conversationState.hasProjectLength &&
     Boolean(conversationState.hasMaterialHandoff) &&
-    conversationState.hasAdditionalWork &&
     conversationState.hasWorkSite &&
-    conversationState.hasContactEmail &&
+    Boolean(conversationState.hasCustomerIdentity) &&
     (conversationState.hasFinalMedium || jobContext.finalMedium === "web") &&
     isCandidateWindowJob(jobContext)
   )

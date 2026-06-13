@@ -720,6 +720,43 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("prioritizes the booking card once schedule and work site are known even before email and extra work details", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "素材搬入方法を教えてください。",
+      tier: "tier-1-chrome-notion-ai",
+      proposedRoutingDecision: { kind: "continue", nextQuestion: "素材搬入方法を教えてください。" },
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "ライブ映像のカラーグレーディング相談です。尺は約2.5h、素材搬入は7/1以降、納品は7月中、作業形態はリモートグレーディングです。担当者はテストユーザー、会社名はテスト株式会社です。",
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(result.assistantMessage.content).toContain("先に空き状況")
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      suggestedSlots: expect.arrayContaining([
+        expect.objectContaining({ label: "6月15日 10:00", available: true }),
+      ]),
+      conversationState: expect.objectContaining({
+        hasContactEmail: false,
+        hasCustomerIdentity: true,
+        hasDesiredSchedule: true,
+        hasWorkSite: true,
+        customerName: "テストユーザー",
+        companyName: "テスト株式会社",
+      }),
+    })
+    expect(harness.candidateWindowFinder).toHaveBeenCalled()
+  })
+
   it("keeps asking required slots instead of showing booking calendar before work site and material handoff are ready", async () => {
     const harness = setup()
 

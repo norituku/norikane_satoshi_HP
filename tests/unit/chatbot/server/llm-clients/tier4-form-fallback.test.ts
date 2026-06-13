@@ -20,6 +20,7 @@ function conversationState(overrides: Partial<ConversationState> = {}): Conversa
     hasReferenceUrls: true,
     hasContactEmail: true,
     hasDesiredSchedule: true,
+    hasCustomerIdentity: true,
     turnCount: 3,
     contactEmail: "client@example.com",
     ...overrides,

@@ -837,7 +837,7 @@ function inferCustomerIdentityFromText(text: string): {
   const customerName =
     lastCleanedIdentityMatch(
       text,
-      /(?:担当者氏名|担当者名|担当|氏名|お名前|名前)\s*(?:は|:|：|=)\s*([\s\S]{1,80}?)(?=(?:\s*(?:、|,|。|\n|$)|\s*(?:会社名|社名|所属|担当者氏名|担当者名|担当|氏名|お名前|名前)\s*(?:は|:|：|=)))/gu,
+      /(?:担当者氏名|担当者名|担当者|担当|氏名|お名前|名前)\s*(?:は|:|：|=)\s*([\s\S]{1,80}?)(?=(?:\s*(?:、|,|。|\n|$)|\s*(?:会社名|社名|所属|担当者氏名|担当者名|担当者|担当|氏名|お名前|名前)\s*(?:は|:|：|=)))/gu,
       "person",
     ) ??
     lastCleanedIdentityMatch(
