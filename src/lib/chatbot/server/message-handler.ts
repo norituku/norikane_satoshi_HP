@@ -53,6 +53,7 @@ import {
   findCandidateCalendar,
   type CandidateCalendarResult,
 } from "@/lib/chatbot/server/availability-finder"
+import { parseBookingPrefillJson } from "@/lib/chatbot/server/tool-json"
 
 type CandidateWindowFinder =
   | typeof findCandidateCalendar
@@ -829,50 +830,6 @@ function buildUiOpenQuestions(conversationState: ConversationState): string[] {
 
 function conversationText(conversation: ChatbotConversation, userMessage: ChatbotMessage): string {
   return [...conversation.messages, userMessage].map((message) => message.content).join("\n")
-}
-
-function parseBookingPrefillJson(rawText: string): ChatbotBookingPrefill {
-  const jsonText = rawText.match(/\{[\s\S]*\}/u)?.[0]
-  if (!jsonText) return {}
-
-  try {
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>
-    return {
-      ...stringField(parsed.contactName, 80, "contactName"),
-      ...stringField(parsed.companyName, 120, "companyName"),
-      ...emailField(parsed.contactEmail),
-      ...dateField(parsed.dueDate),
-    }
-  } catch {
-    return {}
-  }
-}
-
-function stringField(
-  value: unknown,
-  maxLength: number,
-  key: "contactName" | "companyName",
-): Pick<ChatbotBookingPrefill, typeof key> | Record<string, never> {
-  if (typeof value !== "string") return {}
-  const trimmed = value.trim()
-  if (!trimmed || trimmed.length > maxLength) return {}
-  if (/^(?:未入力|未定|不明|なし|null|undefined)$/iu.test(trimmed)) return {}
-  return { [key]: trimmed } as Pick<ChatbotBookingPrefill, typeof key>
-}
-
-function emailField(value: unknown): Pick<ChatbotBookingPrefill, "contactEmail"> | Record<string, never> {
-  if (typeof value !== "string") return {}
-  const trimmed = value.trim()
-  if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/iu.test(trimmed)) return {}
-  return { contactEmail: trimmed }
-}
-
-function dateField(value: unknown): Pick<ChatbotBookingPrefill, "dueDate"> | Record<string, never> {
-  if (typeof value !== "string") return {}
-  const trimmed = value.trim()
-  if (!trimmed || trimmed.length > 40) return {}
-  if (/^(?:未入力|未定|不明|なし|null|undefined)$/iu.test(trimmed)) return {}
-  return { dueDate: trimmed }
 }
 
 function inferConversationStateFromText(text: string): Partial<ConversationState> {

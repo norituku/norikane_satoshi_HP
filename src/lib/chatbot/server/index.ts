@@ -76,6 +76,23 @@ export {
 } from "@/lib/chatbot/server/llm-clients/tier4-form-fallback"
 export { normalizeChatbotLlmResponse } from "@/lib/chatbot/server/llm-response-normalizer"
 export {
+  dispatchChatbotToolCall,
+  formatChatbotToolRegistryForPrompt,
+  chatbotToolRegistry,
+} from "@/lib/chatbot/server/tool-dispatcher"
+export type {
+  ChatbotToolDispatchResult,
+  ChatbotToolExecutionContext,
+  ChatbotToolName,
+} from "@/lib/chatbot/server/tool-dispatcher"
+export {
+  parseBookingPrefillJson,
+  parseChatbotJsonObject,
+  parseChatbotToolCallJson,
+} from "@/lib/chatbot/server/tool-json"
+export type { ChatbotJsonObject, ChatbotToolCallJson } from "@/lib/chatbot/server/tool-json"
+export { createChatbotToolCallReadRequest } from "@/lib/chatbot/server/tool-call-reader"
+export {
   formatUserChatbotContextForPrompt,
   loadUserChatbotContext,
 } from "@/lib/chatbot/server/user-context-loader"
