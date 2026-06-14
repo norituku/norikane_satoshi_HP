@@ -48,6 +48,7 @@ export type ConversationState = {
   lookDecomposerDetail?: boolean
   daysUntilStart?: number
   contactEmail?: string
+  contactName?: string
   customerName?: string
   companyName?: string
 }

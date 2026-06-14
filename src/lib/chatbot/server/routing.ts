@@ -50,12 +50,7 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
   if (conversationState.outOfScope) return directContact("out-of-scope")
   if (conversationState.turnCount >= complexConversationTurnThreshold) return directContact("complex")
 
-  if (
-    conversationState.hasDesiredSchedule &&
-    conversationState.hasFinalMedium &&
-    conversationState.hasJobKind &&
-    conversationState.hasContactEmail
-  ) {
+  if (isBookingInlineReady(jobContext, conversationState)) {
     return {
       kind: "to-booking-inline",
       suggestedSlots: [],
@@ -83,6 +78,33 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
   }
 
   return continueDecision(conversationState)
+}
+
+function isBookingInlineReady(jobContext: JobContext, conversationState: ConversationState): boolean {
+  return (
+    conversationState.hasDesiredSchedule &&
+    conversationState.hasFinalMedium &&
+    conversationState.hasJobKind &&
+    conversationState.hasContactEmail &&
+    isValidBookingEmail(conversationState.contactEmail) &&
+    hasBookingContactName(conversationState) &&
+    Boolean(jobContext.jobKind) &&
+    Boolean(jobContext.preferredStartDate?.trim())
+  )
+}
+
+function isValidBookingEmail(email: string | undefined): boolean {
+  if (!email) return false
+  const normalized = email.trim()
+  if (normalized.length === 0 || normalized.length > 254) return false
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return false
+
+  const domain = normalized.slice(normalized.lastIndexOf("@") + 1).toLowerCase()
+  return domain !== "yahoo.co"
+}
+
+function hasBookingContactName(conversationState: ConversationState): boolean {
+  return Boolean((conversationState.contactName ?? conversationState.customerName)?.trim())
 }
 
 function directContact(reason: Extract<RoutingDecision, { kind: "to-direct-contact" }>["reason"]) {

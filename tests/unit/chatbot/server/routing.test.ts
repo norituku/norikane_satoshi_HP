@@ -20,6 +20,7 @@ function jobContext(overrides: Partial<JobContext> = {}): JobContext {
     finalMedium: "web",
     workSite: "satoshi-studio",
     documentaryAttachment: { kind: "none" },
+    preferredStartDate: "2026-07-01",
     ...overrides,
   }
 }
@@ -36,6 +37,7 @@ function conversationState(overrides: Partial<ConversationState> = {}): Conversa
     hasDesiredSchedule: true,
     turnCount: settledConversationTurnThreshold,
     contactEmail: "client@example.com",
+    customerName: "Client",
     ...overrides,
   }
 }
@@ -100,6 +102,24 @@ describe("chatbot fallback router", () => {
       kind: "to-booking-inline",
       suggestedSlots: [],
       jobContext: context,
+    })
+  })
+
+  it.each([
+    ["missing contact email", { hasContactEmail: true, contactEmail: undefined }, jobContext()],
+    ["invalid contact email", { contactEmail: "client@example" }, jobContext()],
+    ["partial yahoo email", { contactEmail: "qj9n9not6bov@yahoo.co" }, jobContext()],
+    ["missing contact name", { customerName: "" }, jobContext()],
+    ["missing job kind value", {}, jobContext({ jobKind: undefined })],
+    ["missing preferred start date", {}, jobContext({ preferredStartDate: undefined })],
+  ])("keeps routing on continue when booking gate fails: %s", (_caseName, stateOverrides, context) => {
+    const result = decideRoutingFallback({
+      jobContext: context,
+      conversationState: conversationState(stateOverrides),
+    })
+
+    expect(result).toMatchObject({
+      kind: "continue",
     })
   })
 

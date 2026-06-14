@@ -20,6 +20,7 @@ function conversationState(overrides: Partial<ConversationState> = {}): Conversa
     hasDesiredSchedule: true,
     turnCount: 3,
     contactEmail: "client@example.com",
+    customerName: "Client",
     ...overrides,
   }
 }
@@ -30,6 +31,7 @@ function jobContext(overrides: Partial<JobContext> = {}): JobContext {
     finalMedium: "web",
     workSite: "remote-grading",
     documentaryAttachment: { kind: "none" },
+    preferredStartDate: "2026-07-01",
     ...overrides,
   }
 }
