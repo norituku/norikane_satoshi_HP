@@ -98,32 +98,16 @@ export function NavHeader() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
       <nav className="glass-bar flex w-full items-center justify-between pl-4 pr-6 md:pl-4 md:pr-10 xl:pl-6 xl:pr-14 h-[69px]">
-        <Link href="/" className="flex items-end gap-3 md:gap-4">
-          <div
-            className="relative shrink-0"
-            style={{
-              width: 87,
-              height: 52,
-            }}
-          >
-            <Image
-              src="/nori_logo_header.svg"
-              alt={SITE_BRAND_NAME}
-              fill
-              sizes="87px"
-              className="object-contain"
-              style={{ objectPosition: "center 30%" }}
-              priority
-            />
-          </div>
-          <div className="hidden sm:block">
-            <p className="font-[var(--font-sans)] text-base font-bold tracking-tight text-black md:text-lg">
-              {SITE_BRAND_NAME}
-            </p>
-            <p className="mt-1 text-[11px] tracking-wide text-neutral-500 md:text-xs">
-              Norikane Film Design Office
-            </p>
-          </div>
+        <Link href="/" className="flex shrink-0 items-center">
+          <Image
+            src="/nori_header_black.svg"
+            alt={SITE_BRAND_NAME}
+            width={1165}
+            height={263}
+            sizes="(max-width: 767px) 160px, 195px"
+            className="h-[clamp(36px,5vw,44px)] w-auto object-contain"
+            priority
+          />
         </Link>
 
         {/* Desktop nav */}
