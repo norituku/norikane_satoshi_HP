@@ -913,7 +913,7 @@ describe("handleChatbotMessage user context", () => {
         expect.objectContaining({ label: "6月15日 10:00", note: "1時間候補" }),
       ]),
     })
-    expect(result.assistantMessage.content).toContain("先に空き状況")
+    expect(result.assistantMessage.content).toBe("返信です")
     const finderInput = harness.candidateWindowFinder.mock.calls[0]?.[0]
     expect(finderInput).toEqual(expect.objectContaining({ busyMode: "block" }))
     expect(finderInput).not.toHaveProperty("notBefore")
@@ -966,7 +966,7 @@ describe("handleChatbotMessage user context", () => {
     )
 
     expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
-    expect(result.assistantMessage.content).toContain("先に空き状況")
+    expect(result.assistantMessage.content).toBe("素材搬入方法を教えてください。")
     expect(result.ui).toMatchObject({
       kind: "booking-card",
       suggestedSlots: expect.arrayContaining([

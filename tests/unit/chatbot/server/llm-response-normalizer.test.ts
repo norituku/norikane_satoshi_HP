@@ -148,9 +148,26 @@ describe("normalizeChatbotLlmResponse", () => {
     )
   })
 
-  it("uses schedule-first copy for booking-inline routing", () => {
+  it("keeps sanitized LLM text for booking-inline routing", () => {
     expect(
       sanitizeChatbotLlmText("カメラ種類を教えてください。", {
+        routingDecision: {
+          kind: "to-booking-inline",
+          suggestedSlots: [],
+          jobContext: {
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            workflowEstimate: { stages: [], totalMinDays: 7, totalMaxDays: 8, riskFlags: [] },
+          },
+        },
+      }),
+    ).toBe("カメラ種類を教えてください。")
+  })
+
+  it("uses schedule-first copy for booking-inline routing when the LLM text is empty", () => {
+    expect(
+      sanitizeChatbotLlmText("", {
         routingDecision: {
           kind: "to-booking-inline",
           suggestedSlots: [],

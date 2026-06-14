@@ -39,12 +39,10 @@ export function sanitizeChatbotLlmText(
     return directContactPolicyMessage
   }
   if (options.routingDecision?.kind === "to-booking-inline") {
-    const estimate = options.routingDecision.jobContext.workflowEstimate
-    const estimatePrefix = estimate
-      ? `作業目安は${formatDays(estimate.totalMinDays)}〜${formatDays(estimate.totalMaxDays)}日です。`
-      : ""
-
-    return `${estimatePrefix}素材搬入時期と納品希望日は把握しました。先に空き状況の候補を出します。細かい素材情報は分かる範囲で後からで大丈夫です。`
+    const llmText = sanitizeFreeformChatbotLlmText(rawText, options)
+    return llmText === fallbackChatbotAssistantContent
+      ? bookingInlineFallbackContent(options.routingDecision)
+      : llmText
   }
   if (options.routingDecision?.kind === "continue" && options.routingDecision.presentChoices) {
     const nextQuestion = options.routingDecision.nextQuestion.trim()
@@ -55,6 +53,13 @@ export function sanitizeChatbotLlmText(
     return options.routingDecision.nextQuestion.trim()
   }
 
+  return sanitizeFreeformChatbotLlmText(rawText, options)
+}
+
+function sanitizeFreeformChatbotLlmText(
+  rawText: string,
+  options: { routingDecision?: RoutingDecision; jobContext?: JobContext } = {},
+): string {
   const strippedThoughtBlocks = stripThinkBlocksOutsideCodeFences(rawText)
   const strippedLeadingThought = stripLeadingThoughtExplanation(strippedThoughtBlocks)
   if (parseChatbotAgentToolCallJson(strippedLeadingThought)) return fallbackChatbotAssistantContent
@@ -72,6 +77,15 @@ export function sanitizeChatbotLlmText(
   const estimateAligned = alignWorkflowEstimateText(normalizedWhitespace, options.routingDecision, options.jobContext)
 
   return estimateAligned.length > 0 ? estimateAligned : fallbackChatbotAssistantContent
+}
+
+function bookingInlineFallbackContent(routingDecision: Extract<RoutingDecision, { kind: "to-booking-inline" }>): string {
+  const estimate = routingDecision.jobContext.workflowEstimate
+  const estimatePrefix = estimate
+    ? `作業目安は${formatDays(estimate.totalMinDays)}〜${formatDays(estimate.totalMaxDays)}日です。`
+    : ""
+
+  return `${estimatePrefix}素材搬入時期と納品希望日は把握しました。先に空き状況の候補を出します。細かい素材情報は分かる範囲で後からで大丈夫です。`
 }
 
 function containsBackendDisclosure(text: string): boolean {

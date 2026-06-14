@@ -23,6 +23,14 @@ describe("ChatMessage", () => {
     expect(screen.getByText("12:34")).toBeInTheDocument()
   })
 
+  it("renders assistant bold markdown as strong text", () => {
+    render(<ChatMessage role="assistant" content="メールは **qj9n9not6bov@yahoo.co.jp** で合っていますか？" />)
+
+    const boldText = screen.getByText("qj9n9not6bov@yahoo.co.jp")
+    expect(boldText.tagName).toBe("STRONG")
+    expect(screen.queryByText("**qj9n9not6bov@yahoo.co.jp**")).not.toBeInTheDocument()
+  })
+
   it("renders user content with the customer label", () => {
     render(<ChatMessage role="user" content="劇場公開作品です。" />)
 
