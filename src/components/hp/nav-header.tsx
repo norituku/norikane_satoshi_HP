@@ -102,9 +102,9 @@ export function NavHeader() {
           <Image
             src="/nori_header_black.svg"
             alt={SITE_BRAND_NAME}
-            width={1165}
-            height={137}
-            sizes="(max-width: 767px) 320px, 380px"
+            width={832}
+            height={141}
+            sizes="(max-width: 767px) 220px, 260px"
             className="h-[clamp(36px,5vw,44px)] w-auto object-contain"
             priority
           />
