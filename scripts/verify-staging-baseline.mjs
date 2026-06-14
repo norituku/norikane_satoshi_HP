@@ -6,6 +6,7 @@ const DEFAULT_BASE = "ccba8e324bf6fadc7c678c3138dffc1fb45007ed";
 const DEFAULT_ALLOWED = [
   "src/app/globals.css",
   "src/app/layout.tsx",
+  "src/app/page.tsx",
   "src/components/chatbot/widget/ChatbotWidget.tsx",
   "src/components/chatbot/widget/ThinkingIndicator.tsx",
   "src/components/chatbot/widget/WidgetShell.tsx",
@@ -15,6 +16,9 @@ const DEFAULT_ALLOWED = [
   "src/components/chatbot/widget/api.ts",
   "src/components/chatbot/widget/local-tier-debug.ts",
   "src/components/chatbot/widget/useWidgetState.ts",
+  "src/components/hp/press-data.ts",
+  "src/components/hp/press-section.tsx",
+  "src/lib/hp/public-content.ts",
 ];
 const SELF_ALLOWED = [
   "CONTRIBUTING.md",
