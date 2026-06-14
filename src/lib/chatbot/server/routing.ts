@@ -5,13 +5,8 @@ import {
   type RoutingDecision,
 } from "@/lib/chatbot/domain"
 import {
-  additionalWorkChoices,
-  documentaryAttachmentChoices,
-  finalMediumChoices,
-  productionOptionChoices,
   remoteWorkSiteConfirmationChoices,
   specificWorkSiteChoices,
-  workSiteChoices,
 } from "@/lib/chatbot/domain"
 import { directContactPolicyMessage } from "@/lib/chatbot/knowledge/forbidden-topics"
 import {
@@ -149,136 +144,59 @@ function continueDecision(
     }
   }
 
-  if (!conversationState.hasCustomerIdentity) {
+  if (!conversationState.hasAdditionalWork && conversationState.hasPendingAdditionalWorkOther) {
     return {
       kind: "continue",
-      nextQuestion: "お名前と会社名を教えてください。",
+      nextQuestion: buildAdditionalWorkOtherQuestion(latestUserMessage),
     }
   }
 
-  if (!conversationState.hasFinalMedium) {
+  if (!conversationState.hasWorkSite && conversationState.hasPendingRemoteWorkSiteRecommendation) {
     return {
       kind: "continue",
-      nextQuestion: "最終媒体は何になりますか？",
-      presentChoices: finalMediumChoices,
+      nextQuestion: remoteWorkSiteConfirmationChoices.question,
+      presentChoices: remoteWorkSiteConfirmationChoices,
     }
   }
 
-  if (!conversationState.hasJobKind || !conversationState.hasProjectLength) {
+  if (!conversationState.hasWorkSite && conversationState.declinedRemoteWorkSiteRecommendation) {
     return {
       kind: "continue",
-      nextQuestion: "案件種別と尺を教えてください",
+      nextQuestion: "具体的な作業場所のご希望を教えてください。",
+      presentChoices: specificWorkSiteChoices,
     }
   }
 
-  if (!conversationState.hasMaterialHandoff) {
+  const missingIntakeLabels = requiredBookingReadinessMissingLabels(conversationState)
+  if (missingIntakeLabels.length > 0) {
     return {
       kind: "continue",
-      nextQuestion: "撮影素材をどう受け渡す予定か教えてください",
-    }
-  }
-
-  if (!conversationState.hasAdditionalWork) {
-    if (conversationState.hasPendingAdditionalWorkOther) {
-      return {
-        kind: "continue",
-        nextQuestion: buildAdditionalWorkOtherQuestion(latestUserMessage),
-      }
-    }
-
-    return {
-      kind: "continue",
-      nextQuestion: "カラグレ以外の追加作業はありますか？",
-      presentChoices: additionalWorkChoices,
-    }
-  }
-
-  if (!conversationState.hasDocumentaryAttachments) {
-    return {
-      kind: "continue",
-      nextQuestion: "付随する映像はありますか？",
-      presentChoices: documentaryAttachmentChoices,
-    }
-  }
-
-  if (!conversationState.hasWorkSite) {
-    if (conversationState.hasPendingRemoteWorkSiteRecommendation) {
-      return {
-        kind: "continue",
-        nextQuestion: remoteWorkSiteConfirmationChoices.question,
-        presentChoices: remoteWorkSiteConfirmationChoices,
-      }
-    }
-
-    if (conversationState.declinedRemoteWorkSiteRecommendation) {
-      return {
-        kind: "continue",
-        nextQuestion: "具体的な作業場所のご希望を教えてください。",
-        presentChoices: specificWorkSiteChoices,
-      }
-    }
-
-    return {
-      kind: "continue",
-      nextQuestion: "作業場所のご希望はありますか？",
-      presentChoices: workSiteChoices,
-    }
-  }
-
-  if (!conversationState.hasProjectTitle) {
-    return {
-      kind: "continue",
-      nextQuestion: "案件名（プロジェクト名・作品名）を教えてください。まだ未定なら仮の呼び名でも大丈夫です。",
-    }
-  }
-
-  if (!conversationState.hasReferenceUrls) {
-    return {
-      kind: "continue",
-      nextQuestion: "事前に把握しておきたい参考URLがあれば教えてください",
-    }
-  }
-
-  if (!conversationState.hasMaterialDetails) {
-    return {
-      kind: "continue",
-      nextQuestion: "差し支えなければ、素材内容（カメラ台数・収録形式・解像度・フレームレートなど）も教えてください",
-    }
-  }
-
-  if (!conversationState.hasDeliveryFormat) {
-    return {
-      kind: "continue",
-      nextQuestion: "納品形式と解像度の希望があれば教えてください",
-    }
-  }
-
-  if (!conversationState.hasProductionOptions) {
-    return {
-      kind: "continue",
-      nextQuestion: "字幕・テロップ、ナレーション、音楽の有無を教えてください",
-      presentChoices: productionOptionChoices,
-    }
-  }
-
-  if (!conversationState.hasBudgetRange) {
-    return {
-      kind: "continue",
-      nextQuestion: "差し支えなければで構いませんので、ご予算の目安（レンジ）があれば教えてください",
-    }
-  }
-
-  if (!conversationState.hasDesiredSchedule) {
-    return {
-      kind: "continue",
-      nextQuestion: "素材の搬入（受け取り）時期と納品希望日を教えてください",
+      nextQuestion: buildReadinessFallbackQuestion(missingIntakeLabels),
     }
   }
 
   return {
     kind: "continue",
-    nextQuestion: "ご連絡先のメールアドレス（必須）を教えてください",
+    nextQuestion: "予約候補を出す前に、ほかに共有しておきたい制約があれば教えてください。",
   }
+}
+
+function requiredBookingReadinessMissingLabels(conversationState: ConversationState): string[] {
+  return [
+    conversationState.hasCustomerIdentity ? undefined : "お名前・会社名",
+    conversationState.hasFinalMedium ? undefined : "最終媒体",
+    conversationState.hasJobKind && conversationState.hasProjectLength ? undefined : "案件種別・尺",
+    conversationState.hasMaterialHandoff ? undefined : "素材受け渡し",
+    conversationState.hasWorkSite ? undefined : "作業場所",
+    conversationState.hasProjectTitle ? undefined : "案件名",
+    conversationState.hasDesiredSchedule ? undefined : "素材搬入時期・納品希望日",
+    conversationState.hasContactEmail ? undefined : "メールアドレス",
+  ].filter((label): label is string => Boolean(label))
+}
+
+function buildReadinessFallbackQuestion(missingLabels: string[]): string {
+  const focusedLabels = missingLabels.slice(0, 2)
+  return `予約候補を正確に出すため、${focusedLabels.join(" と ")}を教えてください。`
 }
 
 function buildAdditionalWorkOtherQuestion(latestUserMessage: string | undefined): string {

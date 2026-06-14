@@ -1575,7 +1575,7 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
-  it("persists the active choice panel returned by deterministic routing", async () => {
+  it("persists the readiness fallback returned by deterministic routing", async () => {
     const harness = setup({
       existingConversation: conversation({
         context: {
@@ -1592,12 +1592,12 @@ describe("handleChatbotMessage user context", () => {
       harness.options,
     )
 
-    expect(result.ui).toEqual({ kind: "choice-panel", choiceSet: finalMediumChoices })
+    expect(result.ui).toEqual({ kind: "none" })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conv_1",
-        currentQuestion: "最終媒体は何になりますか？",
-        activeChoices: finalMediumChoices,
+        currentQuestion: expect.stringContaining("最終媒体"),
+        activeChoices: null,
       }),
     )
   })
@@ -1934,17 +1934,16 @@ describe("handleChatbotMessage user context", () => {
       harness.options,
     )
 
-    expect(result.ui).toEqual({ kind: "choice-panel", choiceSet: additionalWorkChoices })
+    expect(result.ui).toEqual({ kind: "none" })
     expect(result.routingDecision).toMatchObject({
       kind: "continue",
-      nextQuestion: "カラグレ以外の追加作業はありますか？",
-      presentChoices: additionalWorkChoices,
+      nextQuestion: expect.stringContaining("作業場所"),
     })
-    expect(result.assistantMessage.content).toBe("カラグレ以外の追加作業はありますか？")
+    expect(result.assistantMessage.content).toContain("作業場所")
     expect(harness.repository.appendMessage).toHaveBeenCalledWith({
       conversationId: "conv_1",
       role: "assistant",
-      content: "カラグレ以外の追加作業はありますか？",
+      content: expect.stringContaining("作業場所"),
       llmModel: "tier-3-ollama-deepseek",
     })
   })
@@ -1983,7 +1982,7 @@ describe("handleChatbotMessage user context", () => {
     })
     expect(result.routingDecision).toMatchObject({
       kind: "continue",
-      nextQuestion: "案件種別と尺を教えてください",
+      nextQuestion: expect.stringContaining("案件種別・尺"),
     })
     expect(result.routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(

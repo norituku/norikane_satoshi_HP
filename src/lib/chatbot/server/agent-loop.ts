@@ -9,10 +9,10 @@ import type {
   ChatbotLlmResponse,
 } from "@/lib/chatbot/server/llm-client"
 import type { ChatbotLlmTierOrchestrator } from "@/lib/chatbot/server/llm-orchestrator"
+import { buildChatbotAgentSystemPrompt } from "@/lib/chatbot/server/system-prompt"
 import { createChatbotToolCallReadRequest } from "@/lib/chatbot/server/tool-call-reader"
 import {
   dispatchChatbotToolCall,
-  formatChatbotToolRegistryForPrompt,
   type ChatbotToolDispatchResult,
   type ChatbotToolExecutionContext,
   type ChatbotToolName,
@@ -69,29 +69,6 @@ export async function runChatbotAgentLoop(
   return runChatbotAgentLoopInternal(input)
 }
 
-function buildAgentSystemPrompt(basePrompt: string): string {
-  return [
-    basePrompt,
-    "会話スタイル:",
-    "あなたは『のーちゃん』として、お客様の言葉をまず短く受け止め、要件整理と次の一問を自然な会話でつなぎます。",
-    "定型文をそのまま返すのではなく、直前の発言に含まれる状況・不安・希望を1つ拾ってから返答します。",
-    "情報を一方的に列挙せず、確認済みのことは短く認め、不明点は1〜2点に絞って質問します。",
-    "順番通りにフォーム項目を埋めることを目的にせず、お客様の言葉から意図・背景・未整理の事情を読み取り、次の質問へ移る前に小さくアクノリッジします。",
-    "一見関係なさそうな情報にも重要な文脈が含まれることがあります。気になる情報は流さず、必要なら深掘りしてから次へ進みます。",
-    "追加作業で『その他』が選ばれた場合は、内容が具体化するまで必ず『「その他」とは具体的にどのような作業ですか？』と確認し、booking-card や create_booking へ進めません。『わかりません』『詳しくはまた』『謎』などの曖昧な回答には具体例を挙げて倒し込みます。",
-    "予約候補を出す前に、案件名（プロジェクト名・作品名）も自然に確認します。未定なら仮称でよいことを伝えます。",
-    "料金・契約・安全分岐・境界ルールは既存ポリシーを優先し、柔らかい口調でも判断基準は変えません。",
-    "エージェントモード:",
-    "必要な場合だけ、本文の末尾に tool_call JSON オブジェクトを1つ置いてください。",
-    "形式: {\"tool\":\"show_booking_card\",\"args\":{...}}",
-    "通常の返答テキストと tool_call JSON は共存できます。tool_call JSON がある場合、アプリが dispatcher で実行し、結果を次ターンのコンテキストとして返します。",
-    "ツール結果を受け取った後は、同じ副作用ツールを繰り返さず、お客様向けの最終回答テキストを返してください。",
-    "安全分岐に該当する料金・契約・私生活・他案件・技術機密はツール化せず、アプリ層の direct-contact 判定に従います。",
-    "利用可能ツール:",
-    formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: executableToolNames }),
-  ].join("\n")
-}
-
 async function runChatbotAgentLoopInternal(
   input: RunChatbotAgentLoopInput,
 ): Promise<ChatbotAgentLoopResult> {
@@ -101,7 +78,7 @@ async function runChatbotAgentLoopInternal(
   let effectiveJobContext = input.jobContext
   let request: ChatbotLlmRequest = {
     ...input.request,
-    systemPrompt: buildAgentSystemPrompt(input.request.systemPrompt),
+    systemPrompt: buildChatbotAgentSystemPrompt(input.request.systemPrompt),
   }
   const timeoutMs = input.timeoutMs ?? chatbotAgentLoopDefaults.timeoutMs
   let response = await withTimeout(generate(request), timeoutMs)

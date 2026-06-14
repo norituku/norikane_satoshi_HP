@@ -28,11 +28,9 @@ import {
   type ChatbotLlmTierOrchestrator,
   type TierAttemptEvent,
   decideRoutingFallback,
-  type UserChatbotContext,
   normalizeChatbotLlmResponse,
   tier1NotionAiModelFallbackChain,
 } from "@/lib/chatbot/server"
-import { buildChatbotStaticPolicyPrompt } from "@/lib/chatbot/knowledge"
 import {
   applyActiveChoiceAnswer,
   isSatisfiedChoicePanel,
@@ -43,6 +41,7 @@ import {
   runChatbotAgentLoop,
   type ChatbotAgentLoopResult,
 } from "@/lib/chatbot/server/agent-loop"
+import { buildChatbotSystemPrompt } from "@/lib/chatbot/server/system-prompt"
 import type { CandidateWindow, ConversationSummary, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
 import {
   hasRequiredConsultationNotificationSlots,
@@ -58,10 +57,8 @@ import {
   type CandidateCalendarResult,
 } from "@/lib/chatbot/server/availability-finder"
 import {
-  formatChatbotToolRegistryForPrompt,
   type ChatbotToolDispatchResult,
   type ChatbotToolExecutionContext,
-  type ChatbotToolName,
 } from "@/lib/chatbot/server/tool-dispatcher"
 import { parseBookingPrefillJson } from "@/lib/chatbot/server/tool-json"
 
@@ -437,13 +434,6 @@ async function handleChatbotMessageCore(
       : toMessageUi(routingDecision, llmResponse.tier, conversationState, bookingPrefill),
   }
 }
-
-const phaseTwoEnabledToolNames: ReadonlyArray<ChatbotToolName> = [
-  "create_booking",
-  "show_booking_card",
-  "get_estimate",
-  "ask_checkbox",
-]
 
 function buildCreateBookingSuccessContent(result: Extract<ChatbotToolDispatchResult, { status: "executed" }>): string {
   const bookingGroupId = bookingGroupIdFromToolResult(result.result)
@@ -823,38 +813,6 @@ function buildRuleFallbackLlmResponse(routingDecision: RoutingDecision): Chatbot
     proposedRoutingDecision: routingDecision,
     diagnostics: { agentLoopFallback: true },
   }
-}
-
-function buildChatbotSystemPrompt(
-  userContext?: UserChatbotContext | null,
-  userContextFormatter: typeof formatUserChatbotContextForPrompt = formatUserChatbotContextForPrompt,
-): string {
-  const lines = [
-    buildChatbotStaticPolicyPrompt(),
-    "あなたは『のーちゃん』として、お客様の言葉をまず短く受け止め、要件整理と次の一問を自然な会話でつなぎます。",
-    "定型文をそのまま返すのではなく、直前の発言に含まれる状況・不安・希望を1つ拾ってから返答します。",
-    "情報を一方的に列挙せず、確認済みのことは短く認め、不明点は1〜2点に絞って質問します。",
-    "順番通りにフォーム項目を埋めることを目的にせず、お客様の言葉から意図・背景・未整理の事情を読み取り、次の質問へ移る前に小さくアクノリッジします。",
-    "一見関係なさそうな情報にも重要な文脈が含まれることがあります。気になる情報は流さず、必要なら深掘りしてから次へ進みます。",
-    "追加作業で『その他』が選ばれた場合は、内容が具体化するまで必ず『「その他」とは具体的にどのような作業ですか？』と確認し、booking-card や create_booking へ進めません。『わかりません』『詳しくはまた』『謎』などの曖昧な回答には具体例を挙げて倒し込みます。",
-    "予約候補を出す前に、案件名（プロジェクト名・作品名）も自然に確認します。未定なら仮称でよいことを伝えます。",
-    "共感や受容は過剰に盛らず、『承知しました』『その条件なら』など実務的で自然な表現に留めます。",
-    "回答範囲は新規案件の調整、要件整理、予約導線に限定し、技術指導、作品レビュー、標準外要望はのりかね本人の確認へ誘導します。",
-    "不明なことを推測で断定せず、未確認事項として質問します。",
-    "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
-    "呼称は中立に保ち、他顧客の情報を参照または推測しません。",
-    "連絡先を求める場合は、電話番号ではなくメールアドレス（必須）を明示します。電話番号は任意情報として扱います。",
-    "ツール呼び出しが必要な場合は、本文末尾に次の形式のJSONオブジェクトを1つ置けます: {\"tool\":\"create_booking\",\"args\":{...}}",
-    "ツールJSONを置く場合も、お客様に見せる通常の返答テキストと共存できます。",
-    "利用可能ツール:",
-    formatChatbotToolRegistryForPrompt(undefined, { enabledToolNames: phaseTwoEnabledToolNames }),
-  ]
-
-  if (userContext) {
-    lines.push(userContextFormatter(userContext))
-  }
-
-  return lines.join("\n")
 }
 
 function buildJobContext(

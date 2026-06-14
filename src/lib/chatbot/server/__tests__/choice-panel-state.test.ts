@@ -61,7 +61,10 @@ describe("choice panel state", () => {
       latestUserMessage: "選択: live",
     })
 
-    expect(routingDecision).toMatchObject({ kind: "continue", nextQuestion: "案件種別と尺を教えてください" })
+    expect(routingDecision).toMatchObject({
+      kind: "continue",
+      nextQuestion: expect.stringContaining("案件種別・尺"),
+    })
     expect(routingDecision).not.toMatchObject({ presentChoices: finalMediumChoices })
   })
 

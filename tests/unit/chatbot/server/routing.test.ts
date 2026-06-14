@@ -2,12 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import type { ConversationState, JobContext } from "@/lib/chatbot/domain"
 import {
-  additionalWorkChoices,
-  finalMediumChoices,
-  productionOptionChoices,
   remoteWorkSiteConfirmationChoices,
   specificWorkSiteChoices,
-  workSiteChoices,
 } from "@/lib/chatbot/domain"
 import {
   complexConversationTurnThreshold,
@@ -49,7 +45,7 @@ function conversationState(overrides: Partial<ConversationState> = {}): Conversa
 }
 
 describe("chatbot fallback router", () => {
-  it("continues with final medium choices when final medium is missing", () => {
+  it("continues with a readiness question when final medium is missing", () => {
     const result = decideRoutingFallback({
       jobContext: jobContext(),
       conversationState: conversationState({
@@ -61,7 +57,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      presentChoices: finalMediumChoices,
+      nextQuestion: expect.stringContaining("最終媒体"),
     })
   })
 
@@ -89,7 +85,7 @@ describe("chatbot fallback router", () => {
     })
   })
 
-  it("continues with additional work choices after final medium and job kind are collected", () => {
+  it("does not return additional-work choices while readiness slots are missing", () => {
     const result = decideRoutingFallback({
       jobContext: jobContext(),
       conversationState: conversationState({
@@ -101,11 +97,11 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      presentChoices: additionalWorkChoices,
+      nextQuestion: expect.stringContaining("素材搬入時期・納品希望日"),
     })
   })
 
-  it("continues with work site choices when work site is missing", () => {
+  it("continues with a readiness question when work site is missing", () => {
     const result = decideRoutingFallback({
       jobContext: jobContext(),
       conversationState: conversationState({
@@ -117,7 +113,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      presentChoices: workSiteChoices,
+      nextQuestion: expect.stringContaining("作業場所"),
     })
   })
 
@@ -178,7 +174,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      nextQuestion: "案件種別と尺を教えてください",
+      nextQuestion: expect.stringContaining("案件種別・尺"),
     })
   })
 
@@ -190,7 +186,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      nextQuestion: expect.stringContaining("撮影素材"),
+      nextQuestion: expect.stringContaining("素材受け渡し"),
     })
   })
 
@@ -210,7 +206,7 @@ describe("chatbot fallback router", () => {
     })
   })
 
-  it("continues with production option choices while optional intake is still in progress", () => {
+  it("asks for readiness slots instead of optional production choices", () => {
     const result = decideRoutingFallback({
       jobContext: jobContext(),
       conversationState: conversationState({
@@ -224,7 +220,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      presentChoices: productionOptionChoices,
+      nextQuestion: expect.stringContaining("素材搬入時期・納品希望日"),
     })
   })
 
@@ -322,7 +318,7 @@ describe("chatbot fallback router", () => {
 
     expect(result).toMatchObject({
       kind: "continue",
-      presentChoices: finalMediumChoices,
+      nextQuestion: expect.stringContaining("最終媒体"),
     })
   })
 
