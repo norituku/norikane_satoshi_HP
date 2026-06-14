@@ -504,10 +504,9 @@
 }
 
 @media (min-width: 768px) {
-  body.chatbot-side-peek-active main,
-  body.chatbot-side-peek-active footer {
-    margin-right: calc(var(--chatbot-side-peek-width, 384px) + 16px);
-    transition: margin-right 0.2s ease;
+  body.chatbot-side-peek-active {
+    padding-right: calc(var(--chatbot-side-peek-width, 384px) + 16px);
+    transition: padding-right 0.2s ease;
   }
 }
 
