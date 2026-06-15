@@ -528,6 +528,34 @@ describe("Tier1ChromeNotionAiClient", () => {
     expect(attachedTargets[0]?.webSocketDebuggerUrl).toContain("notion-ai-runtime")
   })
 
+  it("keeps the redirected app Notion AI runtime target healthy after the chat target is gone", async () => {
+    const attachedTargets: NotionAiCdpTarget[] = []
+    const session = sessionReturning([
+      {
+        spaceId: "space-id",
+        userId: "user-id",
+        selectedModel: "notion-current-model",
+        availableModels: ["notion-current-model"],
+      },
+    ])
+    const client = new Tier1ChromeNotionAiClient({
+      fetchClient: cdpFetch([
+        {
+          type: "page",
+          url: "https://app.notion.com/ai",
+          webSocketDebuggerUrl: "ws://127.0.0.1:9223/devtools/page/notion-ai-runtime",
+        },
+      ]),
+      sessionFactory: async (attachedTarget) => {
+        attachedTargets.push(attachedTarget)
+        return session
+      },
+    })
+
+    await expect(client.isHealthy()).resolves.toBe(true)
+    expect(attachedTargets[0]?.webSocketDebuggerUrl).toContain("notion-ai-runtime")
+  })
+
   it("uses the configured chat thread id when the attached app runtime URL has no thread id", async () => {
     let evaluationCount = 0
     const evaluate = vi.fn(async <T,>(expression: string): Promise<T> => {
