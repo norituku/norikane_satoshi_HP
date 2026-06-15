@@ -779,6 +779,8 @@ function findNotionAiTarget(
     return target.type === targetTypePage && isNotionAiRuntimeTargetUrl(target.url)
   })
 
+  if (!configuredTarget && runtimeTarget && isExpectedChatTargetUrl(targetUrlIncludes)) return runtimeTarget
+
   return configuredTarget && runtimeTarget ? runtimeTarget : configuredTarget
 }
 
