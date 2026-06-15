@@ -18,13 +18,20 @@
 test-results/
 playwright-report/
 .playwright/
+.nyc_output/
 
 # next.js
 /.next/
 /out/
+.next/
 
 # production
 /build
+/dist
+/dist/
+.turbo/
+.cache/
+.codex-worktrees/
 
 # misc
 .DS_Store
