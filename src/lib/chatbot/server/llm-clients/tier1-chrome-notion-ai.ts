@@ -779,7 +779,7 @@ function findNotionAiTarget(
     return target.type === targetTypePage && isNotionAiRuntimeTargetUrl(target.url)
   })
 
-  return configuredTarget && runtimeTarget ? runtimeTarget : configuredTarget
+  return runtimeTarget ?? configuredTarget
 }
 
 export function isNotionAiChatbotTargetUrl(url: string | undefined, targetUrlIncludes: string): boolean {
