@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import type { ChatbotLlmClient, ChatbotLlmRequest, ChatbotLlmResponse } from "@/lib/chatbot/server/llm-client"
 import { ChatbotLlmError } from "@/lib/chatbot/server/llm-client"
 
@@ -307,18 +310,20 @@ export function createTier2HostedChromeNotionAiClient(
     httpClient?: Tier2HostedWorkerHttpClient
   } = {},
 ): Tier2HostedChromeNotionAiClient {
+  const env = readHostedNotionAiEnv()
+
   return new Tier2HostedChromeNotionAiClient({
-    workerUrl: process.env.CHATBOT_HOSTED_NOTION_AI_WORKER_URL,
-    token: process.env.CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN,
+    workerUrl: env.CHATBOT_HOSTED_NOTION_AI_WORKER_URL,
+    token: env.CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN,
     requestTimeoutMs: parsePositiveInteger(
-      process.env.CHATBOT_HOSTED_NOTION_AI_TIMEOUT_MS,
+      env.CHATBOT_HOSTED_NOTION_AI_TIMEOUT_MS,
       tier2HostedChromeNotionAiDefaults.requestTimeoutMs,
     ),
     healthCheckTimeoutMs: parsePositiveInteger(
-      process.env.CHATBOT_HOSTED_NOTION_AI_HEALTH_TIMEOUT_MS,
+      env.CHATBOT_HOSTED_NOTION_AI_HEALTH_TIMEOUT_MS,
       tier2HostedChromeNotionAiDefaults.healthCheckTimeoutMs,
     ),
-    enabled: parseEnabled(process.env.CHATBOT_HOSTED_NOTION_AI_ENABLED),
+    enabled: parseEnabled(env.CHATBOT_HOSTED_NOTION_AI_ENABLED),
     ...overrides,
   })
 }
@@ -338,6 +343,56 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function readHostedNotionAiEnv(): Record<string, string | undefined> {
+  const localEnv = readLocalEnvFile()
+
+  return {
+    CHATBOT_HOSTED_NOTION_AI_WORKER_URL:
+      process.env.CHATBOT_HOSTED_NOTION_AI_WORKER_URL ?? localEnv.CHATBOT_HOSTED_NOTION_AI_WORKER_URL,
+    CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN:
+      process.env.CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN ?? localEnv.CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN,
+    CHATBOT_HOSTED_NOTION_AI_TIMEOUT_MS:
+      process.env.CHATBOT_HOSTED_NOTION_AI_TIMEOUT_MS ?? localEnv.CHATBOT_HOSTED_NOTION_AI_TIMEOUT_MS,
+    CHATBOT_HOSTED_NOTION_AI_HEALTH_TIMEOUT_MS:
+      process.env.CHATBOT_HOSTED_NOTION_AI_HEALTH_TIMEOUT_MS ??
+      localEnv.CHATBOT_HOSTED_NOTION_AI_HEALTH_TIMEOUT_MS,
+    CHATBOT_HOSTED_NOTION_AI_ENABLED:
+      process.env.CHATBOT_HOSTED_NOTION_AI_ENABLED ?? localEnv.CHATBOT_HOSTED_NOTION_AI_ENABLED,
+  }
+}
+
+function readLocalEnvFile(): Record<string, string | undefined> {
+  try {
+    return parseEnvFile(readFileSync(join(process.cwd(), ".env.local"), "utf8"))
+  } catch {
+    return {}
+  }
+}
+
+function parseEnvFile(raw: string): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {}
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+
+    const separatorIndex = trimmed.indexOf("=")
+    if (separatorIndex < 0) continue
+
+    const key = trimmed.slice(0, separatorIndex).trim()
+    let value = trimmed.slice(separatorIndex + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    env[key] = value
+  }
+
+  return env
 }
 
 function trimTrailingSlash(value: string | undefined): string | undefined {

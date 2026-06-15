@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { ConversationState, JobContext } from "@/lib/chatbot/domain"
@@ -78,6 +82,7 @@ async function expectLlmError(
 describe("Tier2HostedChromeNotionAiClient", () => {
   afterEach(() => {
     vi.unstubAllEnvs()
+    vi.restoreAllMocks()
   })
 
   it("keeps the tier property fixed to tier 2 hosted Notion AI", () => {
@@ -140,6 +145,38 @@ describe("Tier2HostedChromeNotionAiClient", () => {
       "https://env-worker.example.test/generate",
       expect.any(Object),
     )
+  })
+
+  it("loads worker config from .env.local when process env is not populated", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "tier2-env-"))
+    writeFileSync(
+      join(tempDir, ".env.local"),
+      [
+        "CHATBOT_HOSTED_NOTION_AI_WORKER_URL=https://local-env-worker.example.test/",
+        "CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN=local-env-token",
+        "CHATBOT_HOSTED_NOTION_AI_ENABLED=true",
+      ].join("\n"),
+    )
+    vi.spyOn(process, "cwd").mockReturnValue(tempDir)
+    const httpClient = vi.fn(async () => jsonResponse({ rawText: "OK" }))
+
+    try {
+      const client = createTier2HostedChromeNotionAiClient({
+        requestTimeoutMs: 20,
+        healthCheckTimeoutMs: 20,
+        httpClient,
+      })
+
+      await expect(client.generate(llmRequest())).resolves.toMatchObject({ rawText: "OK" })
+      expect(httpClient).toHaveBeenCalledWith(
+        "https://local-env-worker.example.test/generate",
+        expect.objectContaining({
+          headers: expect.objectContaining({ authorization: "Bearer local-env-token" }),
+        }),
+      )
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
   })
 
   it("treats missing URL or token as non-retryable auth failure", async () => {
