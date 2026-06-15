@@ -7,6 +7,10 @@ import { ChatbotLoginCard } from "@/components/chatbot/widget/ChatbotLoginCard"
 import { mapErrorCodeToJa } from "@/lib/booking/domain/api-schema"
 import { bookingOnboardingDemoScript } from "@/lib/chatbot/demo"
 import type { CandidateWindow, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
+import {
+  CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
+  CHATBOT_CONVERSATION_CONTENT_STYLE,
+} from "./conversationTypography"
 
 type BookingResult = {
   bookingGroupId: string
@@ -140,11 +144,19 @@ export function ChatbotBookingCard({
       <div>
         <p className="text-xs uppercase tracking-[0.18em] text-hp-muted">Booking</p>
         <h2 className="mt-1 text-base font-semibold text-hp">候補日時から予約する</h2>
-        <p className="mt-2 text-sm leading-relaxed text-hp-muted">
+        <p
+          className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} mt-2 text-sm text-hp-muted`}
+          style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+        >
           日程が決まっている場合は、候補を選んで予約内容を送信できます。
         </p>
         {estimateText(estimate) ? (
-          <p className="mt-2 text-xs font-medium text-hp-muted">{estimateText(estimate)}</p>
+          <p
+            className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} mt-2 text-xs text-hp-muted`}
+            style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+          >
+            {estimateText(estimate)}
+          </p>
         ) : null}
       </div>
 
@@ -174,7 +186,12 @@ export function ChatbotBookingCard({
                 >
                   <span className="block font-semibold text-hp">{candidate.label}</span>
                   {candidate.note ? (
-                    <span className="block text-xs font-normal text-hp-muted">{candidate.note}</span>
+                    <span
+                      className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} block text-xs text-hp-muted`}
+                      style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+                    >
+                      {candidate.note}
+                    </span>
                   ) : null}
                 </button>
               )

@@ -3,6 +3,11 @@
 import { useState } from "react"
 import { ChevronDown, ShieldCheck } from "lucide-react"
 
+import {
+  CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
+  CHATBOT_CONVERSATION_CONTENT_STYLE,
+} from "./conversationTypography"
+
 type SecurityNoteProps = {
   defaultOpen?: boolean
 }
@@ -28,7 +33,10 @@ export function SecurityNote({ defaultOpen = false }: SecurityNoteProps) {
         />
       </button>
       {isOpen ? (
-        <ul className="mt-3 space-y-1.5 text-xs leading-relaxed text-hp-muted">
+        <ul
+          className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} mt-3 space-y-1.5 text-xs text-hp-muted`}
+          style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+        >
           <li>通信と保存データを暗号化して扱います。</li>
           <li>チャットログは 30 日自動削除の対象です。</li>
           <li>他案件情報は参照せず、本人文脈のみを使います。</li>

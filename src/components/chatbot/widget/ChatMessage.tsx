@@ -1,6 +1,10 @@
 "use client"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
+import {
+  CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
+  CHATBOT_CONVERSATION_CONTENT_STYLE,
+} from "./conversationTypography"
 
 type ChatMessageProps = {
   role: ChatbotMessageRole
@@ -40,7 +44,12 @@ export function ChatMessage({ role, content, createdAt }: ChatMessageProps) {
           </time>
         ) : null}
       </div>
-      <p className="whitespace-pre-wrap">{content}</p>
+      <p
+        className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} whitespace-pre-wrap`}
+        style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+      >
+        {content}
+      </p>
     </article>
   )
 }

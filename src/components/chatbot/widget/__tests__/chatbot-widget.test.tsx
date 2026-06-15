@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ChatbotWidget } from "@/components/chatbot/widget/ChatbotWidget"
+import { CHATBOT_CONVERSATION_CONTENT_CLASS_NAME } from "@/components/chatbot/widget/conversationTypography"
 import { FloatingLauncher } from "@/components/chatbot/widget/FloatingLauncher"
 import { MinimizedBar } from "@/components/chatbot/widget/MinimizedBar"
 import { WidgetShell } from "@/components/chatbot/widget/WidgetShell"
@@ -48,6 +49,8 @@ function installLocalStorage() {
   }
   Object.defineProperty(window, "localStorage", { configurable: true, value: storage })
 }
+
+const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split(" ")
 
 describe("chatbot widget shell", () => {
   beforeEach(() => {
@@ -230,6 +233,18 @@ describe("chatbot widget shell", () => {
     render(<WidgetShell onMinimize={vi.fn()} />)
 
     expect(screen.getByText("ご相談や案件依頼はこちらです。最終媒体、公開時期、作業時期などを会話で整理します。")).toBeInTheDocument()
+  })
+
+  it("keeps sans typography scoped away from the widget chrome", () => {
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    expect(screen.getByText("ご相談や案件依頼はこちらです。最終媒体、公開時期、作業時期などを会話で整理します。")).toHaveClass(
+      ...conversationContentClasses,
+    )
+    for (const assistantLabel of screen.getAllByText("AI アシスタント")) {
+      expect(assistantLabel).not.toHaveClass(...conversationContentClasses)
+    }
+    expect(screen.getByText("のりかね映像設計室のご相談窓口")).not.toHaveClass(...conversationContentClasses)
   })
 
   it("renders the security note inside the shell", () => {

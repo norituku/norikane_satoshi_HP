@@ -6,6 +6,7 @@ import type { ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ChatbotBookingCard } from "@/components/chatbot/widget/ChatbotBookingCard"
+import { CHATBOT_CONVERSATION_CONTENT_CLASS_NAME } from "@/components/chatbot/widget/conversationTypography"
 import type { CandidateWindow, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
 
 vi.mock("next-auth/react", () => ({
@@ -56,6 +57,8 @@ function renderCard(props: Partial<ComponentProps<typeof ChatbotBookingCard>> = 
   )
 }
 
+const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split(" ")
+
 describe("ChatbotBookingCard", () => {
   beforeEach(() => {
     mockFetch(200, { bookingGroupId: "group_1", bookingIds: ["slot_1"] })
@@ -72,6 +75,17 @@ describe("ChatbotBookingCard", () => {
     expect(screen.getByText("候補日時から予約する")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /6月10日 午前/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "6月11日 午後" })).toBeInTheDocument()
+  })
+
+  it("uses sans typography for chat copy without changing booking controls", () => {
+    renderCard()
+
+    expect(screen.getByText("日程が決まっている場合は、候補を選んで予約内容を送信できます。")).toHaveClass(
+      ...conversationContentClasses,
+    )
+    expect(screen.getByText("午前枠")).toHaveClass(...conversationContentClasses)
+    expect(screen.getByText("候補日時から予約する")).not.toHaveClass(...conversationContentClasses)
+    expect(screen.getByLabelText("案件名")).not.toHaveClass(...conversationContentClasses)
   })
 
   it("posts the selected candidate and required fields to the chatbot booking API", async () => {

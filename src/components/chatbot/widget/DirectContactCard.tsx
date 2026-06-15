@@ -3,6 +3,10 @@
 import { FormEvent, useState } from "react"
 
 import type { RoutingDecision } from "@/lib/chatbot/domain/routing-decision"
+import {
+  CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
+  CHATBOT_CONVERSATION_CONTENT_STYLE,
+} from "./conversationTypography"
 
 type DirectContactReason = Extract<RoutingDecision, { kind: "to-direct-contact" }>["reason"]
 
@@ -40,7 +44,12 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
     <section className="glass-inset space-y-4 p-4" aria-label="連絡誘導">
       <div>
         <p className="text-sm font-semibold text-hp">{reasonLabels[reason]}</p>
-        <p className="mt-2 text-sm leading-relaxed text-hp-muted">{suggestedMessage}</p>
+        <p
+          className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} mt-2 text-sm text-hp-muted`}
+          style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+        >
+          {suggestedMessage}
+        </p>
       </div>
       <form className="space-y-3" onSubmit={handleSubmit}>
         <label className="block space-y-1 text-xs font-semibold text-hp">

@@ -1,6 +1,10 @@
 "use client"
 
 import type { CandidateWindow, WorkflowEstimate, WorkflowStage } from "@/lib/chatbot/domain/workflow-estimate"
+import {
+  CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
+  CHATBOT_CONVERSATION_CONTENT_STYLE,
+} from "./conversationTypography"
 
 type ScheduleCardProps = {
   estimate: WorkflowEstimate
@@ -21,7 +25,10 @@ export function ScheduleCard({ estimate, candidates, onSelectCandidate }: Schedu
     <section className="glass-inset space-y-4 p-4" aria-label="工程別スケジュール">
       <div>
         <p className="text-sm font-semibold text-hp">工程別スケジュール</p>
-        <p className="mt-1 text-xs text-hp-muted">
+        <p
+          className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} mt-1 text-xs text-hp-muted`}
+          style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+        >
           合計 {estimate.totalMinDays}〜{estimate.totalMaxDays} 日目安
         </p>
       </div>
@@ -41,7 +48,12 @@ export function ScheduleCard({ estimate, candidates, onSelectCandidate }: Schedu
                 <td className="py-2 pr-3">
                   {stage.minDays}〜{stage.maxDays} 日
                 </td>
-                <td className="py-2 text-hp-muted">{stage.note ?? "調整可"}</td>
+                <td
+                  className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} py-2 text-hp-muted`}
+                  style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+                >
+                  {stage.note ?? "調整可"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -56,7 +68,14 @@ export function ScheduleCard({ estimate, candidates, onSelectCandidate }: Schedu
             onClick={() => onSelectCandidate(index)}
           >
             <span className="block">{candidate.label}</span>
-            {candidate.note ? <span className="block font-normal text-hp-muted">{candidate.note}</span> : null}
+            {candidate.note ? (
+              <span
+                className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} block text-hp-muted`}
+                style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+              >
+                {candidate.note}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
