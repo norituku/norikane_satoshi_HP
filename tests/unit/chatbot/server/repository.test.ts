@@ -29,6 +29,9 @@ function conversationRow(overrides = {}) {
     additionalWork: JSON.stringify(["retouch", "skin-retouch"]),
     referenceUrls: JSON.stringify(["https://example.com/ref"]),
     ndaFlag: false,
+    currentQuestion: null,
+    activeChoices: null,
+    conversationState: null,
     messages: [
       {
         id: "msg_1",
