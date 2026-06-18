@@ -4,6 +4,7 @@ import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, 
 import { GripHorizontal, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
+import type { JobContext } from "@/lib/chatbot/domain/workflow-estimate"
 import type { WidgetDisplayMode } from "./useWidgetState"
 
 import {
@@ -55,6 +56,18 @@ const inquirySentMessage = "送信しました。担当者からの返信をお�
 const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const thinkingDelayNoticeMs = 6000
+
+const additionalWorkMemoLabels: Record<NonNullable<JobContext["additionalWork"]>[number], string> = {
+  retouch: "消し物/レタッチ",
+  "skin-retouch": "肌修正",
+  other: "その他追加作業",
+}
+
+const workSiteMemoLabels: Record<JobContext["workSite"], string> = {
+  "satoshi-studio": "のりかね映像設計室",
+  "remote-grading": "リモート",
+  "on-site": "現地/ポスプロ常駐",
+}
 
 type StoredWidgetSession = {
   messages: Array<Omit<WidgetMessage, "createdAt"> & { createdAt: string }>
@@ -141,6 +154,36 @@ function createClientSessionId() {
   }
 
   return `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, "0")}`
+}
+
+function buildBookingSupplementalNote(jobContext: JobContext): string {
+  return [
+    formatProjectLengthMemo(jobContext.projectLengthMinutes),
+    formatAdditionalWorkMemo(jobContext.additionalWork),
+    formatWorkSiteMemo(jobContext.workSite),
+    jobContext.preferredStartDate ? `素材搬入/受け取り時期: ${jobContext.preferredStartDate}` : undefined,
+    jobContext.publicReleaseDate ? `納品希望日: ${jobContext.publicReleaseDate}` : undefined,
+    ...(jobContext.referenceUrls ?? []),
+  ].filter((item): item is string => Boolean(item)).join("\n")
+}
+
+function formatProjectLengthMemo(minutes: number | undefined): string | undefined {
+  if (minutes === undefined) return undefined
+  if (minutes >= 60) {
+    const hours = minutes / 60
+    return `尺: ${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`
+  }
+  return `尺: ${minutes}分`
+}
+
+function formatAdditionalWorkMemo(additionalWork: JobContext["additionalWork"]): string | undefined {
+  if (!additionalWork?.length) return undefined
+  return `追加作業: ${additionalWork.map((item) => additionalWorkMemoLabels[item]).join(" / ")}`
+}
+
+function formatWorkSiteMemo(workSite: JobContext["workSite"]): string | undefined {
+  if (!workSite) return undefined
+  return `作業場所: ${workSiteMemoLabels[workSite]}`
 }
 
 export function WidgetShell({
@@ -537,6 +580,7 @@ function ActiveWidgetUi({
     return (
       <ChoicePanel
         choiceSet={ui.choiceSet}
+        allowMultiple={ui.choiceSet.selectionMode === "multiple"}
         onSelect={(selectedIds) => onSubmit(`選択: ${selectedIds.join(", ")}`)}
       />
     )
@@ -552,7 +596,7 @@ function ActiveWidgetUi({
         defaultContactName={ui.bookingPrefill?.contactName}
         defaultCompanyName={ui.bookingPrefill?.companyName}
         defaultDueDate={ui.bookingPrefill?.dueDate ?? ui.jobContext.publicReleaseDate}
-        defaultMemo={ui.jobContext.referenceUrls?.join("\n")}
+        defaultMemo={buildBookingSupplementalNote(ui.jobContext)}
       />
     )
   }
@@ -564,7 +608,7 @@ function ActiveWidgetUi({
         suggestedMessage={ui.suggestedMessage}
         onSubmitEmail={(email, companyName, personName) =>
           onInquirySubmit({
-            name: personName || "未入力",
+            name: personName,
             email,
             jobType: ui.reason,
             duration: "",
@@ -578,6 +622,23 @@ function ActiveWidgetUi({
 
   if (ui.kind === "tier4-inquiry-form") {
     return <InquiryForm onSubmit={onInquirySubmit} />
+  }
+
+  if (ui.kind === "consultation-summary-form") {
+    return (
+      <InquiryForm
+        mode="consultation-summary"
+        initialEmail={ui.summary.customerEmail}
+        summaryText={ui.summary.summaryText}
+        openQuestions={ui.summary.openQuestions}
+        onSubmit={(input) =>
+          onInquirySubmit({
+            ...input,
+            freeText: [ui.summary.summaryText, input.freeText].filter(Boolean).join("\n"),
+          })
+        }
+      />
+    )
   }
 
   return null

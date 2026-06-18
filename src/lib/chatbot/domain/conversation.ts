@@ -8,6 +8,7 @@ export type ChatbotMessage = {
   id: string
   role: ChatbotMessageRole
   content: string
+  llmModel?: string | null
   createdAt: string
 }
 
@@ -17,6 +18,7 @@ export type ChatbotConversationContext = {
   customerEmail?: string
   currentQuestion?: string
   activeChoices?: SurveyChoiceSet
+  conversationState?: Partial<ConversationState>
   jobContext?: Partial<JobContext>
   routingDecision?: RoutingDecision
 }
@@ -33,12 +35,19 @@ export type ChatbotConversation = {
 export type ConversationState = {
   hasFinalMedium: boolean
   hasJobKind: boolean
+  hasProjectLength?: boolean
+  hasMaterialHandoff?: boolean
+  hasMaterialDetails?: boolean
   hasAdditionalWork: boolean
   hasDocumentaryAttachments: boolean
   hasWorkSite: boolean
   hasReferenceUrls: boolean
+  hasDeliveryFormat?: boolean
+  hasProductionOptions?: boolean
+  hasBudgetRange?: boolean
   hasContactEmail: boolean
   hasDesiredSchedule: boolean
+  hasCustomerIdentity?: boolean
   turnCount: number
   outOfScope?: boolean
   technicalQuestion?: boolean
@@ -46,9 +55,15 @@ export type ConversationState = {
   vfxCgHeavy?: boolean
   editingIncomplete?: boolean
   lookDecomposerDetail?: boolean
+  asksPricing?: boolean
+  contractDecision?: boolean
+  personalQuestion?: boolean
+  otherClientInformation?: boolean
+  confidentialTechniqueQuestion?: boolean
+  privateMethodNameExposure?: boolean
   daysUntilStart?: number
   contactEmail?: string
-  contactName?: string
   customerName?: string
   companyName?: string
+  productionOptions?: Array<"captions" | "telops" | "narration" | "music">
 }

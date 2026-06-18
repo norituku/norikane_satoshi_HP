@@ -5,6 +5,12 @@ export type {
   ChatbotMessageRole,
   ConversationState,
 } from "@/lib/chatbot/domain/conversation"
+export {
+  formatConsultationSummary,
+  hasRequiredConsultationNotificationSlots,
+  hasRequiredEmailConsultationSlots,
+} from "@/lib/chatbot/domain/consultation-summary"
+export type { ConsultationSummaryInput } from "@/lib/chatbot/domain/consultation-summary"
 export type { BookingCardPrefill, RoutingDecision } from "@/lib/chatbot/domain/routing-decision"
 export {
   additionalWorkChoices,

@@ -11,6 +11,7 @@ import {
   tightDeadlineThresholdDays,
   tightishDeadlineMaxDays,
 } from "@/lib/chatbot/knowledge/workflow-duration"
+import { directContactPolicyMessage } from "@/lib/chatbot/knowledge/forbidden-topics"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
 
 export type RoutingDecisionInput = {
@@ -44,6 +45,13 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
 
   if (conversationState.vfxCgHeavy) return directContact("vfx-cg-heavy")
   if (conversationState.editingIncomplete) return directContact("raw-edit-included")
+  if (conversationState.asksPricing) return directContact("pricing")
+  if (conversationState.contractDecision) return directContact("contract-decision")
+  if (conversationState.personalQuestion) return directContact("personal-life")
+  if (conversationState.otherClientInformation) return directContact("other-client")
+  if (conversationState.confidentialTechniqueQuestion || conversationState.privateMethodNameExposure) {
+    return directContact("confidential-technique")
+  }
   if (conversationState.lookDecomposerDetail) return directContact("plugin-detail")
   if (conversationState.technicalQuestion) return directContact("tech-question")
   if (conversationState.workReviewRequest) return directContact("review-request")
@@ -77,8 +85,7 @@ function directContact(reason: Extract<RoutingDecision, { kind: "to-direct-conta
     kind: "to-direct-contact",
     reason,
     requireEmail: true,
-    suggestedMessage:
-      "のりかね映像設計室の担当者が直接ご対応いたしますので、ご連絡先を共有いただけますか？",
+    suggestedMessage: directContactPolicyMessage,
   } as const
 }
 

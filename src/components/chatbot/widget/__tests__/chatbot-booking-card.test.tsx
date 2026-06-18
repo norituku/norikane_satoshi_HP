@@ -33,6 +33,7 @@ const estimate: WorkflowEstimate = {
   totalMaxDays: 3,
   riskFlags: [],
 }
+const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split(" ")
 
 function mockFetch(status: number, body: unknown) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -51,13 +52,12 @@ function renderCard(props: Partial<ComponentProps<typeof ChatbotBookingCard>> = 
       estimate={estimate}
       defaultProjectTitle="CM grading"
       defaultContactName="田中"
+      defaultCompanyName="株式会社サンプル"
       conversationId="conv_1"
       {...props}
     />,
   )
 }
-
-const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split(" ")
 
 describe("ChatbotBookingCard", () => {
   beforeEach(() => {
@@ -73,19 +73,75 @@ describe("ChatbotBookingCard", () => {
     renderCard()
 
     expect(screen.getByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("仮キープ候補の座席選択")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /6月10日 午前/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "6月11日 午後" })).toBeInTheDocument()
+    expect(screen.getByLabelText("会社名（任意）")).toHaveValue("株式会社サンプル")
+    expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("田中")
+    expect(screen.getByPlaceholderText("作品名または案件名（イニシャル表記も可）")).toBeInTheDocument()
+    expect(screen.getByText("利用規約と予約内容に同意します（必須）。")).toBeInTheDocument()
   })
 
-  it("uses sans typography for chat copy without changing booking controls", () => {
+  it("renders unavailable candidate cells as disabled seat cells", () => {
     renderCard()
 
-    expect(screen.getByText("日程が決まっている場合は、候補を選んで予約内容を送信できます。")).toHaveClass(
+    const unavailableCells = screen.getAllByRole("button", { name: "空きなし" })
+    expect(unavailableCells.length).toBeGreaterThan(0)
+    expect(unavailableCells[0]).toBeDisabled()
+  })
+
+  it("keeps chat copy in the conversation typography without changing booking controls", () => {
+    renderCard()
+
+    expect(screen.getByText("素材搬入時期と納品希望日が決まっている場合は、候補を仮キープして予約内容を送信できます。")).toHaveClass(
       ...conversationContentClasses,
     )
     expect(screen.getByText("午前枠")).toHaveClass(...conversationContentClasses)
     expect(screen.getByText("候補日時から予約する")).not.toHaveClass(...conversationContentClasses)
-    expect(screen.getByLabelText("案件名")).not.toHaveClass(...conversationContentClasses)
+    expect(screen.getByLabelText("案件名（必須）")).not.toHaveClass(...conversationContentClasses)
+  })
+
+  it("renders multi-day date candidates as keepable continuous seats", () => {
+    renderCard({
+      candidates: [
+        {
+          start: "2026-06-14T01:00:00.000Z",
+          end: "2026-06-23T09:00:00.000Z",
+          label: "6月14日 - 6月23日",
+          note: "日付候補 / 仮キープ 8営業日",
+        },
+      ],
+    })
+
+    const candidate = screen.getByRole("button", { name: /6月14日 - 6月23日/ })
+    expect(screen.getByText("連続日程")).toBeInTheDocument()
+    expect(candidate).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("日付候補 / 仮キープ 8営業日")).toBeInTheDocument()
+  })
+
+  it("prefills supplemental notes without mixing them into identity fields", () => {
+    renderCard({
+      defaultProjectTitle: "",
+      defaultContactName: "田中",
+      defaultCompanyName: "株式会社サンプル",
+      defaultMemo: "ライブ2.5h\nプロンプター消し物・顔アップ肌修正",
+    })
+
+    expect(screen.getByLabelText("補足ノート（任意）")).toHaveValue("ライブ2.5h\nプロンプター消し物・顔アップ肌修正")
+    expect(screen.getByLabelText("会社名（任意）")).toHaveValue("株式会社サンプル")
+    expect(screen.getByLabelText("担当者氏名（必須）")).toHaveValue("田中")
+    expect(screen.getByLabelText("案件名（必須）")).toHaveValue("")
+  })
+
+  it("uses a wrapping auto-growing textarea for the project title", () => {
+    const longTitle = "ライブ収録素材のカラーグレーディングと納品確認を含む長い案件名"
+    renderCard({ defaultProjectTitle: longTitle })
+
+    const field = screen.getByLabelText("案件名（必須）")
+    expect(field.tagName).toBe("TEXTAREA")
+    expect(field).toHaveValue(longTitle)
+    expect(field).toHaveClass("resize-none")
+    expect(field).toHaveClass("overflow-hidden")
   })
 
   it("posts the selected candidate and required fields to the chatbot booking API", async () => {
@@ -93,7 +149,7 @@ describe("ChatbotBookingCard", () => {
     renderCard()
 
     fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
-    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します。"))
+    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -125,7 +181,7 @@ describe("ChatbotBookingCard", () => {
 
     cleanup()
     renderCard({ candidates: [] })
-    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します。"))
+    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -136,7 +192,7 @@ describe("ChatbotBookingCard", () => {
     renderCard({ onRequireLogin })
 
     fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
-    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します。"))
+    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
     expect(await screen.findByText("ログインして予約に進んでください")).toBeInTheDocument()
@@ -150,10 +206,12 @@ describe("ChatbotBookingCard", () => {
     renderCard({ onBooked })
 
     fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
-    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します。"))
+    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
     fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
 
     expect(await screen.findByText("予約を受け付けました")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_1")).toBeInTheDocument()
+    expect(screen.queryByText(/bookingGroupId:/)).not.toBeInTheDocument()
     expect(onBooked).toHaveBeenCalledWith({
       bookingGroupId: "group_1",
       bookingIds: ["slot_1"],

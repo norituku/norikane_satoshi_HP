@@ -422,6 +422,83 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("routes protected pricing questions to direct contact", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "料金は本人が確認します。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "料金はいくらですか",
+        conversationState: {
+          asksPricing: true,
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-direct-contact",
+      reason: "pricing",
+    })
+    expect(result.ui).toMatchObject({
+      kind: "direct-contact-card",
+      reason: "pricing",
+    })
+  })
+
+  it("shows a consultation summary form when a settled no-schedule consultation can be emailed", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "相談内容を整理して送信できます。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "日程はまだ未定です。client@example.com に連絡してください",
+        jobContext: {
+          jobKind: "live-60m",
+          finalMedium: "live",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+        },
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasMaterialHandoff: true,
+          hasAdditionalWork: true,
+          hasDocumentaryAttachments: true,
+          hasWorkSite: true,
+          hasReferenceUrls: true,
+          hasContactEmail: true,
+          hasDesiredSchedule: false,
+          contactEmail: "client@example.com",
+          turnCount: 8,
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({
+      kind: "to-email",
+    })
+    expect(result.ui).toMatchObject({
+      kind: "consultation-summary-form",
+      summary: {
+        customerEmail: "client@example.com",
+        summaryText: expect.stringContaining("live-60m"),
+      },
+    })
+  })
+
   it("turns a show_booking_card tool call into a booking card using only tool args for prefill", async () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({

@@ -1,7 +1,9 @@
+import { hasRequiredEmailConsultationSlots } from "@/lib/chatbot/domain"
 import type {
   BookingCardPrefill,
   ChatbotConversation,
   ChatbotMessage,
+  ConversationSummary,
   ConversationState,
   JobContext,
   RoutingDecision,
@@ -42,6 +44,10 @@ type ChatbotMessageUi =
       kind: "direct-contact-card"
       reason: Extract<RoutingDecision, { kind: "to-direct-contact" }>["reason"]
       suggestedMessage: string
+    }
+  | {
+      kind: "consultation-summary-form"
+      summary: Extract<RoutingDecision, { kind: "to-email" }>["summary"]
     }
   | { kind: "tier4-inquiry-form" }
 
@@ -223,7 +229,7 @@ export async function handleChatbotMessage(
     },
     routingDecision,
     tier: llmResponse.tier,
-    ui: toMessageUi({ tier: llmResponse.tier, routingDecision }),
+    ui: toMessageUi({ tier: llmResponse.tier, routingDecision, conversationState }),
   }
 }
 
@@ -343,6 +349,7 @@ function buildConversationState(
 function toMessageUi(input: {
   tier: ChatbotLlmResponse["tier"]
   routingDecision: RoutingDecision | undefined
+  conversationState: ConversationState
 }): ChatbotMessageUi {
   if (input.tier === "tier-4-form-fallback") return { kind: "tier4-inquiry-form" }
 
@@ -354,7 +361,12 @@ function toMessageUi(input: {
   }
 
   if (routingDecision.kind === "to-booking-inline") {
-    if (routingDecision.suggestedSlots.length === 0) return { kind: "none" }
+    if (routingDecision.suggestedSlots.length === 0) {
+      return {
+        kind: "consultation-summary-form",
+        summary: buildConversationSummary(routingDecision.jobContext, input.conversationState),
+      }
+    }
     return {
       kind: "booking-card",
       suggestedSlots: routingDecision.suggestedSlots,
@@ -371,7 +383,38 @@ function toMessageUi(input: {
     }
   }
 
+  if (routingDecision.kind === "to-email") {
+    if (!hasRequiredEmailConsultationSlots({ conversationState: input.conversationState })) return { kind: "none" }
+    return {
+      kind: "consultation-summary-form",
+      summary: routingDecision.summary,
+    }
+  }
+
   return { kind: "none" }
+}
+
+function buildConversationSummary(jobContext: JobContext, conversationState: ConversationState): ConversationSummary {
+  return {
+    subject: "チャットボット相談",
+    customerEmail: conversationState.contactEmail ?? "",
+    ...(conversationState.customerName ? { customerName: conversationState.customerName } : {}),
+    ...(conversationState.companyName ? { companyName: conversationState.companyName } : {}),
+    jobContext,
+    summaryText: `${jobContext.jobKind ?? "案件種別未確認"} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${
+      conversationState.hasDesiredSchedule ? "搬入〜納品あり" : "搬入〜納品未定"
+    }`,
+    openQuestions: [
+      conversationState.hasFinalMedium ? undefined : "最終媒体未確認",
+      conversationState.hasJobKind && conversationState.hasProjectLength ? undefined : "案件種別・尺未確認",
+      conversationState.hasMaterialHandoff ? undefined : "素材受け渡し未確認",
+      conversationState.hasAdditionalWork ? undefined : "追加作業未確認",
+      conversationState.hasDocumentaryAttachments ? undefined : "付随映像未確認",
+      conversationState.hasWorkSite ? undefined : "作業場所未確認",
+      conversationState.hasReferenceUrls ? undefined : "参考URL未確認",
+      conversationState.hasDesiredSchedule ? undefined : "素材搬入〜納品時期未確認",
+    ].filter((item): item is string => Boolean(item)),
+  }
 }
 
 async function resolveRoutingDecision(input: {
@@ -382,6 +425,7 @@ async function resolveRoutingDecision(input: {
 }): Promise<RoutingDecision | undefined> {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
   if (input.fallbackRoutingDecision.kind === "to-direct-contact") return input.fallbackRoutingDecision
+  if (input.fallbackRoutingDecision.kind === "to-email") return input.fallbackRoutingDecision
 
   const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   if (!toolCall) return undefined
