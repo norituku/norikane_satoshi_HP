@@ -22,6 +22,10 @@ export {
 } from "@/lib/chatbot/server/duration-estimator"
 export type { JobKind } from "@/lib/chatbot/server/duration-estimator"
 export {
+  applyActiveChoiceAnswer,
+  isSatisfiedChoicePanel,
+} from "@/lib/chatbot/server/choice-panel-state"
+export {
   ChatbotAvailabilityError,
   findCandidateWindows,
 } from "@/lib/chatbot/server/availability-finder"

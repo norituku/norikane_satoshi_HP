@@ -28,6 +28,7 @@ import {
   type UserChatbotContext,
 } from "@/lib/chatbot/server"
 import { ChatbotAvailabilityError, findCandidateWindows } from "@/lib/chatbot/server/availability-finder"
+import { applyActiveChoiceAnswer } from "@/lib/chatbot/server/choice-panel-state"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
 import { decideRoutingFallback } from "@/lib/chatbot/server/routing"
 
@@ -164,14 +165,23 @@ export async function handleChatbotMessage(
     role: "user",
     content: input.message,
   })
+  const activeChoiceAnswer = applyActiveChoiceAnswer({
+    activeChoices: conversation.context.activeChoices,
+    message: input.message,
+  })
   const userContext = input.userId
     ? await userContextLoader({
         userId: input.userId,
         currentConversationId: conversation.id,
       })
     : null
-  const jobContext = buildJobContext(input.jobContext, conversation)
-  const conversationState = buildConversationState(input.conversationState, conversation, userMessage)
+  const jobContext = buildJobContext(input.jobContext, conversation, activeChoiceAnswer?.jobContext)
+  const conversationState = buildConversationState(
+    input.conversationState,
+    conversation,
+    userMessage,
+    activeChoiceAnswer?.conversationState,
+  )
   const llmResponse = await orchestrator.generate({
     systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter),
     messages: [
@@ -189,12 +199,13 @@ export async function handleChatbotMessage(
     conversationState,
     latestUserMessage: input.message,
   })
-  const routingDecision = await resolveRoutingDecision({
+  const resolvedRoutingDecision = await resolveRoutingDecision({
     llmResponse,
     jobContext,
     fallbackRoutingDecision,
     candidateWindowFinder,
   })
+  const routingDecision = resolvedRoutingDecision ?? (activeChoiceAnswer ? fallbackRoutingDecision : undefined)
   const assistantContent = buildAssistantDisplayContent({
     rawText: llmResponse.rawText,
     routingDecision,
@@ -210,6 +221,10 @@ export async function handleChatbotMessage(
     await repository.updateConversationRouting({
       conversationId: conversation.id,
       routingDecision: routingDecision.kind,
+      currentQuestion: routingDecision.kind === "continue" ? routingDecision.nextQuestion : null,
+      activeChoices: routingDecision.kind === "continue" ? routingDecision.presentChoices ?? null : null,
+      conversationState,
+      jobContext,
     })
   }
 
@@ -284,6 +299,7 @@ function buildChatbotSystemPrompt(
 function buildJobContext(
   input: Partial<JobContext> | undefined,
   conversation: ChatbotConversation,
+  activeChoiceJobContext: Partial<JobContext> | undefined,
 ): JobContext {
   const stored = conversation.context.jobContext ?? {}
   return {
@@ -292,6 +308,7 @@ function buildJobContext(
     documentaryAttachment: { kind: "none" },
     ...stored,
     ...input,
+    ...activeChoiceJobContext,
   }
 }
 
@@ -327,10 +344,12 @@ function buildConversationState(
   input: Partial<ConversationState> | undefined,
   conversation: ChatbotConversation,
   userMessage: ChatbotMessage,
+  activeChoiceConversationState: Partial<ConversationState> | undefined,
 ): ConversationState {
   const userTurnCount =
     conversation.messages.filter((message) => message.role === "user").length +
     (userMessage.role === "user" ? 1 : 0)
+  const stored = conversation.context.conversationState ?? {}
 
   return {
     hasFinalMedium: false,
@@ -342,7 +361,9 @@ function buildConversationState(
     hasContactEmail: false,
     hasDesiredSchedule: false,
     turnCount: userTurnCount,
+    ...stored,
     ...(input ?? {}),
+    ...activeChoiceConversationState,
   }
 }
 

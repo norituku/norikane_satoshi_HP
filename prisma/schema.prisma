@@ -202,6 +202,9 @@ model ChatbotConversation {
   customerCompany String?
   customerEmail   String?
   customerPhone   String?
+  currentQuestion String?
+  activeChoices   String?
+  conversationState String?
   finalMedium     String?
   jobType         String?
   mainDuration    String?

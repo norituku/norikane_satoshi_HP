@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
 import type { CandidateWindow, ChatbotConversation, ChatbotMessage } from "@/lib/chatbot/domain"
+import { finalMediumChoices } from "@/lib/chatbot/domain"
 import { handleChatbotMessage } from "@/lib/chatbot/server/message-handler"
 import type { UserChatbotContext } from "@/lib/chatbot/server/user-context-loader"
 
@@ -497,6 +498,43 @@ describe("handleChatbotMessage user context", () => {
         summaryText: expect.stringContaining("live-60m"),
       },
     })
+  })
+
+  it("consumes stored final medium choice and advances to the next slot", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: finalMediumChoices,
+          currentQuestion: "最終媒体は何になりますか？",
+          conversationState: { hasCustomerIdentity: true, turnCount: 2 },
+        },
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: live",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
+      hasFinalMedium: true,
+    })
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      finalMedium: "live",
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: null,
+        conversationState: expect.objectContaining({ hasFinalMedium: true }),
+        jobContext: expect.objectContaining({ finalMedium: "live" }),
+      }),
+    )
   })
 
   it("turns a show_booking_card tool call into a booking card using only tool args for prefill", async () => {
