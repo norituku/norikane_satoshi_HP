@@ -17,27 +17,11 @@ describe("featured works data", () => {
       expect.objectContaining({
         title: "火星の女王",
         officialUrl:
-          "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
+          "https://www.web.nhk/tv/an/kaseinojoo/pl/series-tep-54KJPL1QGM",
         links: [
           {
-            label: "作品HP",
-            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/",
-          },
-          {
-            label: "YouTube",
-            url: "https://www.youtube.com/watch?v=IQb3beIbE1I",
-          },
-          {
-            label: "ショット集1",
-            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pYElk2QVvW/",
-          },
-          {
-            label: "2",
-            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pXy8Aa9ab2/",
-          },
-          {
-            label: "3",
-            url: "https://www.nhk.jp/g/ts/54KJPL1QGM/blog/bl/p987Er5pz4/bp/pZKwLbXAbZ/",
+            label: "公式ホームページ",
+            url: "https://www.web.nhk/tv/an/kaseinojoo/pl/series-tep-54KJPL1QGM",
           },
         ],
       }),
@@ -88,6 +72,12 @@ describe("featured works data", () => {
       }),
     ])
     expect(FEATURED_WORKS[0]).not.toHaveProperty("youtubeId")
+    expect(FEATURED_WORKS[0]?.links.map((link) => link.label)).toEqual([
+      "公式ホームページ",
+    ])
+    expect(FEATURED_WORKS[0]?.links.map((link) => link.label)).not.toEqual(
+      expect.arrayContaining(["YouTube", "ショット集1", "2", "3"]),
+    )
   })
 
   it("defines the live reel YouTube ids and preview clip constraints", () => {

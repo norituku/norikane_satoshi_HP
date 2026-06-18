@@ -1480,11 +1480,7 @@ describe("FeaturedWorks", () => {
     }
 
     expect((mars?.links ?? []).map((link) => link.label)).toEqual([
-      "作品HP",
-      "YouTube",
-      "ショット集1",
-      "2",
-      "3",
+      "公式ホームページ",
     ])
 
     const rows = badges?.querySelectorAll("[data-featured-work-link-badge-row]")
@@ -1494,11 +1490,11 @@ describe("FeaturedWorks", () => {
     expect(
       Array.from(rows?.[0]?.querySelectorAll("[data-featured-work-link-badge]") ?? [])
         .map((badge) => badge.textContent),
-    ).toEqual(["作品HP", "YouTube"])
+    ).toEqual(["公式ホームページ"])
     expect(
       Array.from(rows?.[1]?.querySelectorAll("[data-featured-work-link-badge]") ?? [])
         .map((badge) => badge.textContent),
-    ).toEqual(["ショット集1", "2", "3"])
+    ).toEqual([])
 
     expect(
       getPrimarySegment(container).querySelectorAll(
