@@ -35,4 +35,33 @@ describe("ChatInput", () => {
     expect(onSubmit).toHaveBeenCalledWith("10月公開です")
     await waitFor(() => expect(input).toHaveValue(""))
   })
+
+  it("uses a growing multiline textarea", () => {
+    render(<ChatInput onSubmit={vi.fn()} />)
+
+    const input = screen.getByLabelText("相談内容")
+    expect(input.tagName).toBe("TEXTAREA")
+    expect(input).toHaveAttribute("rows", "1")
+    expect(input).toHaveClass("max-h-40")
+    expect(input).toHaveClass("overflow-y-auto")
+  })
+
+  it("keeps Enter as a newline and submits with Cmd or Ctrl Enter", async () => {
+    const onSubmit = vi.fn()
+    render(<ChatInput onSubmit={onSubmit} />)
+
+    const input = screen.getByLabelText("相談内容")
+    fireEvent.change(input, { target: { value: "1行目" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: "1行目\n2行目" } })
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true })
+    expect(onSubmit).toHaveBeenCalledWith("1行目\n2行目")
+    await waitFor(() => expect(input).toHaveValue(""))
+
+    fireEvent.change(input, { target: { value: "Ctrl送信" } })
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true })
+    expect(onSubmit).toHaveBeenLastCalledWith("Ctrl送信")
+  })
 })
