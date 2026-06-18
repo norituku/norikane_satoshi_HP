@@ -51,9 +51,10 @@ async function loadPost({
   const createConversation = vi.fn().mockResolvedValue(conversation())
   const appendMessage = vi
     .fn()
-    .mockImplementation((input: { role: ChatbotMessage["role"]; content: string }) =>
-      Promise.resolve(message(input.role, input.content)),
+    .mockImplementation((input: { id?: string; role: ChatbotMessage["role"]; content: string }) =>
+      Promise.resolve({ ...message(input.role, input.content), ...(input.id ? { id: input.id } : {}) }),
     )
+  const truncateConversationFromMessage = vi.fn().mockResolvedValue({ deletedCount: 1 })
   const updateConversationRouting = vi.fn().mockResolvedValue(undefined)
   const linkConversationToUser = vi.fn().mockResolvedValue(undefined)
   const loadUserChatbotContext = vi.fn().mockResolvedValue({
@@ -71,6 +72,7 @@ async function loadPost({
     loadConversationBySessionId,
     createConversation,
     appendMessage,
+    truncateConversationFromMessage,
     updateConversationRouting,
     linkConversationToUser,
     loadUserChatbotContext,
@@ -92,6 +94,7 @@ async function loadPost({
     loadConversationBySessionId,
     createConversation,
     appendMessage,
+    truncateConversationFromMessage,
     updateConversationRouting,
     linkConversationToUser,
     loadUserChatbotContext,
@@ -138,6 +141,38 @@ describe("POST /api/chatbot/message", () => {
     expect(route.loadUserChatbotContext).toHaveBeenCalledWith({
       userId: "user_1",
       currentConversationId: "conv_1",
+    })
+  })
+
+  it("accepts client session, client user message, and edit target ids", async () => {
+    const route = await loadPost()
+    const clientSessionId = "11111111-1111-4111-8111-111111111111"
+    const clientUserMessageId = "client_msg_11111111-1111-4111-8111-111111111111"
+    const editTargetMessageId = "client_msg_22222222-2222-4222-8222-222222222222"
+
+    const response = await route.POST(
+      request({
+        message: "編集後です",
+        clientSessionId,
+        clientUserMessageId,
+        editTargetMessageId,
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("set-cookie")).toContain(`chatbot_session_id=${clientSessionId}`)
+    expect(route.createConversation).toHaveBeenCalledWith({
+      sessionId: clientSessionId,
+      userId: null,
+    })
+    expect(route.appendMessage).toHaveBeenCalledWith({
+      id: clientUserMessageId,
+      conversationId: "conv_1",
+      role: "user",
+      content: "編集後です",
+    })
+    await expect(response.json()).resolves.toMatchObject({
+      userMessage: { id: clientUserMessageId, role: "user", content: "編集後です" },
     })
   })
 

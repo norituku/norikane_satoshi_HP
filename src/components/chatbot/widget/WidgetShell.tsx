@@ -1,12 +1,13 @@
 "use client"
 
-import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useState } from "react"
+import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
 import { GripHorizontal, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
 import type { WidgetDisplayMode } from "./useWidgetState"
 
 import {
+  isChatbotRequestCancelledError,
   submitChatbotInquiry,
   submitChatbotMessage,
   type ChatbotResponseTier,
@@ -36,6 +37,7 @@ type WidgetShellProps = {
 }
 
 type WidgetMessage = {
+  id?: string
   role: ChatbotMessageRole
   content: string
   createdAt: Date
@@ -56,6 +58,7 @@ const thinkingDelayNoticeMs = 6000
 
 type StoredWidgetSession = {
   messages: Array<Omit<WidgetMessage, "createdAt"> & { createdAt: string }>
+  clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
   lastResponseTier?: ChatbotResponseTier
@@ -79,6 +82,7 @@ function removeStoredWidgetSession() {
 
 function loadStoredWidgetSession(): {
   messages: WidgetMessage[]
+  clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
   lastResponseTier?: ChatbotResponseTier
@@ -99,6 +103,7 @@ function loadStoredWidgetSession(): {
       ? parsed.messages
           .filter((message) => message.role && typeof message.content === "string" && message.createdAt)
           .map((message) => ({
+            id: typeof message.id === "string" ? message.id : undefined,
             role: message.role,
             content: message.content,
             createdAt: new Date(message.createdAt),
@@ -107,6 +112,7 @@ function loadStoredWidgetSession(): {
 
     return {
       messages: messages.length > 0 ? messages : [initialMessage],
+      clientSessionId: parsed.clientSessionId,
       conversationId: parsed.conversationId,
       activeUi: parsed.activeUi ?? noUi,
       lastResponseTier: parsed.lastResponseTier,
@@ -119,6 +125,22 @@ function loadStoredWidgetSession(): {
 
 function isInteractiveTarget(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("a,button,input,select,textarea"))
+}
+
+function createClientUserMessageId() {
+  const randomId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, "0")}`
+  return `client_msg_${randomId}`
+}
+
+function createClientSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  return `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, "0")}`
 }
 
 export function WidgetShell({
@@ -134,11 +156,13 @@ export function WidgetShell({
 }: WidgetShellProps) {
   const [messages, setMessages] = useState<WidgetMessage[]>(() => getInitialWidgetSession().messages)
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
+  const [clientSessionId, setClientSessionId] = useState<string>(() => createClientSessionId())
   const [activeUi, setActiveUi] = useState<WidgetUi>(noUi)
   const [submitting, setSubmitting] = useState(false)
   const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(undefined)
   const [hasRestoredSession, setHasRestoredSession] = useState(false)
+  const activeRequestControllerRef = useRef<AbortController | null>(null)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugHostname(window.location.hostname)
 
@@ -160,6 +184,9 @@ export function WidgetShell({
     const storedSession = loadStoredWidgetSession()
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage restore must run after hydration before the first save. */
     setMessages(storedSession.messages)
+    if (storedSession.clientSessionId) {
+      setClientSessionId(storedSession.clientSessionId)
+    }
     setConversationId(storedSession.conversationId)
     setActiveUi(storedSession.activeUi)
     setLastResponseTier(storedSession.lastResponseTier)
@@ -173,10 +200,12 @@ export function WidgetShell({
     try {
       const stored: StoredWidgetSession = {
         messages: messages.map((message) => ({
+          ...(message.id ? { id: message.id } : {}),
           role: message.role,
           content: message.content,
           createdAt: message.createdAt.toISOString(),
         })),
+        clientSessionId,
         conversationId,
         activeUi,
         lastResponseTier,
@@ -186,37 +215,155 @@ export function WidgetShell({
     } catch {
       // localStorage may be unavailable in private or restricted contexts.
     }
-  }, [activeUi, conversationId, hasRestoredSession, lastResponseTier, messages])
+  }, [activeUi, clientSessionId, conversationId, hasRestoredSession, lastResponseTier, messages])
+
+  useEffect(() => {
+    return () => {
+      activeRequestControllerRef.current?.abort()
+    }
+  }, [])
+
+  const finishRequest = (controller: AbortController) => {
+    if (activeRequestControllerRef.current !== controller) return
+    activeRequestControllerRef.current = null
+    setShowThinkingDelayNotice(false)
+    setSubmitting(false)
+  }
+
+  const handleStop = () => {
+    const controller = activeRequestControllerRef.current
+    if (!controller) return
+    controller.abort()
+    activeRequestControllerRef.current = null
+    setShowThinkingDelayNotice(false)
+    setSubmitting(false)
+  }
 
   const handleSubmit = async (text: string) => {
+    if (submitting) return
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
     const createdAt = new Date()
+    const clientUserMessageId = createClientUserMessageId()
     setMessages((currentMessages) => [
       ...currentMessages,
-      { role: "user", content: text, createdAt },
+      { id: clientUserMessageId, role: "user", content: text, createdAt },
     ])
     setActiveUi(noUi)
     setShowThinkingDelayNotice(false)
     setSubmitting(true)
 
     try {
-      const payload = await submitChatbotMessage({ message: text, conversationId })
+      const payload = await submitChatbotMessage(
+        { message: text, conversationId, clientUserMessageId, clientSessionId },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
       setConversationId(payload.conversationId)
       setLastResponseTier(payload.tier)
+      const submittedUserMessage = payload.userMessage
+      if (submittedUserMessage) {
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === clientUserMessageId
+              ? {
+                  id: submittedUserMessage.id,
+                  role: submittedUserMessage.role,
+                  content: submittedUserMessage.content,
+                  createdAt: new Date(submittedUserMessage.createdAt),
+                }
+              : message,
+          ),
+        )
+      }
       appendMessage({
+        id: payload.assistantMessage.id,
         role: payload.assistantMessage.role,
         content: payload.assistantMessage.content,
         createdAt: new Date(payload.assistantMessage.createdAt),
       })
       setActiveUi(payload.ui)
-    } catch {
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
       appendMessage({
         role: "system",
         content: networkErrorMessage,
         createdAt: new Date(),
       })
     } finally {
-      setShowThinkingDelayNotice(false)
-      setSubmitting(false)
+      finishRequest(controller)
+    }
+  }
+
+  const handleEditMessage = async (messageId: string, newText: string) => {
+    const targetIndex = messages.findIndex((message) => message.id === messageId && message.role === "user")
+    const trimmedText = newText.trim()
+    if (targetIndex === -1 || !trimmedText || submitting) return
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
+    const optimisticCreatedAt = new Date()
+
+    setMessages((currentMessages) => {
+      const currentTargetIndex = currentMessages.findIndex(
+        (message) => message.id === messageId && message.role === "user",
+      )
+      const truncateIndex = currentTargetIndex === -1 ? Math.min(targetIndex, currentMessages.length) : currentTargetIndex
+      return [
+        ...currentMessages.slice(0, truncateIndex),
+        { id: messageId, role: "user", content: trimmedText, createdAt: optimisticCreatedAt },
+      ]
+    })
+    setActiveUi(noUi)
+    setShowThinkingDelayNotice(false)
+    setSubmitting(true)
+
+    try {
+      const payload = await submitChatbotMessage(
+        { message: trimmedText, conversationId, editTargetMessageId: messageId, clientSessionId },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
+      setConversationId(payload.conversationId)
+      setLastResponseTier(payload.tier)
+      setMessages((currentMessages) => {
+        const userMessage = payload.userMessage ?? {
+          id: messageId,
+          role: "user" as const,
+          content: trimmedText,
+          createdAt: optimisticCreatedAt.toISOString(),
+        }
+        const currentTargetIndex = currentMessages.findIndex(
+          (message) =>
+            message.role === "user" &&
+            (message.id === messageId || message.id === userMessage.id),
+        )
+        const truncateIndex = currentTargetIndex === -1 ? Math.min(targetIndex, currentMessages.length) : currentTargetIndex
+        return [
+          ...currentMessages.slice(0, truncateIndex),
+          {
+            id: userMessage.id,
+            role: userMessage.role,
+            content: userMessage.content,
+            createdAt: new Date(userMessage.createdAt),
+          },
+          {
+            id: payload.assistantMessage.id,
+            role: payload.assistantMessage.role,
+            content: payload.assistantMessage.content,
+            createdAt: new Date(payload.assistantMessage.createdAt),
+          },
+        ]
+      })
+      setActiveUi(payload.ui)
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
+      appendMessage({
+        role: "system",
+        content: networkErrorMessage,
+        createdAt: new Date(),
+      })
+    } finally {
+      finishRequest(controller)
     }
   }
 
@@ -340,10 +487,13 @@ export function WidgetShell({
         <div className="space-y-3" role="log" aria-live="polite">
           {messages.map((message, index) => (
             <ChatMessage
-              key={`${message.role}-${message.createdAt.toISOString()}-${index}`}
+              key={message.id ?? `${message.role}-${message.createdAt.toISOString()}-${index}`}
+              id={message.id}
               role={message.role}
               content={message.content}
               createdAt={message.createdAt}
+              editingDisabled={submitting}
+              onEdit={handleEditMessage}
             />
           ))}
           {submitting ? <ThinkingIndicator showDelayNotice={showThinkingDelayNotice} /> : null}
@@ -351,7 +501,12 @@ export function WidgetShell({
         <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
       </div>
 
-      <ChatInput onSubmit={handleSubmit} disabled={submitting} />
+      <ChatInput
+        onSubmit={handleSubmit}
+        onStop={handleStop}
+        disabled={submitting}
+        stoppingEnabled={submitting}
+      />
       {isFloating ? (
         <button
           type="button"

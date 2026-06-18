@@ -22,6 +22,7 @@ function mockJsonResponse(body: unknown, status = 200) {
 }
 
 const assistantMessage = {
+  id: "assistant_1",
   role: "assistant",
   content: "最終媒体を選んでください",
   createdAt: "2026-05-26T00:00:00.000Z",
@@ -52,7 +53,8 @@ function removeStoredWidgetSession() {
 }
 
 function writeStoredWidgetSession(session: {
-  messages: Array<{ role: string; content: string; createdAt: string }>
+  messages: Array<{ id?: string; role: string; content: string; createdAt: string }>
+  clientSessionId?: string
   conversationId?: string
   activeUi?: unknown
   lastResponseTier?: string
@@ -61,6 +63,7 @@ function writeStoredWidgetSession(session: {
     chatbotSessionStorageKey,
     JSON.stringify({
       messages: session.messages,
+      clientSessionId: session.clientSessionId,
       conversationId: session.conversationId,
       activeUi: session.activeUi ?? { kind: "none" },
       lastResponseTier: session.lastResponseTier,
@@ -131,7 +134,7 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByText("考え中")).toBeInTheDocument()
     expect(screen.getByLabelText("相談内容")).toBeDisabled()
-    expect(screen.getByRole("button", { name: "送信" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument()
 
     resolveFetch(
       mockJsonResponse({
@@ -145,6 +148,35 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
     expect(screen.getByLabelText("相談内容")).toBeEnabled()
+  })
+
+  it("stops an in-flight chatbot response without showing a network error", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      const signal = init?.signal
+      return new Promise<ReturnType<typeof mockJsonResponse>>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("停止したい相談です")
+
+    expect(await screen.findByText("考え中")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "停止" }))
+
+    await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
+    expect(screen.queryByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).not.toBeInTheDocument()
+    expect(screen.getByText("停止したい相談です")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "メッセージを編集" })).toBeInTheDocument()
+    const fetchInit = fetchMock.mock.calls[0]?.[1]
+    expect(fetchInit).toBeDefined()
+    expect(JSON.parse(String(fetchInit?.body))).toMatchObject({
+      message: "停止したい相談です",
+      clientSessionId: expect.any(String),
+      clientUserMessageId: expect.stringMatching(/^client_msg_/),
+    })
+    expect(fetchInit?.signal).toBeInstanceOf(AbortSignal)
   })
 
   it("adds a delay notice after six seconds while the response is pending", async () => {
@@ -255,9 +287,10 @@ describe("WidgetShell API wiring", () => {
 
     writeStoredWidgetSession({
       messages: [
-        { role: "user", content: "リロード前の相談です", createdAt: "2026-05-26T00:00:00.000Z" },
-        { role: "assistant", content: "保存済みの回答です", createdAt: "2026-05-26T00:00:01.000Z" },
+        { id: "user_reload", role: "user", content: "リロード前の相談です", createdAt: "2026-05-26T00:00:00.000Z" },
+        { id: "assistant_reload", role: "assistant", content: "保存済みの回答です", createdAt: "2026-05-26T00:00:01.000Z" },
       ],
+      clientSessionId: "11111111-1111-4111-8111-111111111111",
       conversationId: "conv_reload",
       activeUi: { kind: "choice-panel", choiceSet: finalMediumChoices },
       lastResponseTier: "tier-3-ollama-deepseek",
@@ -277,6 +310,7 @@ describe("WidgetShell API wiring", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       message: "リロード後の続きです",
       conversationId: "conv_reload",
+      clientSessionId: "11111111-1111-4111-8111-111111111111",
     })
 
     root.unmount()
@@ -440,5 +474,76 @@ describe("WidgetShell API wiring", () => {
     submitMessage()
 
     expect(await screen.findByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).toBeInTheDocument()
+  })
+
+  it("edits a sent user message, truncates later local UI, and persists the edited conversation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage: {
+            id: "user_original",
+            role: "user",
+            content: "初回相談です",
+            createdAt: "2026-05-26T00:00:00.000Z",
+          },
+          assistantMessage,
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "choice-panel", choiceSet: finalMediumChoices },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          userMessage: {
+            id: "user_edited",
+            role: "user",
+            content: "編集後の相談です",
+            createdAt: "2026-05-26T00:00:02.000Z",
+          },
+          assistantMessage: {
+            ...assistantMessage,
+            id: "assistant_edited",
+            content: "編集後の回答です",
+            createdAt: "2026-05-26T00:00:03.000Z",
+          },
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "none" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("初回相談です")
+
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    expect(screen.getByText("最終媒体を教えてください")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "編集後の相談です" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
+    expect(screen.getByText("保存すると、これより後のやり取りは削除されます。")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "OK" }))
+
+    expect(await screen.findByText("編集後の回答です")).toBeInTheDocument()
+    expect(screen.getByText("編集後の相談です")).toBeInTheDocument()
+    expect(screen.queryByText("最終媒体を選んでください")).not.toBeInTheDocument()
+    expect(screen.queryByText("最終媒体を教えてください")).not.toBeInTheDocument()
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      message: "編集後の相談です",
+      conversationId: "conv_1",
+      editTargetMessageId: "user_original",
+      clientSessionId: expect.any(String),
+    })
+
+    const stored = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+    expect(stored.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "user_edited", role: "user", content: "編集後の相談です" }),
+        expect.objectContaining({ id: "assistant_edited", role: "assistant", content: "編集後の回答です" }),
+      ]),
+    )
+    expect(JSON.stringify(stored)).not.toContain("最終媒体を選んでください")
   })
 })

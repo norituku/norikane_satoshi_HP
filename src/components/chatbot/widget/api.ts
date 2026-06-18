@@ -7,6 +7,7 @@ import type {
 } from "@/lib/chatbot/domain"
 
 export type WidgetAssistantMessage = {
+  id: string
   role: ChatbotMessageRole
   content: string
   createdAt: string
@@ -36,6 +37,7 @@ export type ChatbotResponseTier =
 
 export type ChatbotMessageResponse = {
   conversationId: string
+  userMessage?: WidgetAssistantMessage
   assistantMessage: WidgetAssistantMessage
   routingDecision?: RoutingDecision
   tier: ChatbotResponseTier
@@ -45,6 +47,9 @@ export type ChatbotMessageResponse = {
 export type SubmitChatbotMessageInput = {
   message: string
   conversationId?: string
+  editTargetMessageId?: string
+  clientUserMessageId?: string
+  clientSessionId?: string
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
 }
@@ -59,12 +64,44 @@ export type SubmitInquiryInput = {
   conversationId?: string
 }
 
-export async function submitChatbotMessage(input: SubmitChatbotMessageInput): Promise<ChatbotMessageResponse> {
-  const response = await fetch("/api/chatbot/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  })
+export class ChatbotRequestCancelledError extends Error {
+  constructor() {
+    super("chatbot_message_cancelled")
+    this.name = "ChatbotRequestCancelledError"
+  }
+}
+
+export function isChatbotRequestCancelledError(error: unknown): error is ChatbotRequestCancelledError {
+  return error instanceof ChatbotRequestCancelledError
+}
+
+type SubmitChatbotMessageOptions = {
+  signal?: AbortSignal
+}
+
+function isAbortError(error: unknown) {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  )
+}
+
+export async function submitChatbotMessage(
+  input: SubmitChatbotMessageInput,
+  options: SubmitChatbotMessageOptions = {},
+): Promise<ChatbotMessageResponse> {
+  let response: Response
+  try {
+    response = await fetch("/api/chatbot/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: options.signal,
+    })
+  } catch (error) {
+    if (isAbortError(error)) throw new ChatbotRequestCancelledError()
+    throw error
+  }
 
   if (!response.ok) throw new Error("chatbot_message_failed")
   return (await response.json()) as ChatbotMessageResponse

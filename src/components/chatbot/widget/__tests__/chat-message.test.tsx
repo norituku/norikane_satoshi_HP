@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ChatMessage } from "@/components/chatbot/widget/ChatMessage"
 import {
@@ -43,5 +43,27 @@ describe("ChatMessage", () => {
     expect(content).toHaveClass(...conversationContentClasses)
     expect(content).toHaveStyle({ fontFamily: CHATBOT_CONVERSATION_CONTENT_STYLE.fontFamily })
     expect(screen.getByText("AI アシスタント")).not.toHaveClass(...conversationContentClasses)
+  })
+
+  it("edits only user messages after explicit truncation confirmation", () => {
+    const onEdit = vi.fn()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "修正版です。" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
+
+    expect(screen.getByText("保存すると、これより後のやり取りは削除されます。")).toBeInTheDocument()
+    expect(onEdit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "OK" }))
+
+    expect(onEdit).toHaveBeenCalledWith("msg_1", "修正版です。")
+  })
+
+  it("does not expose editing controls for assistant messages", () => {
+    render(<ChatMessage id="msg_2" role="assistant" content="回答です。" onEdit={vi.fn()} />)
+
+    expect(screen.queryByRole("button", { name: "メッセージを編集" })).not.toBeInTheDocument()
   })
 })

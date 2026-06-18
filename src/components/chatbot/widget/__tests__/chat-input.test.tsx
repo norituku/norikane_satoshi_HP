@@ -64,4 +64,14 @@ describe("ChatInput", () => {
     fireEvent.keyDown(input, { key: "Enter", ctrlKey: true })
     expect(onSubmit).toHaveBeenLastCalledWith("Ctrl送信")
   })
+
+  it("shows a stop button while stopping is enabled", () => {
+    const onStop = vi.fn()
+    render(<ChatInput onSubmit={vi.fn()} onStop={onStop} disabled stoppingEnabled />)
+
+    fireEvent.click(screen.getByRole("button", { name: "停止" }))
+
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("button", { name: "送信" })).not.toBeInTheDocument()
+  })
 })

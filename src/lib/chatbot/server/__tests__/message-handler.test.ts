@@ -82,9 +82,10 @@ function setup(overrides: {
     ),
     appendMessage: vi
       .fn()
-      .mockImplementation((input: { role: ChatbotMessage["role"]; content: string }) =>
-        Promise.resolve(message(input.role, input.content)),
+      .mockImplementation((input: { id?: string; role: ChatbotMessage["role"]; content: string }) =>
+        Promise.resolve({ ...message(input.role, input.content), ...(input.id ? { id: input.id } : {}) }),
       ),
+    truncateConversationFromMessage: vi.fn().mockResolvedValue({ deletedCount: 1 }),
     updateConversationRouting: vi.fn(),
     linkConversationToUser: vi.fn(),
   }
@@ -159,9 +160,94 @@ describe("handleChatbotMessage user context", () => {
     expect(result).toEqual(
       expect.objectContaining({
         conversationId: "conv_1",
+        userMessage: expect.objectContaining({ role: "user", content: "相談です" }),
         assistantMessage: expect.objectContaining({ content: "返信です" }),
       }),
     )
+  })
+
+  it("uses client user message ids for optimistic cancelled messages", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "キャンセル後に編集しました",
+        clientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith({
+      id: "client_msg_11111111-1111-4111-8111-111111111111",
+      conversationId: "conv_1",
+      role: "user",
+      content: "キャンセル後に編集しました",
+    })
+    expect(result.userMessage).toMatchObject({
+      id: "client_msg_11111111-1111-4111-8111-111111111111",
+      role: "user",
+      content: "キャンセル後に編集しました",
+    })
+  })
+
+  it("truncates an edited server-side user message before regenerating the reply", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "user_1", role: "user", content: "古い相談", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_1", role: "assistant", content: "古い回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "編集後の相談",
+        editTargetMessageId: "user_1",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "user_1",
+    })
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "編集後の相談" },
+    ])
+  })
+
+  it("falls back to truncating the last stored user message when a client edit id was never persisted", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "user_last", role: "user", content: "保存済み直近", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_last", role: "assistant", content: "保存済み回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "キャンセル後の再送",
+        editTargetMessageId: "client_msg_22222222-2222-4222-8222-222222222222",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "user_last",
+    })
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "キャンセル後の再送" },
+    ])
   })
 
   it("isolates a previous user's conversation when the authenticated user changes", async () => {

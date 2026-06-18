@@ -11,6 +11,7 @@ export {
   loadConversationBySessionId,
   recordInquiry,
   recordSurveyResponse,
+  truncateConversationFromMessage,
   updateConversationRouting,
 } from "@/lib/chatbot/server/repository"
 export {

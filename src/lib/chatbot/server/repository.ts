@@ -73,6 +73,7 @@ export async function loadConversationBySessionId(
 }
 
 export async function appendMessage(input: {
+  id?: string
   conversationId: string
   role: ChatbotMessageRole
   content: string
@@ -80,6 +81,7 @@ export async function appendMessage(input: {
   const row = await prisma.$transaction(async (tx) => {
     const message = await tx.chatbotMessage.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         conversationId: input.conversationId,
         role: input.role,
         content: input.content,
@@ -95,6 +97,47 @@ export async function appendMessage(input: {
   })
 
   return toDomainMessage(row)
+}
+
+export async function truncateConversationFromMessage(input: {
+  conversationId: string
+  messageId: string
+}): Promise<{ deletedCount: number }> {
+  return prisma.$transaction(async (tx) => {
+    const messages = await tx.chatbotMessage.findMany({
+      where: { conversationId: input.conversationId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+    })
+    const targetIndex = messages.findIndex((message) => message.id === input.messageId)
+    if (targetIndex === -1) {
+      throw new Error("chatbot_edit_target_not_found")
+    }
+
+    const deleteIds = messages.slice(targetIndex).map((message) => message.id)
+    const deleteResult = await tx.chatbotMessage.deleteMany({
+      where: {
+        conversationId: input.conversationId,
+        id: { in: deleteIds },
+      },
+    })
+
+    await tx.chatbotConversation.update({
+      where: { id: input.conversationId },
+      data: {
+        routingDecision: "continue",
+        finalMedium: null,
+        jobType: null,
+        mainDuration: null,
+        workSite: null,
+        attachments: null,
+        additionalWork: null,
+        referenceUrls: null,
+      },
+    })
+
+    return { deletedCount: deleteResult.count }
+  })
 }
 
 export async function recordSurveyResponse(input: {

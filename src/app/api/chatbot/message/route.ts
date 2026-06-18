@@ -14,6 +14,9 @@ const sessionCookieName = "chatbot_session_id"
 const chatbotMessageRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   conversationId: z.string().trim().min(1).optional(),
+  editTargetMessageId: z.string().trim().min(1).optional(),
+  clientUserMessageId: z.string().regex(/^client_msg_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/).optional(),
+  clientSessionId: z.string().uuid().optional(),
   jobContext: z.record(z.string(), z.unknown()).optional(),
   conversationState: z.record(z.string(), z.unknown()).optional(),
 })
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   const session = await auth()
   const existingSessionId = request.cookies.get(sessionCookieName)?.value
-  const sessionId = existingSessionId ?? crypto.randomUUID()
+  const sessionId = existingSessionId ?? parsed.data.clientSessionId ?? crypto.randomUUID()
 
   try {
     const result = await handleChatbotMessage({
@@ -50,6 +53,8 @@ export async function POST(request: NextRequest) {
       userId: session?.user?.id,
       message: parsed.data.message,
       conversationId: parsed.data.conversationId,
+      editTargetMessageId: parsed.data.editTargetMessageId,
+      clientUserMessageId: parsed.data.clientUserMessageId,
       jobContext: parsed.data.jobContext,
       conversationState: parsed.data.conversationState,
     })
