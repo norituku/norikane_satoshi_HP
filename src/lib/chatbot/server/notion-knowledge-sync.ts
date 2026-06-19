@@ -2,7 +2,7 @@ import type { WorkflowDurationPreset } from "@/lib/chatbot/knowledge/workflow-du
 import { workflowDurationPresets } from "@/lib/chatbot/knowledge/workflow-duration"
 import { getNotionClient } from "@/lib/notion/server/client"
 
-export const defaultChatbotKnowledgeManifestPageId = "eb950c43e1a042199c1bbce74ae616a1"
+export const defaultChatbotKnowledgeManifestPageId = "3088971f957b481baff8499ff911051b"
 const knowledgeSnapshotKey = "chatbot-notion-knowledge"
 const knowledgeSnapshotVersion = 1
 
@@ -245,7 +245,13 @@ async function listAllChildren(client: NotionBlockListClient, blockId: string): 
       start_cursor: cursor,
       page_size: 100,
     })
-    results.push(...response.results)
+    for (const block of response.results) {
+      results.push(block)
+      if (blockHasChildren(block)) {
+        const childBlocks = await listAllChildren(client, blockIdOf(block))
+        results.push(...childBlocks)
+      }
+    }
     if (!response.has_more || !response.next_cursor) break
     cursor = response.next_cursor
   }
@@ -253,18 +259,33 @@ async function listAllChildren(client: NotionBlockListClient, blockId: string): 
   return results
 }
 
+function blockHasChildren(block: unknown): boolean {
+  return isRecord(block) && block.has_children === true && Boolean(blockIdOf(block))
+}
+
+function blockIdOf(block: unknown): string {
+  return isRecord(block) && typeof block.id === "string" ? block.id : ""
+}
+
+type SectionRow = { id?: string; parentId?: string; text: string; pageReference?: string; cells: string[] }
+
 function parseKnowledgeManifestEntries(blocks: unknown[]): ChatbotKnowledgeManifestEntry[] {
   const rows = collectSectionRows(blocks, "ナレッジ正本リスト")
   const entries: ChatbotKnowledgeManifestEntry[] = []
 
   for (const row of rows) {
+    if (!row.pageReference && row.parentId && rows.some((candidate) => candidate.id === row.parentId)) continue
+    const childRows = row.id ? rows.filter((candidate) => candidate.parentId === row.id) : []
     const values = parseKeyValueText(row.text)
+    for (const childRow of childRows) Object.assign(values, parseKeyValueText(childRow.text))
     const tableValues = parseManifestTableRow(row.cells)
     const pageId = normalizePageId(
       row.pageReference ?? values.pageId ?? values["ページID"] ?? values["page"] ?? tableValues.page,
     )
-    const usage = normalizeUsage(values["用途"] ?? values.usage ?? tableValues.usage)
-    const referenceRange = values["参照範囲"] ?? values.referenceRange ?? values.range ?? tableValues.referenceRange
+    const usage = normalizeUsage(values["用途"] ?? values.usage ?? tableValues.usage ?? row.text)
+    const referenceRange = normalizeReferenceRange(
+      values["参照範囲"] ?? values.referenceRange ?? values.range ?? tableValues.referenceRange,
+    )
     if (!pageId || !usage || !referenceRange) continue
 
     entries.push({
@@ -337,11 +358,8 @@ function mergeWorkflowDurationPresets(
   })
 }
 
-function collectSectionRows(
-  blocks: unknown[],
-  headingText: string,
-): Array<{ text: string; pageReference?: string; cells: string[] }> {
-  const rows: Array<{ text: string; pageReference?: string; cells: string[] }> = []
+function collectSectionRows(blocks: unknown[], headingText: string): SectionRow[] {
+  const rows: SectionRow[] = []
   let inside = false
   const headingRank = (block: unknown) => {
     const type = readType(block)
@@ -366,7 +384,13 @@ function collectSectionRows(
     const cells = blockCells(block)
     const rowText = cells.length > 0 ? cells.join(" / ") : text
     if (!rowText.trim()) continue
-    rows.push({ text: rowText, pageReference: firstPageReference(block), cells })
+    rows.push({
+      id: blockId(block),
+      parentId: blockParentId(block),
+      text: rowText,
+      pageReference: firstPageReference(block),
+      cells,
+    })
   }
 
   return rows
@@ -397,14 +421,31 @@ function parseDayRange(text: string): Pick<WorkflowDurationPreset, "minDays" | "
 }
 
 function normalizeUsage(value: string | undefined): ChatbotKnowledgeEntryUsage | undefined {
-  if (value === "workflow-duration" || value === "工程日数" || value === "工程別日数") {
+  if (!value) return undefined
+  if (
+    value === "workflow-duration" ||
+    value === "工程日数" ||
+    value === "工程別日数" ||
+    value.includes("工程日数") ||
+    value.includes("所定日数") ||
+    value.includes("日程見積もり")
+  ) {
     return "workflow-duration"
   }
   return undefined
 }
 
+function normalizeReferenceRange(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const quoted = value.match(/[「『](.+?)[」』]/)
+  return (quoted?.[1] ?? value).trim()
+}
+
 function parsePriority(value: string | undefined): number {
   if (!value) return 100
+  if (value === "高") return 1
+  if (value === "中") return 50
+  if (value === "低") return 100
   const priority = Number(value)
   return Number.isFinite(priority) ? priority : 100
 }
@@ -418,6 +459,17 @@ function normalizePageId(value: string | undefined): string | undefined {
 
 function readType(block: unknown): string | undefined {
   return isRecord(block) && typeof block.type === "string" ? block.type : undefined
+}
+
+function blockId(block: unknown): string | undefined {
+  return isRecord(block) && typeof block.id === "string" ? block.id : undefined
+}
+
+function blockParentId(block: unknown): string | undefined {
+  if (!isRecord(block) || !isRecord(block.parent)) return undefined
+  if (typeof block.parent.block_id === "string") return block.parent.block_id
+  if (typeof block.parent.page_id === "string") return block.parent.page_id
+  return undefined
 }
 
 function blockPlainText(block: unknown): string {
