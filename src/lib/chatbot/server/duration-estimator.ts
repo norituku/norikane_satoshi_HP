@@ -10,9 +10,12 @@ import {
   additionalWorkDurationRules,
   strictDeliveryMediums,
   workflowDurationJobKindMap,
-  workflowDurationPresets,
   workSiteDurationRules,
 } from "@/lib/chatbot/knowledge/workflow-duration"
+import {
+  getWorkflowDurationPresetsFromSnapshot,
+  type ChatbotKnowledgeSnapshot,
+} from "@/lib/chatbot/server/notion-knowledge-sync"
 
 type DurationRange = {
   minDays: number
@@ -32,10 +35,19 @@ type WorkSiteDurationRange = DurationRange & {
   canSkipFinalCheck?: boolean
 }
 
+type DurationEstimatorOptions = {
+  knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
+}
+
 export type { JobKind }
 
-export function estimateBaseDuration(jobKind: JobKind, lengthMinutes?: number): BaseDurationRange {
+export function estimateBaseDuration(
+  jobKind: JobKind,
+  lengthMinutes?: number,
+  options: DurationEstimatorOptions = {},
+): BaseDurationRange {
   const jobKindRule = workflowDurationJobKindMap[jobKind]
+  const workflowDurationPresets = getWorkflowDurationPresetsFromSnapshot(options.knowledgeSnapshot)
   const preset = workflowDurationPresets.find((item) => item.id === jobKindRule.presetId)
 
   if (!preset) {
@@ -97,12 +109,15 @@ export function applyWorkSiteAdjustment(
   }
 }
 
-export function estimateWorkflow(jobContext: JobContext): WorkflowEstimate {
+export function estimateWorkflow(
+  jobContext: JobContext,
+  options: DurationEstimatorOptions = {},
+): WorkflowEstimate {
   if (!jobContext.jobKind) {
     throw new Error("jobKind is required to estimate chatbot workflow duration")
   }
 
-  const base = estimateBaseDuration(jobContext.jobKind, jobContext.projectLengthMinutes)
+  const base = estimateBaseDuration(jobContext.jobKind, jobContext.projectLengthMinutes, options)
   const adjusted = applyAdditionalWorkAdjustment(base, jobContext)
   const workSiteAdjusted = applyWorkSiteAdjustment(adjusted, jobContext.workSite)
   const riskFlags: WorkflowEstimate["riskFlags"] = []

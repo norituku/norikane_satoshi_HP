@@ -31,6 +31,10 @@ import { ChatbotAvailabilityError, findCandidateWindows } from "@/lib/chatbot/se
 import { applyActiveChoiceAnswer } from "@/lib/chatbot/server/choice-panel-state"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
 import { sanitizeChatbotLlmText } from "@/lib/chatbot/server/llm-response-normalizer"
+import {
+  loadLatestChatbotKnowledgeSnapshot,
+  type ChatbotKnowledgeSnapshot,
+} from "@/lib/chatbot/server/notion-knowledge-sync"
 import { decideRoutingFallback } from "@/lib/chatbot/server/routing"
 
 type ChatbotMessageUi =
@@ -88,6 +92,7 @@ type HandleChatbotMessageOptions = {
   userContextLoader?: typeof loadUserChatbotContext
   userContextFormatter?: typeof formatUserChatbotContextForPrompt
   candidateWindowFinder?: typeof findCandidateWindows
+  knowledgeSnapshotLoader?: typeof loadLatestChatbotKnowledgeSnapshot
 }
 
 const defaultRepository: ChatbotMessageRepository = {
@@ -111,6 +116,7 @@ export async function handleChatbotMessage(
   const userContextLoader = options.userContextLoader ?? loadUserChatbotContext
   const userContextFormatter = options.userContextFormatter ?? formatUserChatbotContextForPrompt
   const candidateWindowFinder = options.candidateWindowFinder ?? findCandidateWindows
+  const knowledgeSnapshotLoader = options.knowledgeSnapshotLoader ?? loadLatestChatbotKnowledgeSnapshot
   let conversation =
     (await repository.loadConversationBySessionId(input.sessionId)) ??
     (await repository.createConversation({ sessionId: input.sessionId, userId: input.userId ?? null }))
@@ -177,6 +183,7 @@ export async function handleChatbotMessage(
       })
     : null
   const jobContext = buildJobContext(input.jobContext, conversation, activeChoiceAnswer?.jobContext)
+  const knowledgeSnapshot = await knowledgeSnapshotLoader()
   const conversationState = buildConversationState(
     input.conversationState,
     conversation,
@@ -184,7 +191,7 @@ export async function handleChatbotMessage(
     activeChoiceAnswer?.conversationState,
   )
   const llmResponse = await orchestrator.generate({
-    systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter),
+    systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter, knowledgeSnapshot),
     messages: [
       ...conversation.messages.map(({ role, content }) => ({ role, content })),
       { role: userMessage.role, content: userMessage.content },
@@ -199,12 +206,14 @@ export async function handleChatbotMessage(
     jobContext,
     conversationState,
     latestUserMessage: input.message,
+    knowledgeSnapshot,
   })
   const resolvedRoutingDecision = await resolveRoutingDecision({
     llmResponse,
     jobContext,
     fallbackRoutingDecision,
     candidateWindowFinder,
+    knowledgeSnapshot,
   })
   const routingDecision = resolvedRoutingDecision ?? (activeChoiceAnswer ? fallbackRoutingDecision : undefined)
   const assistantContent = buildAssistantDisplayContent({
@@ -278,6 +287,7 @@ function createDefaultChatbotLlmOrchestrator(): ChatbotLlmTierOrchestrator {
 function buildChatbotSystemPrompt(
   userContext?: UserChatbotContext | null,
   userContextFormatter: typeof formatUserChatbotContextForPrompt = formatUserChatbotContextForPrompt,
+  knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null,
 ): string {
   const lines = [
     "あなたは新規映像案件の相談受付アシスタントです。",
@@ -294,8 +304,22 @@ function buildChatbotSystemPrompt(
   if (userContext) {
     lines.push(userContextFormatter(userContext))
   }
+  if (knowledgeSnapshot) {
+    lines.push(formatWorkflowDurationKnowledgeForPrompt(knowledgeSnapshot))
+  }
 
   return lines.join("\n")
+}
+
+function formatWorkflowDurationKnowledgeForPrompt(snapshot: ChatbotKnowledgeSnapshot): string {
+  const durationLines = snapshot.workflowDurations.presets.map(
+    (preset) => `- ${preset.label}: ${preset.minDays}〜${preset.maxDays}日`,
+  )
+  return [
+    "工程別日数テーブル（同期済み正本）:",
+    ...durationLines,
+    "この表は日程感のための同期済みデータであり、料金・契約・未承認メモは含めません。",
+  ].join("\n")
 }
 
 function buildJobContext(
@@ -452,6 +476,7 @@ async function resolveRoutingDecision(input: {
   jobContext: JobContext
   fallbackRoutingDecision: RoutingDecision
   candidateWindowFinder: typeof findCandidateWindows
+  knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
 }): Promise<RoutingDecision | undefined> {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
   if (input.fallbackRoutingDecision.kind === "to-direct-contact") return input.fallbackRoutingDecision
@@ -461,7 +486,7 @@ async function resolveRoutingDecision(input: {
   if (!toolCall) return undefined
   if (!input.jobContext.jobKind) return undefined
 
-  const workflowEstimate = estimateWorkflow(input.jobContext)
+  const workflowEstimate = estimateWorkflow(input.jobContext, { knowledgeSnapshot: input.knowledgeSnapshot })
   const jobContext = {
     ...input.jobContext,
     workflowEstimate,

@@ -22,6 +22,17 @@ export {
 } from "@/lib/chatbot/server/duration-estimator"
 export type { JobKind } from "@/lib/chatbot/server/duration-estimator"
 export {
+  createStaticChatbotKnowledgeSnapshot,
+  loadLatestChatbotKnowledgeSnapshot,
+  syncChatbotNotionKnowledge,
+} from "@/lib/chatbot/server/notion-knowledge-sync"
+export type {
+  ChatbotKnowledgeManifestEntry,
+  ChatbotKnowledgeRepository,
+  ChatbotKnowledgeSnapshot,
+  SyncChatbotNotionKnowledgeResult,
+} from "@/lib/chatbot/server/notion-knowledge-sync"
+export {
   applyActiveChoiceAnswer,
   isSatisfiedChoicePanel,
 } from "@/lib/chatbot/server/choice-panel-state"

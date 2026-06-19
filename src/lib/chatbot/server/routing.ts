@@ -13,16 +13,20 @@ import {
 } from "@/lib/chatbot/knowledge/workflow-duration"
 import { directContactPolicyMessage } from "@/lib/chatbot/knowledge/forbidden-topics"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
+import type { ChatbotKnowledgeSnapshot } from "@/lib/chatbot/server/notion-knowledge-sync"
 
 export type RoutingDecisionInput = {
   jobContext: JobContext
   conversationState: ConversationState
   latestUserMessage?: string
+  knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
 }
 
 export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecision {
   const { jobContext, conversationState } = input
-  const estimate = jobContext.jobKind ? estimateWorkflow(jobContext) : undefined
+  const estimate = jobContext.jobKind
+    ? estimateWorkflow(jobContext, { knowledgeSnapshot: input.knowledgeSnapshot })
+    : undefined
 
   if (estimate?.requiresDirectContact) return directContact("heavy-retouch")
 
