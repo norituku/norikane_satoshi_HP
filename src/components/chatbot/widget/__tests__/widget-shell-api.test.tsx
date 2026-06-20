@@ -256,7 +256,46 @@ describe("WidgetShell API wiring", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
-      message: "選択: retouch, skin-retouch",
+      message: "選択: 消し物、肌修正",
+      conversationId: "conv_1",
+    })
+  })
+
+  it("sends other comments with the selected choice labels", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage,
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "choice-panel", choiceSet: additionalWorkChoices },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage: {
+            ...assistantMessage,
+            content: "次の質問です",
+          },
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "none" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage()
+
+    expect(await screen.findByText("カラグレ以外の追加作業はありますか")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "その他" }))
+    fireEvent.change(screen.getByLabelText("その他の内容"), { target: { value: "MA も相談したい" } })
+    fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      message: "選択: その他\nその他コメント: MA も相談したい",
       conversationId: "conv_1",
     })
   })

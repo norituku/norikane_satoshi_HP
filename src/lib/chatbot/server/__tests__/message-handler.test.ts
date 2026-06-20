@@ -768,6 +768,7 @@ describe("handleChatbotMessage user context", () => {
           finalMedium: "live",
           workSite: "remote-grading",
           documentaryAttachment: { kind: "none" },
+          additionalWork: ["other"],
         },
         conversationState: {
           hasFinalMedium: true,
@@ -781,6 +782,7 @@ describe("handleChatbotMessage user context", () => {
           hasContactEmail: true,
           hasDesiredSchedule: false,
           contactEmail: "client@example.com",
+          otherChoiceComments: { "additional-work": "MA も相談したい" },
           turnCount: 8,
         },
       },
@@ -795,6 +797,12 @@ describe("handleChatbotMessage user context", () => {
       summary: {
         customerEmail: "client@example.com",
         summaryText: expect.stringContaining("live-60m"),
+      },
+    })
+    expect(result.ui).toMatchObject({
+      kind: "consultation-summary-form",
+      summary: {
+        summaryText: expect.stringContaining("追加作業:その他(MA も相談したい)"),
       },
     })
   })
@@ -870,6 +878,48 @@ describe("handleChatbotMessage user context", () => {
         activeChoices: null,
         conversationState: expect.objectContaining({ hasAdditionalWork: true }),
         jobContext: expect.objectContaining({ additionalWork: ["retouch", "skin-retouch"] }),
+      }),
+    )
+  })
+
+  it("stores other comments from a confirmed multiple-choice answer", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: additionalWorkChoices,
+          currentQuestion: "カラグレ以外の追加作業はありますか？",
+          conversationState: { hasFinalMedium: true, hasCustomerIdentity: true, turnCount: 3 },
+          jobContext: { finalMedium: "web" },
+        },
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: その他\nその他コメント: MA も相談したい",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
+      hasAdditionalWork: true,
+      otherChoiceComments: { "additional-work": "MA も相談したい" },
+    })
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      additionalWork: ["other"],
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: null,
+        conversationState: expect.objectContaining({
+          hasAdditionalWork: true,
+          otherChoiceComments: { "additional-work": "MA も相談したい" },
+        }),
+        jobContext: expect.objectContaining({ additionalWork: ["other"] }),
       }),
     )
   })

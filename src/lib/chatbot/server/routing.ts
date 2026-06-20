@@ -156,8 +156,47 @@ function continueDecision(conversationState: ConversationState): RoutingDecision
 function buildSummaryText(jobContext: JobContext, conversationState: ConversationState): string {
   const jobKind = jobContext.jobKind ?? "案件種別未確認"
   const schedule = conversationState.hasDesiredSchedule ? "日程あり" : "日程未定"
+  const detailSegments = buildChoiceDetailSegments(jobContext, conversationState)
 
-  return `${jobKind} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${schedule}`
+  return [`${jobKind} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${schedule}`, ...detailSegments].join(" / ")
+}
+
+function buildChoiceDetailSegments(jobContext: JobContext, conversationState: ConversationState): string[] {
+  const otherComments = conversationState.otherChoiceComments ?? {}
+  const segments: string[] = []
+
+  if (jobContext.additionalWork?.length) {
+    segments.push(
+      `追加作業:${jobContext.additionalWork
+        .map((item) => labelChoice(item, otherComments["additional-work"]))
+        .join("・")}`,
+    )
+  }
+  const attachment = labelDocumentaryAttachmentSummary(jobContext.documentaryAttachment)
+  if (attachment) segments.push(`付随素材:${attachment}`)
+  if (conversationState.productionOptions?.length) {
+    segments.push(
+      `制作オプション:${conversationState.productionOptions
+        .map((item) => labelChoice(item, otherComments["production-options"]))
+        .join("・")}`,
+    )
+  }
+
+  return segments
+}
+
+function labelChoice(value: string, otherComment?: string): string {
+  return value === "other" && otherComment ? `その他(${otherComment})` : value
+}
+
+function labelDocumentaryAttachmentSummary(value: JobContext["documentaryAttachment"] | undefined): string | undefined {
+  if (!value || value.kind === "none") return undefined
+  if (value.kind === "mixed") {
+    return value.items
+      .map((item) => (item.kind === "other" && item.note.trim() ? `その他(${item.note.trim()})` : item.kind))
+      .join("・")
+  }
+  return value.kind === "other" && value.note.trim() ? `その他(${value.note.trim()})` : value.kind
 }
 
 function buildOpenQuestions(conversationState: ConversationState): string[] {

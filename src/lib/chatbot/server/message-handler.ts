@@ -5,6 +5,7 @@ import type {
   ChatbotMessage,
   ConversationSummary,
   ConversationState,
+  DocumentaryAttachmentItem,
   JobContext,
   RoutingDecision,
 } from "@/lib/chatbot/domain"
@@ -486,9 +487,15 @@ function buildConversationState(
     ...(input ?? {}),
     ...activeChoiceConversationState,
   }
+  const otherChoiceComments = {
+    ...(stored.otherChoiceComments ?? {}),
+    ...(input?.otherChoiceComments ?? {}),
+    ...(activeChoiceConversationState?.otherChoiceComments ?? {}),
+  }
 
   return {
     ...state,
+    ...(Object.keys(otherChoiceComments).length > 0 ? { otherChoiceComments } : {}),
     ...(jobContext.finalMedium !== "other" ? { hasFinalMedium: true } : {}),
     ...(jobContext.jobKind ? { hasJobKind: true } : {}),
     ...(typeof jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
@@ -544,15 +551,19 @@ function toMessageUi(input: {
 }
 
 function buildConversationSummary(jobContext: JobContext, conversationState: ConversationState): ConversationSummary {
+  const detailSegments = buildChoiceDetailSegments(jobContext, conversationState)
   return {
     subject: "チャットボット相談",
     customerEmail: conversationState.contactEmail ?? "",
     ...(conversationState.customerName ? { customerName: conversationState.customerName } : {}),
     ...(conversationState.companyName ? { companyName: conversationState.companyName } : {}),
     jobContext,
-    summaryText: `${jobContext.jobKind ?? "案件種別未確認"} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${
-      conversationState.hasDesiredSchedule ? "搬入〜納品あり" : "搬入〜納品未定"
-    }`,
+    summaryText: [
+      `${jobContext.jobKind ?? "案件種別未確認"} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${
+        conversationState.hasDesiredSchedule ? "搬入〜納品あり" : "搬入〜納品未定"
+      }`,
+      ...detailSegments,
+    ].join(" / "),
     openQuestions: [
       conversationState.hasFinalMedium ? undefined : "最終媒体未確認",
       conversationState.hasJobKind && conversationState.hasProjectLength ? undefined : "案件種別・尺未確認",
@@ -564,6 +575,42 @@ function buildConversationSummary(jobContext: JobContext, conversationState: Con
       conversationState.hasDesiredSchedule ? undefined : "素材搬入〜納品時期未確認",
     ].filter((item): item is string => Boolean(item)),
   }
+}
+
+function buildChoiceDetailSegments(jobContext: JobContext, conversationState: ConversationState): string[] {
+  const otherComments = conversationState.otherChoiceComments ?? {}
+  const segments: string[] = []
+
+  if (jobContext.additionalWork?.length) {
+    segments.push(`追加作業:${jobContext.additionalWork.map((item) => labelChoice(item, otherComments["additional-work"])).join("・")}`)
+  }
+  const attachment = labelDocumentaryAttachmentSummary(jobContext.documentaryAttachment)
+  if (attachment) {
+    segments.push(`付随素材:${attachment}`)
+  }
+  if (conversationState.productionOptions?.length) {
+    segments.push(
+      `制作オプション:${conversationState.productionOptions
+        .map((item) => labelChoice(item, otherComments["production-options"]))
+        .join("・")}`,
+    )
+  }
+
+  return segments
+}
+
+function labelChoice(value: string, otherComment?: string): string {
+  return value === "other" && otherComment ? `その他(${otherComment})` : value
+}
+
+function labelDocumentaryAttachmentSummary(value: JobContext["documentaryAttachment"] | undefined): string | undefined {
+  if (!value || value.kind === "none") return undefined
+  if (value.kind === "mixed") return value.items.map(labelDocumentaryAttachmentItemSummary).join("・")
+  return labelDocumentaryAttachmentItemSummary(value)
+}
+
+function labelDocumentaryAttachmentItemSummary(value: DocumentaryAttachmentItem): string {
+  return value.kind === "other" && "note" in value && value.note.trim() ? `その他(${value.note.trim()})` : value.kind
 }
 
 async function resolveRoutingDecision(input: {

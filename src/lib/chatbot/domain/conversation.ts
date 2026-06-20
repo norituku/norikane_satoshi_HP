@@ -65,5 +65,6 @@ export type ConversationState = {
   contactEmail?: string
   customerName?: string
   companyName?: string
-  productionOptions?: Array<"captions" | "telops" | "narration" | "music">
+  productionOptions?: Array<"captions" | "telops" | "narration" | "music" | "other">
+  otherChoiceComments?: Record<string, string>
 }

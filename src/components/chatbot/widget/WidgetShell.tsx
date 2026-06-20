@@ -608,7 +608,7 @@ function ActiveWidgetUi({
       <ChoicePanel
         choiceSet={ui.choiceSet}
         allowMultiple={ui.choiceSet.selectionMode === "multiple"}
-        onSelect={(selectedIds) => onSubmit(`選択: ${selectedIds.join(", ")}`)}
+        onSelect={(selection) => onSubmit(formatChoicePanelSubmission(selection))}
       />
     )
   }
@@ -669,4 +669,15 @@ function ActiveWidgetUi({
   }
 
   return null
+}
+
+function formatChoicePanelSubmission(selection: {
+  selectedLabels: string[]
+  selectedIds: string[]
+  otherComment?: string
+}): string {
+  const selectedText = selection.selectedLabels.length > 0 ? selection.selectedLabels.join("、") : selection.selectedIds.join(", ")
+  return [`選択: ${selectedText}`, selection.otherComment ? `その他コメント: ${selection.otherComment}` : undefined]
+    .filter((line): line is string => Boolean(line))
+    .join("\n")
 }

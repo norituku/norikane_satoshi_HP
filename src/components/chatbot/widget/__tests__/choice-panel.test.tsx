@@ -17,13 +17,28 @@ describe("ChoicePanel", () => {
     expect(screen.getByRole("button", { name: "劇場公開" })).toBeInTheDocument()
   })
 
-  it("calls onSelect with the selected id", () => {
+  it("calls onSelect with the selected id and label", () => {
     const onSelect = vi.fn()
     render(<ChoicePanel choiceSet={finalMediumChoices} onSelect={onSelect} />)
 
     fireEvent.click(screen.getByRole("button", { name: "劇場公開" }))
 
-    expect(onSelect).toHaveBeenCalledWith(["cinema"])
+    expect(onSelect).toHaveBeenCalledWith({
+      selectedIds: ["cinema"],
+      selectedLabels: ["劇場公開"],
+    })
+  })
+
+  it("marks multiple selected choices and shows the selected summary", () => {
+    render(<ChoicePanel choiceSet={additionalWorkChoices} onSelect={vi.fn()} allowMultiple />)
+
+    fireEvent.click(screen.getByRole("button", { name: "消し物" }))
+    fireEvent.click(screen.getByRole("button", { name: "肌修正" }))
+
+    expect(screen.getByRole("button", { name: "消し物" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "肌修正" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("選択中 2件:")).toBeInTheDocument()
+    expect(screen.getByText("消し物、肌修正")).toBeInTheDocument()
   })
 
   it("keeps none exclusive in multiple selection mode", () => {
@@ -40,7 +55,10 @@ describe("ChoicePanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
 
-    expect(onSelect).toHaveBeenCalledWith(["none"])
+    expect(onSelect).toHaveBeenCalledWith({
+      selectedIds: ["none"],
+      selectedLabels: ["なし"],
+    })
   })
 
   it("waits for confirmation before submitting multiple selections", () => {
@@ -54,6 +72,26 @@ describe("ChoicePanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
 
-    expect(onSelect).toHaveBeenCalledWith(["retouch", "skin-retouch"])
+    expect(onSelect).toHaveBeenCalledWith({
+      selectedIds: ["retouch", "skin-retouch"],
+      selectedLabels: ["消し物", "肌修正"],
+    })
+  })
+
+  it("shows an optional other comment field and submits it with the selection", () => {
+    const onSelect = vi.fn()
+    render(<ChoicePanel choiceSet={additionalWorkChoices} onSelect={onSelect} allowMultiple />)
+
+    fireEvent.click(screen.getByRole("button", { name: "その他" }))
+
+    expect(screen.getByLabelText("その他の内容")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("その他の内容"), { target: { value: "MA も相談したい" } })
+    fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
+
+    expect(onSelect).toHaveBeenCalledWith({
+      selectedIds: ["other"],
+      selectedLabels: ["その他"],
+      otherComment: "MA も相談したい",
+    })
   })
 })

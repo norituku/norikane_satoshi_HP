@@ -88,8 +88,10 @@ describe("choice panel state", () => {
 
   it.each([
     [finalMediumChoices, "live", { hasFinalMedium: true }, { finalMedium: "live" }],
+    [finalMediumChoices, "選択: ライブ", { hasFinalMedium: true }, { finalMedium: "live" }],
     [additionalWorkChoices, "retouch", { hasAdditionalWork: true }, { additionalWork: ["retouch"] }],
     [additionalWorkChoices, "選択: retouch, skin-retouch", { hasAdditionalWork: true }, { additionalWork: ["retouch", "skin-retouch"] }],
+    [additionalWorkChoices, "選択: 消し物、肌修正", { hasAdditionalWork: true }, { additionalWork: ["retouch", "skin-retouch"] }],
     [additionalWorkChoices, "選択: none, retouch", { hasAdditionalWork: true }, { additionalWork: undefined }],
     [additionalWorkChoices, "なし", { hasAdditionalWork: true }, { additionalWork: undefined }],
     [
@@ -131,4 +133,47 @@ describe("choice panel state", () => {
       })
     },
   )
+
+  it("keeps other comments in conversation state and maps them to server state", () => {
+    expect(
+      applyActiveChoiceAnswer({
+        activeChoices: additionalWorkChoices,
+        message: "選択: その他\nその他コメント: MA も相談したい",
+      }),
+    ).toMatchObject({
+      conversationState: {
+        hasAdditionalWork: true,
+        otherChoiceComments: { "additional-work": "MA も相談したい" },
+      },
+      jobContext: { additionalWork: ["other"] },
+    })
+
+    expect(
+      applyActiveChoiceAnswer({
+        activeChoices: documentaryAttachmentChoices,
+        message: "選択: その他\nその他コメント: 舞台裏の短尺あり",
+      }),
+    ).toMatchObject({
+      conversationState: {
+        hasDocumentaryAttachments: true,
+        otherChoiceComments: { "documentary-attachment": "舞台裏の短尺あり" },
+      },
+      jobContext: {
+        documentaryAttachment: { kind: "other", count: 1, note: "舞台裏の短尺あり" },
+      },
+    })
+
+    expect(
+      applyActiveChoiceAnswer({
+        activeChoices: productionOptionChoices,
+        message: "選択: 字幕、その他\nその他コメント: 英語版ナレーション",
+      }),
+    ).toMatchObject({
+      conversationState: {
+        hasProductionOptions: true,
+        productionOptions: ["captions", "other"],
+        otherChoiceComments: { "production-options": "英語版ナレーション" },
+      },
+    })
+  })
 })

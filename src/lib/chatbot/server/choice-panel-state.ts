@@ -17,6 +17,7 @@ type ChoicePanelPatch = {
 }
 
 const choicePrefixPattern = /^\s*選択\s*[:：]\s*/u
+const otherCommentPrefixPattern = /^\s*その他(?:コメント|の内容)?\s*[:：]\s*/u
 
 export function applyActiveChoiceAnswer(input: {
   activeChoices?: SurveyChoiceSet
@@ -25,6 +26,7 @@ export function applyActiveChoiceAnswer(input: {
   const choices = resolveChoices(input.activeChoices, input.message)
   const choice = choices[0]
   if (!input.activeChoices || !choice) return null
+  const otherCommentPatch = toOtherChoiceCommentPatch(input.activeChoices, choices, input.message)
 
   switch (input.activeChoices.id) {
     case "final-medium":
@@ -32,7 +34,7 @@ export function applyActiveChoiceAnswer(input: {
         choiceSetId: input.activeChoices.id,
         choiceId: choice.id,
         choiceIds: [choice.id],
-        conversationState: { hasFinalMedium: true },
+        conversationState: { hasFinalMedium: true, ...otherCommentPatch },
         jobContext: { finalMedium: choice.id as JobContext["finalMedium"] },
       }
     case "additional-work":
@@ -50,7 +52,7 @@ export function applyActiveChoiceAnswer(input: {
         choiceSetId: input.activeChoices.id,
         choiceId: choice.id,
         choiceIds: choices.map((item) => item.id),
-        conversationState: { hasAdditionalWork: true },
+        conversationState: { hasAdditionalWork: true, ...otherCommentPatch },
         jobContext: { additionalWork: choices.map((item) => item.id as AdditionalWork) },
       }
     case "documentary-attachment":
@@ -68,15 +70,20 @@ export function applyActiveChoiceAnswer(input: {
         choiceSetId: input.activeChoices.id,
         choiceId: choice.id,
         choiceIds: choices.map((item) => item.id),
-        conversationState: { hasDocumentaryAttachments: true },
-        jobContext: { documentaryAttachment: toDocumentaryAttachment(choices.map((item) => item.id)) },
+        conversationState: { hasDocumentaryAttachments: true, ...otherCommentPatch },
+        jobContext: {
+          documentaryAttachment: toDocumentaryAttachment(
+            choices.map((item) => item.id),
+            otherCommentPatch.otherChoiceComments?.[input.activeChoices.id],
+          ),
+        },
       }
     case "work-site":
       return {
         choiceSetId: input.activeChoices.id,
         choiceId: choice.id,
         choiceIds: [choice.id],
-        conversationState: { hasWorkSite: true },
+        conversationState: { hasWorkSite: true, ...otherCommentPatch },
         jobContext: { workSite: toWorkSite(choice.id) },
       }
     case "production-options":
@@ -97,6 +104,7 @@ export function applyActiveChoiceAnswer(input: {
         conversationState: {
           hasProductionOptions: true,
           productionOptions: choices.map((item) => item.id as ProductionOption),
+          ...otherCommentPatch,
         },
         jobContext: {},
       }
@@ -127,7 +135,8 @@ export function isSatisfiedChoicePanel(
 
 function resolveChoices(activeChoices: SurveyChoiceSet | undefined, message: string): SurveyChoice[] {
   if (!activeChoices) return []
-  const normalizedMessages = message
+  const selectedText = extractSelectedChoiceText(message)
+  const normalizedMessages = selectedText
     .replace(choicePrefixPattern, "")
     .split(/[,、\n]/u)
     .map(normalizeChoiceText)
@@ -146,17 +155,17 @@ function resolveChoices(activeChoices: SurveyChoiceSet | undefined, message: str
 type AdditionalWork = NonNullable<JobContext["additionalWork"]>[number]
 type ProductionOption = NonNullable<ConversationState["productionOptions"]>[number]
 
-function toDocumentaryAttachment(choiceIds: string[]): DocumentaryAttachment {
-  const attachments = choiceIds.map(toDocumentaryAttachmentItem)
+function toDocumentaryAttachment(choiceIds: string[], otherComment?: string): DocumentaryAttachment {
+  const attachments = choiceIds.map((choiceId) => toDocumentaryAttachmentItem(choiceId, otherComment))
   if (attachments.length === 1) return attachments[0]
   return { kind: "mixed", items: attachments }
 }
 
-function toDocumentaryAttachmentItem(choiceId: string): DocumentaryAttachmentItem {
+function toDocumentaryAttachmentItem(choiceId: string, otherComment?: string): DocumentaryAttachmentItem {
   if (choiceId === "digest" || choiceId === "interview" || choiceId === "bonus" || choiceId === "making") {
     return { kind: choiceId, count: 1 }
   }
-  return { kind: "other", count: 1, note: choiceId }
+  return { kind: "other", count: 1, note: otherComment ?? "" }
 }
 
 function toWorkSite(choiceId: string): WorkSite {
@@ -167,4 +176,29 @@ function toWorkSite(choiceId: string): WorkSite {
 
 function normalizeChoiceText(value: string): string {
   return value.normalize("NFKC").trim().toLowerCase().replace(/\s+/gu, " ")
+}
+
+function extractSelectedChoiceText(message: string): string {
+  return message
+    .split(/\r?\n/u)
+    .find((line) => choicePrefixPattern.test(line)) ?? message
+}
+
+function extractOtherComment(message: string): string | undefined {
+  const comment = message
+    .split(/\r?\n/u)
+    .map((line) => line.replace(otherCommentPrefixPattern, "").trim())
+    .find((line, index) => otherCommentPrefixPattern.test(message.split(/\r?\n/u)[index]) && line.length > 0)
+  return comment
+}
+
+function toOtherChoiceCommentPatch(
+  activeChoices: SurveyChoiceSet,
+  choices: SurveyChoice[],
+  message: string,
+): Pick<ConversationState, "otherChoiceComments"> | Record<string, never> {
+  if (!choices.some((choice) => choice.id === "other")) return {}
+  const otherComment = extractOtherComment(message)
+  if (!otherComment) return {}
+  return { otherChoiceComments: { [activeChoices.id]: otherComment } }
 }

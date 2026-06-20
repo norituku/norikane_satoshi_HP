@@ -54,7 +54,11 @@ export function formatConsultationSummary(input: ConsultationSummaryInput): stri
 
   return [
     "相談サマリ",
-    `最終媒体: ${conversationState.hasFinalMedium ? labelFinalMedium(jobContext.finalMedium) : missing}`,
+    `最終媒体: ${
+      conversationState.hasFinalMedium
+        ? labelFinalMedium(jobContext.finalMedium, conversationState.otherChoiceComments?.["final-medium"])
+        : missing
+    }`,
     "作業内容:",
     `- 案件種別: ${conversationState.hasJobKind ? labelJobKind(jobContext.jobKind, fallback.jobKind) : missing}`,
     `- 尺: ${
@@ -62,9 +66,21 @@ export function formatConsultationSummary(input: ConsultationSummaryInput): stri
         ? formatValue(formatProjectLength(jobContext.projectLengthMinutes, fallback.projectLength))
         : missing
     }`,
-    `- 追加作業: ${conversationState.hasAdditionalWork ? labelAdditionalWork(jobContext.additionalWork) : missing}`,
+    `- 追加作業: ${
+      conversationState.hasAdditionalWork
+        ? labelAdditionalWork(jobContext.additionalWork, conversationState.otherChoiceComments?.["additional-work"])
+        : missing
+    }`,
     `- 付随素材: ${
       conversationState.hasDocumentaryAttachments ? labelDocumentaryAttachment(jobContext.documentaryAttachment) : missing
+    }`,
+    `- 字幕・テロップ等: ${
+      conversationState.hasProductionOptions
+        ? labelProductionOptions(
+            conversationState.productionOptions,
+            conversationState.otherChoiceComments?.["production-options"],
+          )
+        : missing
     }`,
     "作業場所・立ち会い:",
     `- 作業場所/立ち会い: ${conversationState.hasWorkSite ? labelWorkSite(jobContext.workSite) : missing}`,
@@ -111,8 +127,9 @@ export function hasRequiredEmailConsultationSlots(input: {
   )
 }
 
-function labelFinalMedium(value: JobContext["finalMedium"] | undefined): string {
-  return value ? finalMediumLabels[value] : missing
+function labelFinalMedium(value: JobContext["finalMedium"] | undefined, otherComment?: string): string {
+  if (!value) return missing
+  return labelOther(value, finalMediumLabels[value], otherComment)
 }
 
 function labelJobKind(value: JobContext["jobKind"] | undefined, fallback: string | undefined): string {
@@ -124,9 +141,9 @@ function labelWorkSite(value: JobContext["workSite"] | undefined): string {
   return value ? workSiteLabels[value] : missing
 }
 
-function labelAdditionalWork(value: JobContext["additionalWork"] | undefined): string {
+function labelAdditionalWork(value: JobContext["additionalWork"] | undefined, otherComment?: string): string {
   if (!value || value.length === 0) return missing
-  return value.map((item) => additionalWorkLabels[item]).join(" / ")
+  return value.map((item) => labelOther(item, additionalWorkLabels[item], otherComment)).join(" / ")
 }
 
 function labelDocumentaryAttachment(value: JobContext["documentaryAttachment"] | undefined): string {
@@ -170,4 +187,21 @@ function formatContactValue(value: string | undefined): string {
 function formatValue(value: string | undefined): string {
   if (!value || value.trim() === "") return missing
   return value
+}
+
+function labelProductionOptions(value: ConversationState["productionOptions"] | undefined, otherComment?: string): string {
+  if (!value || value.length === 0) return "なし"
+  return value.map((item) => labelOther(item, productionOptionLabels[item], otherComment)).join(" / ")
+}
+
+function labelOther(value: string, label: string, otherComment?: string): string {
+  return value === "other" && otherComment ? `${label}（${otherComment}）` : label
+}
+
+const productionOptionLabels: Record<NonNullable<ConversationState["productionOptions"]>[number], string> = {
+  captions: "字幕",
+  telops: "テロップ",
+  narration: "ナレーション",
+  music: "音楽",
+  other: "その他",
 }

@@ -45,6 +45,7 @@ export const documentaryAttachmentChoices = {
     { id: "interview", label: "インタビュー" },
     { id: "bonus", label: "特典映像" },
     { id: "making", label: "メイキング" },
+    { id: "other", label: "その他" },
     { id: "none", label: "なし" },
   ],
 } as const satisfies SurveyChoiceSet
@@ -70,6 +71,7 @@ export const productionOptionChoices = {
     { id: "telops", label: "テロップ" },
     { id: "narration", label: "ナレーション" },
     { id: "music", label: "音楽" },
+    { id: "other", label: "その他" },
     { id: "none", label: "なし" },
   ],
 } as const satisfies SurveyChoiceSet
