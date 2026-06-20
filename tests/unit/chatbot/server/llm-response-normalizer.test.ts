@@ -42,6 +42,9 @@ describe("normalizeChatbotLlmResponse", () => {
     ["作業期間は17～20日ほど見てください。"],
     ["工程: 17-20日で進められます。"],
     ["工程目安は17日から20日です。"],
+    ["所要日数の目安は17〜20日です。"],
+    ["スタジオの手配は、所要日数（17〜20日）を踏まえて相談します。"],
+    ["ライブ2時間半のカラーグレーディングは、目安として17〜20日です。"],
   ])("aligns workflow range notation: %s", (rawText) => {
     const normalized = normalizeChatbotLlmResponse(
       {

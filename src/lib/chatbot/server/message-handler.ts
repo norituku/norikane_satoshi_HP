@@ -207,13 +207,19 @@ export async function handleChatbotMessage(
         currentConversationId: conversation.id,
       })
     : null
-  const jobContext = buildJobContext(input.jobContext, conversation, activeChoiceAnswer?.jobContext)
+  const jobContext = buildJobContext(
+    input.jobContext,
+    conversation,
+    activeChoiceAnswer?.jobContext,
+    input.message,
+  )
   const knowledgeSnapshot = await knowledgeSnapshotLoader()
   const conversationState = buildConversationState(
     input.conversationState,
     conversation,
     userMessage,
     activeChoiceAnswer?.conversationState,
+    jobContext,
   )
   const llmResponse = await orchestrator.generate({
     systemPrompt: buildChatbotSystemPrompt(userContext, userContextFormatter, knowledgeSnapshot),
@@ -240,7 +246,11 @@ export async function handleChatbotMessage(
     candidateWindowFinder,
     knowledgeSnapshot,
   })
-  const routingDecision = resolvedRoutingDecision ?? (activeChoiceAnswer ? fallbackRoutingDecision : undefined)
+  const routingDecision =
+    resolvedRoutingDecision ??
+    (activeChoiceAnswer || hasNewJobKindFact({ input: input.jobContext, conversation, activeChoiceAnswer, jobContext })
+      ? fallbackRoutingDecision
+      : undefined)
   const assistantContent = buildAssistantDisplayContent({
     rawText: llmResponse.rawText,
     routingDecision,
@@ -362,9 +372,10 @@ function buildJobContext(
   input: Partial<JobContext> | undefined,
   conversation: ChatbotConversation,
   activeChoiceJobContext: Partial<JobContext> | undefined,
+  latestUserMessage?: string,
 ): JobContext {
   const stored = conversation.context.jobContext ?? {}
-  return {
+  const base: JobContext = {
     finalMedium: "other",
     workSite: "remote-grading",
     documentaryAttachment: { kind: "none" },
@@ -372,6 +383,61 @@ function buildJobContext(
     ...input,
     ...activeChoiceJobContext,
   }
+  return {
+    ...base,
+    ...inferExplicitJobContextFromText(latestUserMessage, base),
+  }
+}
+
+function inferExplicitJobContextFromText(
+  message: string | undefined,
+  current: JobContext,
+): Partial<JobContext> {
+  if (!message) return {}
+
+  const normalized = message.normalize("NFKC").toLowerCase()
+  const mentionsLive = /(?:ライブ|live)/u.test(normalized)
+  if (!mentionsLive) return {}
+
+  const inferred: Partial<JobContext> = {}
+  const lengthMinutes = inferProjectLengthMinutes(normalized)
+
+  if (current.finalMedium === "other") inferred.finalMedium = "live"
+  if (!current.jobKind && lengthMinutes !== undefined) inferred.jobKind = "live-60m"
+  if (current.projectLengthMinutes === undefined && lengthMinutes !== undefined) {
+    inferred.projectLengthMinutes = lengthMinutes
+  }
+
+  return inferred
+}
+
+function inferProjectLengthMinutes(text: string): number | undefined {
+  const hoursAndHalf = /(\d+(?:\.\d+)?)\s*時間\s*半/u.exec(text)
+  if (hoursAndHalf) return Number(hoursAndHalf[1]) * 60 + 30
+
+  const hoursAndMinutes = /(\d+(?:\.\d+)?)\s*時間(?:\s*(\d+(?:\.\d+)?)\s*分)?/u.exec(text)
+  if (hoursAndMinutes) {
+    return Number(hoursAndMinutes[1]) * 60 + (hoursAndMinutes[2] ? Number(hoursAndMinutes[2]) : 0)
+  }
+
+  const minutes = /(\d+(?:\.\d+)?)\s*分/u.exec(text)
+  if (minutes) return Number(minutes[1])
+
+  return undefined
+}
+
+function hasNewJobKindFact(input: {
+  input: Partial<JobContext> | undefined
+  conversation: ChatbotConversation
+  activeChoiceAnswer: ReturnType<typeof applyActiveChoiceAnswer>
+  jobContext: JobContext
+}): boolean {
+  return Boolean(
+    input.jobContext.jobKind &&
+      !input.input?.jobKind &&
+      !input.conversation.context.jobContext?.jobKind &&
+      !input.activeChoiceAnswer?.jobContext?.jobKind,
+  )
 }
 
 function buildAssistantDisplayContent(input: {
@@ -434,13 +500,14 @@ function buildConversationState(
   conversation: ChatbotConversation,
   userMessage: ChatbotMessage,
   activeChoiceConversationState: Partial<ConversationState> | undefined,
+  jobContext: JobContext,
 ): ConversationState {
   const userTurnCount =
     conversation.messages.filter((message) => message.role === "user").length +
     (userMessage.role === "user" ? 1 : 0)
   const stored = conversation.context.conversationState ?? {}
 
-  return {
+  const state: ConversationState = {
     hasFinalMedium: false,
     hasJobKind: false,
     hasAdditionalWork: false,
@@ -453,6 +520,13 @@ function buildConversationState(
     ...stored,
     ...(input ?? {}),
     ...activeChoiceConversationState,
+  }
+
+  return {
+    ...state,
+    ...(jobContext.finalMedium !== "other" ? { hasFinalMedium: true } : {}),
+    ...(jobContext.jobKind ? { hasJobKind: true } : {}),
+    ...(typeof jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
   }
 }
 

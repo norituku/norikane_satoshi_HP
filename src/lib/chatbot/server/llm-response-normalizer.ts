@@ -38,12 +38,8 @@ function alignWorkflowEstimateText(
 
   const expected = `${formatDays(estimate.totalMinDays)}〜${formatDays(estimate.totalMaxDays)}日`
   return text.replace(
-    /(?:工程|作業)(?:の)?(?:目安|期間|日数)?(?:は|としては|:|：)?\s*\d+(?:\.\d+)?\s*(?:日\s*から\s*|[〜～\-ー]\s*)\d+(?:\.\d+)?\s*日/gu,
-    (match) =>
-      match.replace(
-        /\d+(?:\.\d+)?\s*(?:日\s*から\s*|[〜～\-ー]\s*)\d+(?:\.\d+)?\s*日/u,
-        expected,
-      ),
+    /((?:工程|作業|所要日数|日数|期間|目安|見積(?:もり)?|納品まで|カラーグレーディング)[^。！？\n]{0,40}?)(\d+(?:\.\d+)?\s*(?:日\s*から\s*|[〜～\-ー]\s*)\d+(?:\.\d+)?\s*日)/gu,
+    (_match, prefix: string) => `${prefix}${expected}`,
   )
 }
 

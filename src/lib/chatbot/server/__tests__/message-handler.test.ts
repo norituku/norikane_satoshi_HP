@@ -610,6 +610,49 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
+  it("infers explicit live duration facts from free text before storing assistant estimate text", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "ありがとうございます。内容を整理しました。案件種類・尺: ライブ 2時間半。所要日数の目安は17〜20日です。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message:
+          "案件種類はライブで2時間半ぐらいあります。素材搬入は7月1日、納品期限は7月いっぱいです。",
+      },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toContain("所要日数の目安は7〜8日")
+    expect(result.assistantMessage.content).not.toContain("17〜20日")
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobContext: expect.objectContaining({
+          finalMedium: "live",
+          jobKind: "live-60m",
+          projectLengthMinutes: 150,
+        }),
+        conversationState: expect.objectContaining({
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+        }),
+      }),
+    )
+  })
+
   it("shows a consultation summary form when a settled no-schedule consultation can be emailed", async () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({
