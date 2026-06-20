@@ -31,7 +31,10 @@ import {
 import { ChatbotAvailabilityError, findCandidateWindows } from "@/lib/chatbot/server/availability-finder"
 import { applyActiveChoiceAnswer } from "@/lib/chatbot/server/choice-panel-state"
 import { estimateWorkflow, inferWorkflowJobContextFromText } from "@/lib/chatbot/server/duration-estimator"
-import { sanitizeChatbotLlmText } from "@/lib/chatbot/server/llm-response-normalizer"
+import {
+  sanitizeChatbotLlmTextWithReport,
+  type ChatbotLlmSanitizationReport,
+} from "@/lib/chatbot/server/llm-response-normalizer"
 import {
   loadLatestChatbotKnowledgeSnapshot,
   type ChatbotKnowledgeSnapshot,
@@ -251,21 +254,24 @@ export async function handleChatbotMessage(
   })
   const routingDecision =
     resolvedRoutingDecision ??
-    (activeChoiceAnswer || hasNewJobKindFact({ input: input.jobContext, conversation, activeChoiceAnswer, jobContext })
+    (activeChoiceAnswer ||
+    hasNewWorkflowContextFact({ input: input.jobContext, conversation, activeChoiceAnswer, jobContext })
       ? fallbackRoutingDecision
       : undefined)
-  const assistantContent = buildAssistantDisplayContent({
+  const assistantDisplay = buildAssistantDisplayContent({
     rawText: llmResponse.rawText,
     routingDecision,
     fallbackRoutingDecision,
     jobContext,
   })
+  const assistantContent = assistantDisplay.content
   logChatbotDurationTrace({
     conversation,
     jobContext,
     knowledgeSnapshot,
     rawText: llmResponse.rawText,
     finalText: assistantContent,
+    sanitizationReport: assistantDisplay.sanitizationReport,
     systemPrompt,
     tier: llmResponse.tier,
   })
@@ -439,7 +445,6 @@ function inferWorkflowJobContextFromConversation(
     latestUserMessage,
     ...conversation.messages
       .filter((message) => message.role === "user")
-      .slice(-8)
       .reverse()
       .map((message) => message.content),
   ].filter((text): text is string => Boolean(text?.trim()))
@@ -470,17 +475,21 @@ function attachWorkflowEstimate(
   }
 }
 
-function hasNewJobKindFact(input: {
+function hasNewWorkflowContextFact(input: {
   input: Partial<JobContext> | undefined
   conversation: ChatbotConversation
   activeChoiceAnswer: ReturnType<typeof applyActiveChoiceAnswer>
   jobContext: JobContext
 }): boolean {
-  return Boolean(
-    input.jobContext.jobKind &&
-      !input.input?.jobKind &&
-      !input.conversation.context.jobContext?.jobKind &&
-      !input.activeChoiceAnswer?.jobContext?.jobKind,
+  const stored = input.conversation.context.jobContext
+  const activeChoiceJobContext = input.activeChoiceAnswer?.jobContext
+  const hasSource = <K extends keyof JobContext>(key: K) =>
+    input.input?.[key] !== undefined || stored?.[key] !== undefined || activeChoiceJobContext?.[key] !== undefined
+
+  return (
+    (Boolean(input.jobContext.jobKind) && !hasSource("jobKind")) ||
+    (typeof input.jobContext.projectLengthMinutes === "number" && !hasSource("projectLengthMinutes")) ||
+    (input.jobContext.finalMedium !== "other" && !hasSource("finalMedium"))
   )
 }
 
@@ -489,17 +498,19 @@ function buildAssistantDisplayContent(input: {
   routingDecision: RoutingDecision | undefined
   fallbackRoutingDecision: RoutingDecision
   jobContext: JobContext
-}): string {
+}): { content: string; sanitizationReport: ChatbotLlmSanitizationReport } {
   const text = input.rawText.trim()
   const toolFreeText = stripShowBookingCardToolCall(text).trim()
-  const sanitize = (content: string) =>
-    sanitizeChatbotLlmText(content, {
+  const sanitize = (content: string) => {
+    const result = sanitizeChatbotLlmTextWithReport(content, {
       routingDecision: input.routingDecision,
       jobContext: input.jobContext,
     })
+    return { content: result.text, sanitizationReport: result.report }
+  }
 
   if (input.routingDecision?.kind === "to-booking-inline" && toolFreeText.length === 0) {
-    return "候補日を確認しました。"
+    return sanitize("候補日を確認しました。")
   }
   if (toolFreeText !== text) return sanitize(toolFreeText)
   if (!isBackendIdentityOnlyResponse(text)) return sanitize(text)
@@ -517,6 +528,7 @@ function logChatbotDurationTrace(input: {
   knowledgeSnapshot: ChatbotKnowledgeSnapshot
   rawText: string
   finalText: string
+  sanitizationReport: ChatbotLlmSanitizationReport
   systemPrompt: string
   tier: ChatbotLlmResponse["tier"]
 }): void {
@@ -558,6 +570,7 @@ function logChatbotDurationTrace(input: {
         hasWorkflowDurationKnowledge: input.systemPrompt.includes("工程別日数テーブル（同期済み正本）"),
         hasCurrentWorkflowEstimate: input.systemPrompt.includes("現在の案件条件（会話からサーバー抽出）"),
       },
+      durationSafety: input.sanitizationReport,
       rawTextPreview: redactForChatbotLog(input.rawText),
       finalTextPreview: redactForChatbotLog(input.finalText),
       normalized: input.rawText !== input.finalText,

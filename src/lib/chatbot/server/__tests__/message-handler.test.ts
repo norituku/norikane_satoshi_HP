@@ -816,6 +816,137 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("recovers workflow estimate facts from the full user history when recent turns are only follow-ups", async () => {
+    const fillerTurns = Array.from({ length: 10 }, (_, index) => [
+      message("assistant", `確認します ${index + 1}`),
+      message("user", `補足 ${index + 1}: 素材状況について追記します。`),
+    ]).flat()
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            hasFinalMedium: false,
+            hasJobKind: false,
+            hasAdditionalWork: true,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 12,
+          },
+          jobContext: {
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+        messages: [
+          message("user", "Web CM 30秒のカラーグレーディング相談です。"),
+          ...fillerTurns,
+        ],
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "素材状況を踏まえると、基本工程は17〜20日を見ておくとよさそうです。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "素材はオンラインで渡せます。基本工程はどれくらいですか？",
+      },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toContain("基本工程は1〜2日")
+    expect(result.assistantMessage.content).not.toContain("17〜20日")
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      finalMedium: "web",
+      jobKind: "cm-30s",
+      projectLengthMinutes: 0.5,
+      workflowEstimate: expect.objectContaining({
+        totalMinDays: 1,
+        totalMaxDays: 2,
+      }),
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobContext: expect.objectContaining({
+          finalMedium: "web",
+          jobKind: "cm-30s",
+          projectLengthMinutes: 0.5,
+        }),
+      }),
+    )
+  })
+
+  it("persists rederived project length when the stored job kind is present but duration is missing", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: false,
+            hasAdditionalWork: false,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 2,
+          },
+          jobContext: {
+            finalMedium: "web",
+            jobKind: "mv-5m",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+        messages: [message("user", "MV 5分のカラーグレーディング相談です。")],
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "MV 5分なら通常2〜2.5日を基準に、素材状況で前後します。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "素材は整っています。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      jobKind: "mv-5m",
+      projectLengthMinutes: 5,
+      workflowEstimate: expect.objectContaining({
+        totalMinDays: 2,
+        totalMaxDays: 2.5,
+      }),
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobContext: expect.objectContaining({
+          jobKind: "mv-5m",
+          projectLengthMinutes: 5,
+        }),
+        conversationState: expect.objectContaining({
+          hasProjectLength: true,
+        }),
+      }),
+    )
+  })
+
   it("shows a consultation summary form when a settled no-schedule consultation can be emailed", async () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({

@@ -9,6 +9,20 @@ export type NormalizedChatbotLlmResponse = {
   finish_reason: "stop"
 }
 
+export type ChatbotLlmSanitizationReport = {
+  workflowEstimate?: {
+    totalMinDays: number
+    totalMaxDays: number
+  }
+  corrections: Array<{
+    statedMinDays: number
+    statedMaxDays: number
+    expectedMinDays: number
+    expectedMaxDays: number
+    reason: "clearly-outside-workflow-estimate"
+  }>
+}
+
 export function normalizeChatbotLlmResponse(
   response: ChatbotLlmResponse,
   options: { routingDecision?: RoutingDecision; jobContext?: JobContext } = {},
@@ -25,6 +39,13 @@ export function sanitizeChatbotLlmText(
   rawText: string,
   options: { routingDecision?: RoutingDecision; jobContext?: JobContext } = {},
 ): string {
+  return sanitizeChatbotLlmTextWithReport(rawText, options).text
+}
+
+export function sanitizeChatbotLlmTextWithReport(
+  rawText: string,
+  options: { routingDecision?: RoutingDecision; jobContext?: JobContext } = {},
+): { text: string; report: ChatbotLlmSanitizationReport } {
   return alignWorkflowEstimateText(rawText, options.routingDecision, options.jobContext)
 }
 
@@ -32,17 +53,38 @@ function alignWorkflowEstimateText(
   text: string,
   routingDecision: RoutingDecision | undefined,
   jobContext?: JobContext,
-): string {
+): { text: string; report: ChatbotLlmSanitizationReport } {
   const estimate = resolveWorkflowEstimate(routingDecision, jobContext)
-  if (!estimate) return text
+  const report: ChatbotLlmSanitizationReport = {
+    ...(estimate
+      ? {
+          workflowEstimate: {
+            totalMinDays: estimate.totalMinDays,
+            totalMaxDays: estimate.totalMaxDays,
+          },
+        }
+      : {}),
+    corrections: [],
+  }
+  if (!estimate) return { text, report }
 
   const expected = `${formatDays(estimate.totalMinDays)}〜${formatDays(estimate.totalMaxDays)}日`
-  return text.replace(workflowRangePattern, (match, prefix: string, rawRange: string) => {
+  const alignedText = text.replace(workflowRangePattern, (match, prefix: string, rawRange: string) => {
     const stated = parseDayRange(rawRange)
     if (!stated || !isClearlyOutsideWorkflowEstimate(stated, estimate)) return match
 
+    report.corrections.push({
+      statedMinDays: stated.minDays,
+      statedMaxDays: stated.maxDays,
+      expectedMinDays: estimate.totalMinDays,
+      expectedMaxDays: estimate.totalMaxDays,
+      reason: "clearly-outside-workflow-estimate",
+    })
+
     return `${prefix}${expected}`
   })
+
+  return { text: alignedText, report }
 }
 
 const workflowRangePattern =
