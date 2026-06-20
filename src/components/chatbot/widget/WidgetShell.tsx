@@ -223,7 +223,7 @@ export function WidgetShell({
   const {
     containerRef: conversationScrollRef,
     handleScroll: handleConversationScroll,
-    hasPendingLatest,
+    shouldShowLatestButton,
     scrollToLatest,
   } = useConversationScroll(conversationContentKey)
 
@@ -591,7 +591,7 @@ export function WidgetShell({
         </div>
         <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
       </div>
-      {hasPendingLatest ? (
+      {shouldShowLatestButton ? (
         <button
           type="button"
           onClick={scrollToLatest}

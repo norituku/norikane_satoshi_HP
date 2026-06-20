@@ -200,6 +200,7 @@ describe("WidgetShell API wiring", () => {
     render(<WidgetShell onMinimize={vi.fn()} />)
     const container = setConversationScrollGeometry({ scrollTop: 0, clientHeight: 300, scrollHeight: 900 })
     fireEvent.scroll(container)
+    expect(screen.getByRole("button", { name: "一番下へ移動" })).toBeInTheDocument()
     submitMessage("過去ログを読みながら相談します")
 
     setConversationScrollGeometry({ scrollTop: 0, clientHeight: 300, scrollHeight: 1200 })
