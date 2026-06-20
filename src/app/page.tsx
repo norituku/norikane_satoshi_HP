@@ -149,7 +149,7 @@ export default async function HomePage() {
 
       {/* Intro */}
       <section className="hp-section-shell hp-grid">
-        <p className="hp-body hp-grid-main hp-grid-centered-measure text-base text-hp md:text-lg">
+        <p className="hp-body hp-intro-measure text-base text-hp md:text-lg">
           {hpPublicContent.intro}
         </p>
       </section>
