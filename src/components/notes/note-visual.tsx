@@ -23,6 +23,7 @@ import { getVisualConfig, type VisualConfig } from "@/lib/notes/domain/visuals"
 
 export type VideoVisualProps = {
   isPlaying: boolean
+  isMobile?: boolean
   /** prefers-reduced-motion: reduce が有効な環境では true。アニメ層を mount しない判断に使う */
   reducedMotion: boolean
 }
@@ -91,12 +92,15 @@ export function NoteVisual({ slug }: { slug: string }) {
   // 説明を完結させる方針。caption / intro / "Visual / Motion" / "5SEC" は描画しない。
   // alt は SR 用に figure の aria-label として保持する。
   if (config.kind === "video") {
+    const isFailureModes = config.slug === "correction-failure-modes"
     return (
       <figure
         data-diagram-slug={config.slug}
         data-diagram-kind={config.kind}
         aria-label={config.alt}
-        className="mx-auto my-12 max-w-[58rem] overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-16"
+        className={`mx-auto my-12 overflow-hidden rounded-[16px] border border-white/55 bg-white/35 md:my-16 ${
+          isFailureModes ? "max-w-[72rem]" : "max-w-[58rem]"
+        }`}
       >
         <VisualBody config={config} />
       </figure>
@@ -158,8 +162,10 @@ function VisualBody({ config }: { config: VisualConfig }) {
     if (!Module) {
       return <PlaceholderBox aspect={aspect} label={config.slug} />
     }
+    const mobileAspect =
+      config.slug === "correction-failure-modes" ? "1000 / 900" : undefined
     return (
-      <VideoStage aspect={aspect} alt={config.alt}>
+      <VideoStage aspect={aspect} mobileAspect={mobileAspect} alt={config.alt}>
         {(state) => <Module {...state} />}
       </VideoStage>
     )
@@ -217,16 +223,19 @@ function PlaceholderBox({ aspect, label }: { aspect: string; label: string }) {
  */
 function VideoStage({
   aspect,
+  mobileAspect,
   alt,
   children,
 }: {
   aspect: string
+  mobileAspect?: string
   alt: string
   children: (state: VideoVisualProps) => React.ReactNode
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [inView, setInView] = useState(false)
   const [docVisible, setDocVisible] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
 
   useEffect(() => {
@@ -259,7 +268,16 @@ function VideoStage({
     return () => mq.removeEventListener("change", update)
   }, [])
 
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)")
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
+  }, [])
+
   const isPlaying = inView && docVisible && !reducedMotion
+  const stageAspect = isMobile && mobileAspect ? mobileAspect : aspect
 
   return (
     <div
@@ -267,9 +285,9 @@ function VideoStage({
       role="img"
       aria-label={alt}
       className="relative w-full"
-      style={{ aspectRatio: aspect }}
+      style={{ aspectRatio: stageAspect }}
     >
-      {children({ isPlaying, reducedMotion })}
+      {children({ isPlaying, isMobile, reducedMotion })}
     </div>
   )
 }

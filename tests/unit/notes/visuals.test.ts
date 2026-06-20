@@ -45,4 +45,20 @@ describe("notes visual registry", () => {
       }
     }
   })
+
+  it("keeps correction failure modes on its restored desktop/mobile visual ratio", () => {
+    expect(getVisualConfig("correction-failure-modes")).toMatchObject({
+      aspect: { width: 16, height: 9 },
+    })
+
+    expect(getVisualConfig("correction-control-math")).toMatchObject({
+      aspect: { width: 16, height: 5 },
+    })
+    expect(getVisualConfig("correction-reversibility")).toMatchObject({
+      aspect: { width: 16, height: 5 },
+    })
+    expect(getVisualConfig("correction-space-choice")).toMatchObject({
+      aspect: { width: 16, height: 5 },
+    })
+  })
 })
