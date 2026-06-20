@@ -1,6 +1,7 @@
 import type {
   ConversationState,
   DocumentaryAttachment,
+  DocumentaryAttachmentItem,
   JobContext,
   SurveyChoice,
   SurveyChoiceSet,
@@ -53,12 +54,22 @@ export function applyActiveChoiceAnswer(input: {
         jobContext: { additionalWork: choices.map((item) => item.id as AdditionalWork) },
       }
     case "documentary-attachment":
+      if (choices.some((item) => item.id === "none")) {
+        return {
+          choiceSetId: input.activeChoices.id,
+          choiceId: "none",
+          choiceIds: ["none"],
+          conversationState: { hasDocumentaryAttachments: true },
+          jobContext: { documentaryAttachment: { kind: "none" } },
+        }
+      }
+
       return {
         choiceSetId: input.activeChoices.id,
         choiceId: choice.id,
-        choiceIds: [choice.id],
+        choiceIds: choices.map((item) => item.id),
         conversationState: { hasDocumentaryAttachments: true },
-        jobContext: { documentaryAttachment: toDocumentaryAttachment(choice.id) },
+        jobContext: { documentaryAttachment: toDocumentaryAttachment(choices.map((item) => item.id)) },
       }
     case "work-site":
       return {
@@ -135,8 +146,13 @@ function resolveChoices(activeChoices: SurveyChoiceSet | undefined, message: str
 type AdditionalWork = NonNullable<JobContext["additionalWork"]>[number]
 type ProductionOption = NonNullable<ConversationState["productionOptions"]>[number]
 
-function toDocumentaryAttachment(choiceId: string): DocumentaryAttachment {
-  if (choiceId === "none") return { kind: "none" }
+function toDocumentaryAttachment(choiceIds: string[]): DocumentaryAttachment {
+  const attachments = choiceIds.map(toDocumentaryAttachmentItem)
+  if (attachments.length === 1) return attachments[0]
+  return { kind: "mixed", items: attachments }
+}
+
+function toDocumentaryAttachmentItem(choiceId: string): DocumentaryAttachmentItem {
   if (choiceId === "digest" || choiceId === "interview" || choiceId === "bonus" || choiceId === "making") {
     return { kind: choiceId, count: 1 }
   }

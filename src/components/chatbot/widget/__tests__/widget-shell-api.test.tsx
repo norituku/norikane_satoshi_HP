@@ -7,7 +7,7 @@ import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { WidgetShell } from "@/components/chatbot/widget/WidgetShell"
-import { finalMediumChoices } from "@/lib/chatbot/domain"
+import { additionalWorkChoices, finalMediumChoices } from "@/lib/chatbot/domain"
 
 vi.mock("next-auth/react", () => ({
   signIn: vi.fn(),
@@ -217,6 +217,48 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByText("最終媒体を教えてください")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "OTT 配信" })).toBeInTheDocument()
+  })
+
+  it("does not submit multiple choice panels until the selection is confirmed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage,
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "choice-panel", choiceSet: additionalWorkChoices },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage: {
+            ...assistantMessage,
+            content: "次の質問です",
+          },
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "none" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage()
+
+    expect(await screen.findByText("カラグレ以外の追加作業はありますか")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "消し物" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole("button", { name: "肌修正" }))
+    fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      message: "選択: retouch, skin-retouch",
+      conversationId: "conv_1",
+    })
   })
 
   it("restores messages, active UI, and conversation id after the shell remounts", async () => {

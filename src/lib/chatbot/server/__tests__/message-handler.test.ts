@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
 import type { CandidateWindow, ChatbotConversation, ChatbotMessage } from "@/lib/chatbot/domain"
-import { finalMediumChoices } from "@/lib/chatbot/domain"
+import { additionalWorkChoices, finalMediumChoices } from "@/lib/chatbot/domain"
 import { handleChatbotMessage } from "@/lib/chatbot/server/message-handler"
 import { createStaticChatbotKnowledgeSnapshot } from "@/lib/chatbot/server/notion-knowledge-sync"
 import type { UserChatbotContext } from "@/lib/chatbot/server/user-context-loader"
@@ -832,6 +832,44 @@ describe("handleChatbotMessage user context", () => {
         activeChoices: null,
         conversationState: expect.objectContaining({ hasFinalMedium: true }),
         jobContext: expect.objectContaining({ finalMedium: "live" }),
+      }),
+    )
+  })
+
+  it("consumes stored additional work choices as one confirmed multiple-choice answer", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: additionalWorkChoices,
+          currentQuestion: "カラグレ以外の追加作業はありますか？",
+          conversationState: { hasFinalMedium: true, hasCustomerIdentity: true, turnCount: 3 },
+          jobContext: { finalMedium: "web" },
+        },
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: retouch, skin-retouch",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
+      hasAdditionalWork: true,
+    })
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      additionalWork: ["retouch", "skin-retouch"],
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: null,
+        conversationState: expect.objectContaining({ hasAdditionalWork: true }),
+        jobContext: expect.objectContaining({ additionalWork: ["retouch", "skin-retouch"] }),
       }),
     )
   })

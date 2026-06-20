@@ -34,8 +34,26 @@ describe("ChoicePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "肌修正" }))
     fireEvent.click(screen.getByRole("button", { name: "なし" }))
 
-    expect(onSelect).toHaveBeenNthCalledWith(1, ["retouch"])
-    expect(onSelect).toHaveBeenNthCalledWith(2, ["retouch", "skin-retouch"])
-    expect(onSelect).toHaveBeenNthCalledWith(3, ["none"])
+    expect(screen.getByRole("button", { name: "消し物" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "肌修正" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "なし" })).toHaveAttribute("aria-pressed", "true")
+
+    fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
+
+    expect(onSelect).toHaveBeenCalledWith(["none"])
+  })
+
+  it("waits for confirmation before submitting multiple selections", () => {
+    const onSelect = vi.fn()
+    render(<ChoicePanel choiceSet={additionalWorkChoices} onSelect={onSelect} allowMultiple />)
+
+    fireEvent.click(screen.getByRole("button", { name: "消し物" }))
+    fireEvent.click(screen.getByRole("button", { name: "肌修正" }))
+
+    expect(onSelect).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "選択を送信" }))
+
+    expect(onSelect).toHaveBeenCalledWith(["retouch", "skin-retouch"])
   })
 })

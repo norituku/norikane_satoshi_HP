@@ -39,6 +39,7 @@ export const additionalWorkChoices = {
 export const documentaryAttachmentChoices = {
   id: "documentary-attachment",
   question: "付随する映像はありますか",
+  selectionMode: "multiple",
   choices: [
     { id: "digest", label: "ダイジェスト" },
     { id: "interview", label: "インタビュー" },

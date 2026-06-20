@@ -241,6 +241,12 @@ function hasRetouchWork(jobContext: JobContext): boolean {
 
 function getDocumentaryAttachmentCount(attachment: DocumentaryAttachment): number {
   if (attachment.kind === "none") return additionalWorkDurationRules.noAdditionalDays
+  if (attachment.kind === "mixed") {
+    return attachment.items.reduce(
+      (total, item) => total + (item.count ?? additionalWorkDurationRules.defaultDocumentaryAttachmentCount),
+      0,
+    )
+  }
   return attachment.count ?? additionalWorkDurationRules.defaultDocumentaryAttachmentCount
 }
 

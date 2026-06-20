@@ -13,13 +13,17 @@ export type FinalMedium = "ott" | "cinema" | "tv-broadcast" | "live" | "web" | "
 
 export type WorkSite = "satoshi-studio" | "remote-grading" | "on-site"
 
-export type DocumentaryAttachment =
-  | { kind: "none" }
+export type DocumentaryAttachmentItem =
   | { kind: "digest"; count: number }
   | { kind: "interview"; count: number }
   | { kind: "bonus"; count: number }
   | { kind: "making"; count: number }
   | { kind: "other"; count: number; note: string }
+
+export type DocumentaryAttachment =
+  | { kind: "none" }
+  | DocumentaryAttachmentItem
+  | { kind: "mixed"; items: DocumentaryAttachmentItem[] }
 
 export type WorkflowEstimate = {
   stages: Array<{

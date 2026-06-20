@@ -1,4 +1,4 @@
-import type { ConversationState, JobContext } from "@/lib/chatbot/domain"
+import type { ConversationState, DocumentaryAttachmentItem, JobContext } from "@/lib/chatbot/domain"
 
 export type ConsultationSummaryInput = {
   jobContext?: Partial<JobContext>
@@ -132,11 +132,16 @@ function labelAdditionalWork(value: JobContext["additionalWork"] | undefined): s
 function labelDocumentaryAttachment(value: JobContext["documentaryAttachment"] | undefined): string {
   if (!value) return missing
   if (value.kind === "none") return "なし"
+  if (value.kind === "mixed") return value.items.map(labelDocumentaryAttachmentItem).join(" / ")
+  return labelDocumentaryAttachmentItem(value)
+}
+
+function labelDocumentaryAttachmentItem(value: DocumentaryAttachmentItem): string {
   const base = `${documentaryAttachmentKindLabel(value.kind)} ${value.count}件`
   return value.kind === "other" && value.note.trim() ? `${base}（${value.note.trim()}）` : base
 }
 
-function documentaryAttachmentKindLabel(kind: Exclude<JobContext["documentaryAttachment"]["kind"], "none">): string {
+function documentaryAttachmentKindLabel(kind: DocumentaryAttachmentItem["kind"]): string {
   switch (kind) {
     case "digest":
       return "ダイジェスト"

@@ -39,6 +39,10 @@ function baseJobContext(overrides: Partial<JobContext> = {}): JobContext {
 }
 
 describe("choice panel state", () => {
+  it("treats documentary attachments as a multiple-choice set", () => {
+    expect((documentaryAttachmentChoices as SurveyChoiceSet).selectionMode).toBe("multiple")
+  })
+
   it("confirms live final medium and does not ask final medium again", () => {
     const patch = applyActiveChoiceAnswer({
       activeChoices: finalMediumChoices,
@@ -95,6 +99,20 @@ describe("choice panel state", () => {
       {},
     ],
     [productionOptionChoices, "選択: none, music", { hasProductionOptions: true, productionOptions: [] }, {}],
+    [
+      documentaryAttachmentChoices,
+      "選択: digest, interview",
+      { hasDocumentaryAttachments: true },
+      {
+        documentaryAttachment: {
+          kind: "mixed",
+          items: [
+            { kind: "digest", count: 1 },
+            { kind: "interview", count: 1 },
+          ],
+        },
+      },
+    ],
     [
       documentaryAttachmentChoices,
       "interview",

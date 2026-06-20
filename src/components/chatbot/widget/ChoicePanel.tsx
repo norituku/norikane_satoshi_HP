@@ -23,7 +23,14 @@ export function ChoicePanel({ choiceSet, onSelect, allowMultiple = false }: Choi
       : [choiceId]
 
     setSelectedIds(nextSelectedIds)
-    onSelect(nextSelectedIds)
+    if (!allowMultiple) {
+      onSelect(nextSelectedIds)
+    }
+  }
+
+  const handleConfirm = () => {
+    if (selectedIds.length === 0) return
+    onSelect(selectedIds)
   }
 
   return (
@@ -53,6 +60,16 @@ export function ChoicePanel({ choiceSet, onSelect, allowMultiple = false }: Choi
           )
         })}
       </div>
+      {allowMultiple ? (
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={selectedIds.length === 0}
+          className="glass-btn px-3 py-2 text-xs font-semibold text-hp disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          選択を送信
+        </button>
+      ) : null}
     </section>
   )
 }

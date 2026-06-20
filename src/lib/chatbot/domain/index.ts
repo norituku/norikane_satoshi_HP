@@ -25,6 +25,7 @@ export type {
   CandidateWindow,
   ConversationSummary,
   DocumentaryAttachment,
+  DocumentaryAttachmentItem,
   FinalMedium,
   JobContext,
   JobKind,
