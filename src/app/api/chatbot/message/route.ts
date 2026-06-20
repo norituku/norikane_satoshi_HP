@@ -3,8 +3,8 @@ import { z } from "zod"
 
 import { auth } from "@/auth"
 import { enforceBodyLimit } from "@/lib/api/server/body-limit"
-import { respondInternalError } from "@/lib/api/server/error-response"
 import { handleChatbotMessage } from "@/lib/chatbot/server/message-handler"
+import { respondChatbotOperationFailure } from "@/lib/chatbot/server/operation-failure"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -71,6 +71,19 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    return respondInternalError(error, "chatbot.message.POST")
+    return respondChatbotOperationFailure({
+      operation: "message",
+      stage: "server-handler",
+      error,
+      requestSummary: {
+        conversationId: parsed.data.conversationId,
+        clientSessionId: parsed.data.clientSessionId,
+        hasCookieSession: Boolean(existingSessionId),
+        messageLength: parsed.data.message.length,
+        isChoicePanelSelection: parsed.data.message.startsWith("選択:"),
+        hasJobContext: Boolean(parsed.data.jobContext),
+        hasConversationState: Boolean(parsed.data.conversationState),
+      },
+    })
   }
 }

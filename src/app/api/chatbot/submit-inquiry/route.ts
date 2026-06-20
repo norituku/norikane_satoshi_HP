@@ -6,6 +6,7 @@ import {
   hasSentOperatorNotification,
   sendOperatorConsultationNotification,
 } from "@/lib/chatbot/server/operator-notification"
+import { logChatbotOperationFailure } from "@/lib/chatbot/server/operation-failure"
 import { appendMessage, loadConversationById } from "@/lib/chatbot/server/repository"
 
 export const runtime = "nodejs"
@@ -74,10 +75,33 @@ export async function POST(request: NextRequest) {
     })
 
     if (result.status === "skipped") return NextResponse.json({ ok: true, emailSkipped: true })
-    if (result.status === "failed") return NextResponse.json({ ok: true, emailWarning: "send_failed" })
+    if (result.status === "failed") {
+      logChatbotOperationFailure({
+        operation: "submit-inquiry",
+        stage: "notification-send",
+        status: 202,
+        error: new Error("operator_notification_send_failed"),
+        requestSummary: {
+          conversationId: input.conversationId,
+          hasConversation: Boolean(conversation),
+          emailDomain: input.email.split("@")[1] ?? null,
+        },
+      })
+      return NextResponse.json({ ok: true, emailWarning: "send_failed" })
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error("[Chatbot Inquiry] resend send failed", error instanceof Error ? error.message : "send_failed")
+    logChatbotOperationFailure({
+      operation: "submit-inquiry",
+      stage: "notification-send",
+      status: 202,
+      error,
+      requestSummary: {
+        conversationId: input.conversationId,
+        hasConversation: Boolean(conversation),
+        emailDomain: input.email.split("@")[1] ?? null,
+      },
+    })
     return NextResponse.json({ ok: true, emailWarning: "send_failed" })
   }
 }
@@ -88,10 +112,13 @@ async function loadInquiryConversation(conversationId: string | undefined) {
   try {
     return await loadConversationById(conversationId)
   } catch (error) {
-    console.warn(
-      "[Chatbot Inquiry] conversation load failed",
-      error instanceof Error ? error.message : "load_failed",
-    )
+    logChatbotOperationFailure({
+      operation: "submit-inquiry",
+      stage: "conversation-load",
+      status: 202,
+      error,
+      requestSummary: { conversationId },
+    })
     return null
   }
 }
@@ -118,9 +145,15 @@ async function appendInquiryMessage(input: z.infer<typeof inquiryRequestSchema>)
       content: `問い合わせフォーム送信: ${input.name} / ${input.email}`,
     })
   } catch (error) {
-    console.warn(
-      "[Chatbot Inquiry] conversation message save failed",
-      error instanceof Error ? error.message : "save_failed",
-    )
+    logChatbotOperationFailure({
+      operation: "submit-inquiry",
+      stage: "conversation-save",
+      status: 202,
+      error,
+      requestSummary: {
+        conversationId: input.conversationId,
+        emailDomain: input.email.split("@")[1] ?? null,
+      },
+    })
   }
 }

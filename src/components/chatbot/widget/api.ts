@@ -76,8 +76,34 @@ export class ChatbotRequestCancelledError extends Error {
   }
 }
 
+export class ChatbotOperationError extends Error {
+  readonly operation: "message" | "submit-inquiry" | "create-booking-from-chat"
+  readonly status?: number
+  readonly retryable: boolean
+  readonly fallback: "tier4-inquiry-form"
+
+  constructor(input: {
+    operation: ChatbotOperationError["operation"]
+    status?: number
+    retryable: boolean
+    fallback?: "tier4-inquiry-form"
+    message?: string
+  }) {
+    super(input.message ?? "chatbot_operation_failed")
+    this.name = "ChatbotOperationError"
+    this.operation = input.operation
+    this.status = input.status
+    this.retryable = input.retryable
+    this.fallback = input.fallback ?? "tier4-inquiry-form"
+  }
+}
+
 export function isChatbotRequestCancelledError(error: unknown): error is ChatbotRequestCancelledError {
   return error instanceof ChatbotRequestCancelledError
+}
+
+export function isChatbotOperationError(error: unknown): error is ChatbotOperationError {
+  return error instanceof ChatbotOperationError
 }
 
 type SubmitChatbotMessageOptions = {
@@ -91,33 +117,99 @@ function isAbortError(error: unknown) {
   )
 }
 
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
+}
+
+function shouldRetryFetchFailure(error: unknown): boolean {
+  if (isAbortError(error)) return false
+  if (error instanceof ChatbotOperationError) return error.retryable
+  return error instanceof TypeError || error instanceof Error
+}
+
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function operationErrorFromResponse(
+  operation: ChatbotOperationError["operation"],
+  response: Response,
+  body: unknown,
+): ChatbotOperationError {
+  const failure =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { failure?: { retryable?: unknown; fallback?: unknown }; error?: unknown })
+      : {}
+  const retryable =
+    typeof failure.failure?.retryable === "boolean"
+      ? failure.failure.retryable
+      : isRetryableStatus(response.status)
+  const fallback = failure.failure?.fallback === "tier4-inquiry-form" ? "tier4-inquiry-form" : undefined
+
+  return new ChatbotOperationError({
+    operation,
+    status: response.status,
+    retryable,
+    fallback,
+    message: typeof failure.error === "string" ? failure.error : undefined,
+  })
+}
+
+export async function postChatbotJson<T>(
+  operation: ChatbotOperationError["operation"],
+  path: string,
+  input: unknown,
+  options: SubmitChatbotMessageOptions = {},
+): Promise<T> {
+  const maxAttempts = 2
+  let latestError: unknown
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal: options.signal,
+      })
+      const body = await parseJsonResponse(response)
+      if (response.ok) return body as T
+      throw operationErrorFromResponse(operation, response, body)
+    } catch (error) {
+      if (isAbortError(error)) throw new ChatbotRequestCancelledError()
+      latestError = error
+      if (attempt < maxAttempts && shouldRetryFetchFailure(error)) {
+        console.warn("[CHATBOT_CLIENT_RETRY]", {
+          event: "chatbot_client_retry",
+          operation,
+          attempt,
+          status: error instanceof ChatbotOperationError ? error.status : undefined,
+        })
+        continue
+      }
+      break
+    }
+  }
+
+  if (latestError instanceof ChatbotOperationError) throw latestError
+  throw new ChatbotOperationError({
+    operation,
+    retryable: true,
+    message: latestError instanceof Error ? latestError.message : "chatbot_network_failed",
+  })
+}
+
 export async function submitChatbotMessage(
   input: SubmitChatbotMessageInput,
   options: SubmitChatbotMessageOptions = {},
 ): Promise<ChatbotMessageResponse> {
-  let response: Response
-  try {
-    response = await fetch("/api/chatbot/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      signal: options.signal,
-    })
-  } catch (error) {
-    if (isAbortError(error)) throw new ChatbotRequestCancelledError()
-    throw error
-  }
-
-  if (!response.ok) throw new Error("chatbot_message_failed")
-  return (await response.json()) as ChatbotMessageResponse
+  return postChatbotJson<ChatbotMessageResponse>("message", "/api/chatbot/message", input, options)
 }
 
 export async function submitChatbotInquiry(input: SubmitInquiryInput): Promise<void> {
-  const response = await fetch("/api/chatbot/submit-inquiry", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  })
-
-  if (!response.ok) throw new Error("chatbot_inquiry_failed")
+  await postChatbotJson("submit-inquiry", "/api/chatbot/submit-inquiry", input)
 }

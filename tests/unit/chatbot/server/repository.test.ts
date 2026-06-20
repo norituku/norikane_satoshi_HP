@@ -99,6 +99,32 @@ describe("chatbot repository mapping helpers", () => {
     ).toBe("direct-contact")
   })
 
+  it("normalizes legacy active choices without selectionMode as single-select", () => {
+    const result = __chatbotRepositoryTestUtils.toDomainConversation(
+      conversationRow({
+        routingDecision: "continue",
+        activeChoices: JSON.stringify({
+          id: "final-medium",
+          question: "最終媒体を教えてください",
+          choices: [
+            { id: "web", label: "Web" },
+            { id: "cinema", label: "劇場公開" },
+          ],
+        }),
+        messages: [],
+      }),
+    )
+
+    expect(result.context.activeChoices).toMatchObject({
+      id: "final-medium",
+      selectionMode: "single",
+      choices: [
+        { id: "web", label: "Web" },
+        { id: "cinema", label: "劇場公開" },
+      ],
+    })
+  })
+
   it("maps a conversation summary into ChatbotInquiry create data", () => {
     const sentAt = new Date("2026-05-23T11:00:00.000Z")
     const result = __chatbotRepositoryTestUtils.toInquiryCreateData({

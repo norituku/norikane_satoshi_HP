@@ -7,6 +7,7 @@ import { ChatbotLoginCard } from "@/components/chatbot/widget/ChatbotLoginCard"
 import { mapErrorCodeToJa } from "@/lib/booking/domain/api-schema"
 import { bookingOnboardingDemoScript } from "@/lib/chatbot/demo"
 import type { CandidateWindow, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
+import { isChatbotOperationError, postChatbotJson } from "./api"
 import {
   CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
   CHATBOT_CONVERSATION_CONTENT_STYLE,
@@ -39,11 +40,6 @@ type ApiResponse = {
 
 const API_PATH = "/api/chatbot/create-booking-from-chat"
 const MAX_VISIBLE_CANDIDATES = 12
-
-function parseApiResponse(value: unknown): ApiResponse {
-  if (!value || typeof value !== "object") return {}
-  return value as ApiResponse
-}
 
 function estimateText(estimate?: WorkflowEstimate): string | null {
   if (!estimate) return null
@@ -143,10 +139,10 @@ export function ChatbotBookingCard({
     setLoginRequired(false)
 
     try {
-      const response = await fetch(API_PATH, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await postChatbotJson<ApiResponse>(
+        "create-booking-from-chat",
+        API_PATH,
+        {
           conversationId,
           projectTitle: projectTitle.trim(),
           contactName: contactName.trim(),
@@ -160,21 +156,8 @@ export function ChatbotBookingCard({
             end: selectedSlot.end,
           },
           workflowEstimate: estimate,
-        }),
-      })
-      const payload = parseApiResponse(await response.json().catch(() => ({})))
-
-      if (response.status === 401) {
-        setLoginRequired(true)
-        setErrorMessage("ログインして予約に進んでください")
-        onRequireLogin?.()
-        return
-      }
-
-      if (!response.ok) {
-        setErrorMessage(mapErrorCodeToJa(payload.error ?? "unknown"))
-        return
-      }
+        },
+      )
 
       if (!payload.bookingGroupId) {
         setErrorMessage(mapErrorCodeToJa("unknown"))
@@ -187,8 +170,14 @@ export function ChatbotBookingCard({
       }
       setBooked(result)
       onBooked?.(result)
-    } catch {
-      setErrorMessage(mapErrorCodeToJa("unknown"))
+    } catch (error) {
+      if (isChatbotOperationError(error) && error.status === 401) {
+        setLoginRequired(true)
+        setErrorMessage("ログインして予約に進んでください")
+        onRequireLogin?.()
+        return
+      }
+      setErrorMessage(mapErrorCodeToJa(error instanceof Error ? error.message : "unknown"))
     } finally {
       setSubmitting(false)
     }

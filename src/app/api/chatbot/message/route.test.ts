@@ -35,6 +35,7 @@ function message(role: ChatbotMessage["role"], content: string): ChatbotMessage 
 async function loadPost({
   session = null,
   existingConversation = null,
+  loadConversationError,
   llmResponse = {
     rawText: "最終媒体を教えてください",
     tier: "tier-3-ollama-deepseek" as const,
@@ -42,12 +43,15 @@ async function loadPost({
 }: {
   session?: { user?: { id?: string; email?: string } } | null
   existingConversation?: ChatbotConversation | null
+  loadConversationError?: Error
   llmResponse?: Record<string, unknown>
 } = {}) {
   vi.resetModules()
 
   const auth = vi.fn().mockResolvedValue(session)
-  const loadConversationBySessionId = vi.fn().mockResolvedValue(existingConversation)
+  const loadConversationBySessionId = loadConversationError
+    ? vi.fn().mockRejectedValue(loadConversationError)
+    : vi.fn().mockResolvedValue(existingConversation)
   const createConversation = vi.fn().mockResolvedValue(conversation())
   const appendMessage = vi
     .fn()
@@ -223,5 +227,43 @@ describe("POST /api/chatbot/message", () => {
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toMatchObject({ error: "invalid_request" })
     expect(route.createConversation).not.toHaveBeenCalled()
+  })
+
+  it("returns structured failure metadata when conversation loading fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const route = await loadPost({
+      loadConversationError: new Error("Invalid chatbot active choices JSON"),
+    })
+
+    const response = await route.POST(
+      request(
+        {
+          message: "選択: web",
+          conversationId: "conv_legacy",
+          clientSessionId: "11111111-1111-4111-8111-111111111111",
+        },
+        "chatbot_session_id=session_legacy",
+      ),
+    )
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toMatchObject({
+      error: "chatbot_operation_failed",
+      operation: "message",
+      failure: {
+        stage: "server-handler",
+        retryable: true,
+        fallback: "tier4-inquiry-form",
+      },
+    })
+    expect(consoleError).toHaveBeenCalledWith(
+      "[CHATBOT_OPERATION_FAILURE]",
+      expect.stringContaining("\"operation\":\"message\""),
+    )
+    expect(consoleError).toHaveBeenCalledWith(
+      "[CHATBOT_OPERATION_FAILURE]",
+      expect.stringContaining("\"isChoicePanelSelection\":true"),
+    )
+    consoleError.mockRestore()
   })
 })

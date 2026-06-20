@@ -200,6 +200,33 @@ describe("ChatbotBookingCard", () => {
     expect(onRequireLogin).toHaveBeenCalledTimes(1)
   })
 
+  it("retries transient booking API failures before showing completion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({
+          error: "chatbot_operation_failed",
+          failure: { retryable: true, fallback: "tier4-inquiry-form" },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ bookingGroupId: "group_1", bookingIds: ["slot_1"] }),
+      })
+    vi.stubGlobal("fetch", fetchMock)
+    renderCard()
+
+    fireEvent.click(screen.getByRole("button", { name: /6月10日 午前/ }))
+    fireEvent.click(screen.getByLabelText("利用規約と予約内容に同意します（必須）。"))
+    fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
+
+    expect(await screen.findByText("予約を受け付けました")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it("shows completion and calls onBooked on success", async () => {
     mockFetch(200, { bookingGroupId: "group_1", bookingIds: ["slot_1"] })
     const onBooked = vi.fn()

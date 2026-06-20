@@ -6,6 +6,7 @@ import { respondInternalError } from "@/lib/api/server/error-response"
 import { bookingApiSchema, type BookingApiInput } from "@/lib/booking/domain/api-schema"
 import { createBookingFromApiInput } from "@/lib/booking/server/create-booking"
 import { BookingConflictError } from "@/lib/booking/server/errors"
+import { respondChatbotOperationFailure } from "@/lib/chatbot/server/operation-failure"
 import { linkChatToBookingGroup } from "@/lib/chatbot/server/repository"
 
 export const runtime = "nodejs"
@@ -139,6 +140,15 @@ export async function POST(request: NextRequest) {
     if (error instanceof BookingConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 })
     }
-    return respondInternalError(error, "chatbot.create-booking-from-chat.POST")
+    return respondChatbotOperationFailure({
+      operation: "create-booking-from-chat",
+      stage: "booking-save",
+      error,
+      requestSummary: {
+        conversationId: parsed.data.conversationId,
+        hasSelectedSlot: Boolean(parsed.data.selectedSlot),
+        hasWorkflowEstimate: Boolean(parsed.data.workflowEstimate),
+      },
+    })
   }
 }

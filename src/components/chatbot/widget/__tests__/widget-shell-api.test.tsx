@@ -166,7 +166,7 @@ describe("WidgetShell API wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "停止" }))
 
     await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
-    expect(screen.queryByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).not.toBeInTheDocument()
+    expect(screen.queryByText(/通信に失敗しました/u)).not.toBeInTheDocument()
     expect(screen.getByText("停止したい相談です")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "メッセージを編集" })).toBeInTheDocument()
     const fetchInit = fetchMock.mock.calls[0]?.[1]
@@ -556,13 +556,53 @@ describe("WidgetShell API wiring", () => {
     })
   })
 
-  it("shows a short system message on network error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network")))
+  it("retries a transient message failure before showing the response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          conversationId: "conv_1",
+          assistantMessage,
+          tier: "tier-3-ollama-deepseek",
+          ui: { kind: "none" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("一時失敗から復旧する相談です")
+
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/通信に失敗しました/u)).not.toBeInTheDocument()
+  })
+
+  it("falls back to the inquiry form when message retries are exhausted", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        mockJsonResponse(
+          {
+            error: "chatbot_operation_failed",
+            failure: {
+              stage: "server-handler",
+              retryable: true,
+              fallback: "tier4-inquiry-form",
+            },
+          },
+          500,
+        ),
+      )
+    vi.stubGlobal("fetch", fetchMock)
 
     render(<WidgetShell onMinimize={vi.fn()} />)
     submitMessage()
 
-    expect(await screen.findByText("通信に失敗しました。少し時間をおいてもう一度お試しください。")).toBeInTheDocument()
+    expect(await screen.findByText(/通信に失敗しました/u)).toBeInTheDocument()
+    expect(screen.getByLabelText("問い合わせフォーム")).toBeInTheDocument()
+    expect(screen.getByText("相談したいです")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it("edits a sent user message, truncates later local UI, and persists the edited conversation", async () => {

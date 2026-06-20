@@ -8,6 +8,7 @@ import type { JobContext } from "@/lib/chatbot/domain/workflow-estimate"
 import type { WidgetDisplayMode } from "./useWidgetState"
 
 import {
+  isChatbotOperationError,
   isChatbotRequestCancelledError,
   submitChatbotInquiry,
   submitChatbotMessage,
@@ -51,7 +52,8 @@ const initialMessage = {
 } satisfies WidgetMessage
 
 const noUi = { kind: "none" } satisfies WidgetUi
-const networkErrorMessage = "通信に失敗しました。少し時間をおいてもう一度お試しください。"
+const communicationFallbackMessage =
+  "通信に失敗しました。自動再試行後も復旧しないため、下のフォームから連絡できます。入力内容はこのまま残っています。"
 const inquirySentMessage = "送信しました。担当者からの返信をお待ちください。"
 const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -328,11 +330,23 @@ export function WidgetShell({
       setActiveUi(payload.ui)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
+      if (isChatbotOperationError(error)) {
+        console.warn("[CHATBOT_WIDGET_FAILURE]", {
+          event: "chatbot_widget_failure",
+          operation: error.operation,
+          status: error.status,
+          retryable: error.retryable,
+          fallback: error.fallback,
+          hasConversationId: Boolean(conversationId),
+          activeUiKind: activeUi.kind,
+        })
+      }
       appendMessage({
         role: "system",
-        content: networkErrorMessage,
+        content: communicationFallbackMessage,
         createdAt: new Date(),
       })
+      setActiveUi({ kind: "tier4-inquiry-form" })
     } finally {
       finishRequest(controller)
     }
@@ -400,11 +414,23 @@ export function WidgetShell({
       setActiveUi(payload.ui)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
+      if (isChatbotOperationError(error)) {
+        console.warn("[CHATBOT_WIDGET_FAILURE]", {
+          event: "chatbot_widget_failure",
+          operation: error.operation,
+          status: error.status,
+          retryable: error.retryable,
+          fallback: error.fallback,
+          hasConversationId: Boolean(conversationId),
+          activeUiKind: activeUi.kind,
+        })
+      }
       appendMessage({
         role: "system",
-        content: networkErrorMessage,
+        content: communicationFallbackMessage,
         createdAt: new Date(),
       })
+      setActiveUi({ kind: "tier4-inquiry-form" })
     } finally {
       finishRequest(controller)
     }
@@ -422,9 +448,10 @@ export function WidgetShell({
     } catch {
       appendMessage({
         role: "system",
-        content: networkErrorMessage,
+        content: communicationFallbackMessage,
         createdAt: new Date(),
       })
+      setActiveUi({ kind: "tier4-inquiry-form" })
     }
   }
 

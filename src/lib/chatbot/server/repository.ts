@@ -520,10 +520,11 @@ function toAdditionalWork(value: string | null): JobContext["additionalWork"] | 
 function toSurveyChoiceSet(value: string | null | undefined): SurveyChoiceSet | undefined {
   if (value == null) return undefined
   const parsed = parseJson(value, "active choices")
-  if (!isSurveyChoiceSet(parsed)) {
+  const normalized = normalizeSurveyChoiceSet(parsed)
+  if (!normalized) {
     throw new Error("Invalid chatbot active choices JSON")
   }
-  return parsed
+  return normalized
 }
 
 function toConversationState(value: string | null | undefined): Partial<ConversationState> | undefined {
@@ -562,15 +563,19 @@ function isOneOf<const T extends readonly string[]>(value: string, allowed: T): 
   return allowed.includes(value)
 }
 
-function isSurveyChoiceSet(value: unknown): value is SurveyChoiceSet {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+function normalizeSurveyChoiceSet(value: unknown): SurveyChoiceSet | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
   const candidate = value as Partial<SurveyChoiceSet>
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.question === "string" &&
-    (candidate.selectionMode === "single" || candidate.selectionMode === "multiple") &&
-    Array.isArray(candidate.choices) &&
-    candidate.choices.every(
+  const id = candidate.id
+  const question = candidate.question
+  const choices = candidate.choices
+  const selectionMode = candidate.selectionMode ?? "single"
+  const isValid =
+    typeof id === "string" &&
+    typeof question === "string" &&
+    (selectionMode === "single" || selectionMode === "multiple") &&
+    Array.isArray(choices) &&
+    choices.every(
       (choice) =>
         choice &&
         typeof choice === "object" &&
@@ -578,11 +583,18 @@ function isSurveyChoiceSet(value: unknown): value is SurveyChoiceSet {
         typeof (choice as { id?: unknown }).id === "string" &&
         typeof (choice as { label?: unknown }).label === "string",
     )
-  )
+  if (!isValid) return null
+  return {
+    id,
+    question,
+    selectionMode,
+    choices,
+  }
 }
 
 export const __chatbotRepositoryTestUtils = {
   toDomainConversation,
   toDomainMessage,
   toInquiryCreateData,
+  normalizeSurveyChoiceSet,
 }
