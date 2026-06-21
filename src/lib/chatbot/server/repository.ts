@@ -29,14 +29,6 @@ type ChatbotConversationRow = Prisma.ChatbotConversationGetPayload<{
   include: { messages: true }
 }>
 
-type ChatbotConversationContextFields = {
-  currentQuestion?: string | null
-  activeChoices?: string | null
-  conversationState?: string | null
-}
-
-type ChatbotConversationRowWithContext = ChatbotConversationRow & ChatbotConversationContextFields
-
 type ChatbotMessageRow = Prisma.ChatbotMessageGetPayload<Record<string, never>>
 
 type InquiryCreateData = Prisma.ChatbotInquiryCreateInput
@@ -74,7 +66,7 @@ export async function createConversation(input: {
     },
   })
 
-  return toDomainConversation({ ...row, ...emptyConversationContextFields(), messages: [] })
+  return toDomainConversation({ ...row, messages: [] })
 }
 
 export async function loadConversationBySessionId(
@@ -90,8 +82,7 @@ export async function loadConversationBySessionId(
   })
 
   if (!row) return null
-  const contextFields = await loadConversationContextFields(row.id)
-  return toDomainConversation({ ...row, ...contextFields })
+  return toDomainConversation(row)
 }
 
 export async function loadConversationById(
@@ -107,8 +98,7 @@ export async function loadConversationById(
   })
 
   if (!row) return null
-  const contextFields = await loadConversationContextFields(row.id)
-  return toDomainConversation({ ...row, ...contextFields })
+  return toDomainConversation(row)
 }
 
 export async function appendMessage(input: {
@@ -174,12 +164,14 @@ export async function truncateConversationFromMessage(input: {
         referenceUrls: null,
       },
     })
-    await tx.$executeRawUnsafe(
-      `UPDATE ChatbotConversation
-       SET currentQuestion = NULL, activeChoices = NULL, conversationState = NULL
-       WHERE id = ?`,
-      input.conversationId,
-    )
+    await tx.chatbotConversation.update({
+      where: { id: input.conversationId },
+      data: {
+        currentQuestion: null,
+        activeChoices: null,
+        conversationState: null,
+      },
+    })
 
     return { deletedCount: deleteResult.count }
   })
@@ -237,13 +229,10 @@ export async function updateConversationRouting(input: {
     data: {
       routingDecision: input.routingDecision,
       ...(input.jobContext ? toJobContextUpdateData(input.jobContext) : {}),
+      currentQuestion: input.currentQuestion ?? null,
+      activeChoices: serializeActiveChoices(input.activeChoices ?? null),
+      conversationState: serializeConversationState(input.conversationState ?? null),
     },
-  })
-  await updateConversationContextFields({
-    conversationId: input.conversationId,
-    currentQuestion: input.currentQuestion ?? null,
-    activeChoices: input.activeChoices ? JSON.stringify(input.activeChoices) : null,
-    conversationState: input.conversationState ? JSON.stringify(input.conversationState) : null,
   })
 }
 
@@ -280,7 +269,7 @@ export async function linkChatToBookingGroup(input: {
   })
 }
 
-function toDomainConversation(row: ChatbotConversationRowWithContext): ChatbotConversation {
+function toDomainConversation(row: ChatbotConversationRow): ChatbotConversation {
   const routingDecisionKind = toRoutingDecisionKind(row.routingDecision)
   const jobContext = toJobContext(row)
   const activeChoices = toSurveyChoiceSet(row.activeChoices)
@@ -403,56 +392,6 @@ function toJobContextUpdateData(jobContext: JobContext): Prisma.ChatbotConversat
   }
 }
 
-async function loadConversationContextFields(conversationId: string): Promise<{
-  currentQuestion: string | null
-  activeChoices: string | null
-  conversationState: string | null
-}> {
-  const rows = await prisma.$queryRawUnsafe<
-    Array<{
-      currentQuestion: string | null
-      activeChoices: string | null
-      conversationState: string | null
-    }>
-  >(
-    `SELECT currentQuestion, activeChoices, conversationState
-     FROM ChatbotConversation
-     WHERE id = ?`,
-    conversationId,
-  )
-
-  return rows[0] ?? emptyConversationContextFields()
-}
-
-function emptyConversationContextFields(): {
-  currentQuestion: null
-  activeChoices: null
-  conversationState: null
-} {
-  return {
-    currentQuestion: null,
-    activeChoices: null,
-    conversationState: null,
-  }
-}
-
-async function updateConversationContextFields(input: {
-  conversationId: string
-  currentQuestion: string | null
-  activeChoices: string | null
-  conversationState: string | null
-}): Promise<void> {
-  await prisma.$executeRawUnsafe(
-    `UPDATE ChatbotConversation
-     SET currentQuestion = ?, activeChoices = ?, conversationState = ?
-     WHERE id = ?`,
-    input.currentQuestion,
-    input.activeChoices,
-    input.conversationState,
-    input.conversationId,
-  )
-}
-
 function toJobContext(row: ChatbotConversationRow): Partial<JobContext> {
   const jobContext: Partial<JobContext> = {}
   const finalMedium = toFinalMedium(row.finalMedium)
@@ -545,6 +484,14 @@ function toSurveyChoiceSet(value: string | null | undefined): SurveyChoiceSet | 
   return normalized
 }
 
+function serializeActiveChoices(value: SurveyChoiceSet | null): string | null {
+  return value ? JSON.stringify(value) : null
+}
+
+function serializeConversationState(value: ConversationState | null): string | null {
+  return value ? JSON.stringify(value) : null
+}
+
 function toConversationState(value: string | null | undefined): Partial<ConversationState> | undefined {
   if (value == null) return undefined
   const parsed = parseJson(value, "conversation state")
@@ -614,5 +561,7 @@ export const __chatbotRepositoryTestUtils = {
   toDomainConversation,
   toDomainMessage,
   toInquiryCreateData,
+  serializeActiveChoices,
+  serializeConversationState,
   normalizeSurveyChoiceSet,
 }

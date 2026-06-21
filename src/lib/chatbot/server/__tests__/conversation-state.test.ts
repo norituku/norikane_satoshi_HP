@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { ChatbotConversation, ChatbotMessage, JobContext } from "@/lib/chatbot/domain"
-import { buildConversationState } from "@/lib/chatbot/server/conversation-state"
+import { buildConversationState, deriveUserTurnCount } from "@/lib/chatbot/server/conversation-state"
 
 function conversation(overrides: Partial<ChatbotConversation> = {}): ChatbotConversation {
   return {
@@ -83,7 +83,7 @@ describe("buildConversationState", () => {
       hasAdditionalWork: true,
       hasContactEmail: true,
       contactEmail: "client@example.test",
-      turnCount: 1,
+      turnCount: 2,
       durationContext: {
         workflowFacts: {
           finalMedium: "web",
@@ -99,5 +99,51 @@ describe("buildConversationState", () => {
         "additional-work": "簡単な肌補正",
       },
     })
+  })
+
+  it("treats turnCount as derived from the persisted message history and the current user turn", () => {
+    const state = buildConversationState({
+      conversation: conversation({
+        context: {
+          sessionId: "session_1",
+          conversationState: {
+            hasFinalMedium: false,
+            hasJobKind: false,
+            hasAdditionalWork: false,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 99,
+          },
+        },
+        messages: [
+          { id: "u1", role: "user", content: "最初です。", createdAt: "2026-06-21T00:00:00.000Z" },
+          { id: "a1", role: "assistant", content: "確認します。", createdAt: "2026-06-21T00:00:10.000Z" },
+          { id: "u2", role: "user", content: "次です。", createdAt: "2026-06-21T00:01:00.000Z" },
+        ],
+      }),
+      userMessage: userMessage(),
+      inputConversationState: { turnCount: 42 },
+      activeChoiceConversationState: { turnCount: 7 },
+      jobContext: baseJobContext,
+      durationStatePatch: { turnCount: 3 },
+    })
+
+    expect(state.turnCount).toBe(3)
+  })
+
+  it("derives only user turns for routing thresholds", () => {
+    expect(
+      deriveUserTurnCount(
+        [
+          { id: "u1", role: "user", content: "最初です。", createdAt: "2026-06-21T00:00:00.000Z" },
+          { id: "s1", role: "system", content: "内部メモ", createdAt: "2026-06-21T00:00:05.000Z" },
+          { id: "a1", role: "assistant", content: "確認します。", createdAt: "2026-06-21T00:00:10.000Z" },
+        ],
+        userMessage(),
+      ),
+    ).toBe(2)
   })
 })

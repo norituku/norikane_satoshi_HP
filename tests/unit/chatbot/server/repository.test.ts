@@ -137,6 +137,34 @@ describe("chatbot repository mapping helpers", () => {
     })
   })
 
+  it("serializes repository-owned JSON context fields through typed helpers", () => {
+    const activeChoices = {
+      id: "final-medium",
+      question: "最終媒体を教えてください",
+      selectionMode: "single" as const,
+      choices: [{ id: "web", label: "Web" }],
+    }
+    const conversationState = {
+      hasFinalMedium: true,
+      hasJobKind: false,
+      hasAdditionalWork: false,
+      hasDocumentaryAttachments: false,
+      hasWorkSite: false,
+      hasReferenceUrls: false,
+      hasContactEmail: false,
+      hasDesiredSchedule: false,
+      turnCount: 2,
+    }
+
+    expect(JSON.parse(__chatbotRepositoryTestUtils.serializeActiveChoices(activeChoices) ?? "")).toMatchObject(activeChoices)
+    expect(JSON.parse(__chatbotRepositoryTestUtils.serializeConversationState(conversationState) ?? "")).toMatchObject({
+      hasFinalMedium: true,
+      turnCount: 2,
+    })
+    expect(__chatbotRepositoryTestUtils.serializeActiveChoices(null)).toBeNull()
+    expect(__chatbotRepositoryTestUtils.serializeConversationState(null)).toBeNull()
+  })
+
   it("maps a conversation summary into ChatbotInquiry create data", () => {
     const sentAt = new Date("2026-05-23T11:00:00.000Z")
     const result = __chatbotRepositoryTestUtils.toInquiryCreateData({

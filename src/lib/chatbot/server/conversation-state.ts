@@ -8,9 +8,7 @@ export function buildConversationState(input: {
   jobContext: JobContext
   durationStatePatch?: Partial<ConversationState>
 }): ConversationState {
-  const userTurnCount =
-    input.conversation.messages.filter((message) => message.role === "user").length +
-    (input.userMessage.role === "user" ? 1 : 0)
+  const userTurnCount = deriveUserTurnCount(input.conversation.messages, input.userMessage)
   const stored = input.conversation.context.conversationState ?? {}
   const inputState = input.inputConversationState ?? {}
   const activeChoiceState = input.activeChoiceConversationState ?? {}
@@ -25,11 +23,11 @@ export function buildConversationState(input: {
     hasReferenceUrls: false,
     hasContactEmail: false,
     hasDesiredSchedule: false,
-    turnCount: userTurnCount,
     ...stored,
     ...inputState,
     ...activeChoiceState,
     ...durationState,
+    turnCount: userTurnCount,
   }
   const otherChoiceComments = {
     ...(stored.otherChoiceComments ?? {}),
@@ -44,4 +42,14 @@ export function buildConversationState(input: {
     ...(input.jobContext.jobKind ? { hasJobKind: true } : {}),
     ...(typeof input.jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
   }
+}
+
+export function deriveUserTurnCount(
+  history: readonly ChatbotMessage[],
+  currentMessage: ChatbotMessage,
+): number {
+  return (
+    history.filter((message) => message.role === "user").length +
+    (currentMessage.role === "user" ? 1 : 0)
+  )
 }

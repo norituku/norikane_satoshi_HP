@@ -1108,7 +1108,13 @@ describe("handleChatbotMessage user context", () => {
   })
 
   it("shows a consultation summary form when a settled no-schedule consultation can be emailed", async () => {
-    const harness = setup()
+    const harness = setup({
+      existingConversation: conversation({
+        messages: Array.from({ length: 7 }, (_, index) =>
+          message("user", `事前確認 ${index + 1}`),
+        ),
+      }),
+    })
     harness.generate.mockResolvedValueOnce({
       rawText: "相談内容を整理して送信できます。",
       tier: "tier-3-ollama-deepseek",
