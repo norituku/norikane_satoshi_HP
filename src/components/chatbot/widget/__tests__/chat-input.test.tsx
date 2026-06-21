@@ -16,6 +16,14 @@ describe("ChatInput", () => {
     expect(screen.getByPlaceholderText("案件内容を書いてください")).toBeInTheDocument()
   })
 
+  it("shows the default multiline and submit shortcut guidance", () => {
+    render(<ChatInput onSubmit={vi.fn()} />)
+
+    expect(
+      screen.getByPlaceholderText("案件内容を書く（Enterで改行、Cmd（Ctrl）+ Enterで送信）"),
+    ).toBeInTheDocument()
+  })
+
   it("uses the same font family as submitted conversation content", () => {
     render(<ChatInput onSubmit={vi.fn()} />)
 
@@ -63,6 +71,17 @@ describe("ChatInput", () => {
     fireEvent.change(input, { target: { value: "Ctrl送信" } })
     fireEvent.keyDown(input, { key: "Enter", ctrlKey: true })
     expect(onSubmit).toHaveBeenLastCalledWith("Ctrl送信")
+  })
+
+  it("does not submit while IME composition is active", () => {
+    const onSubmit = vi.fn()
+    render(<ChatInput onSubmit={onSubmit} />)
+
+    const input = screen.getByLabelText("相談内容")
+    fireEvent.change(input, { target: { value: "変換中" } })
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, isComposing: true })
+
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it("shows a stop button while stopping is enabled", () => {

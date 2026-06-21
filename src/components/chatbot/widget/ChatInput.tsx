@@ -20,7 +20,7 @@ export function ChatInput({
   onStop,
   disabled = false,
   stoppingEnabled = false,
-  placeholder = "案件内容を書く",
+  placeholder = "案件内容を書く（Enterで改行、Cmd（Ctrl）+ Enterで送信）",
 }: ChatInputProps) {
   const [text, setText] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -46,6 +46,7 @@ export function ChatInput({
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return
     if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return
     event.preventDefault()
     submitCurrentText()
