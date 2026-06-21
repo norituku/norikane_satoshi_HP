@@ -7,17 +7,13 @@ import { DemoStage } from "@/components/chatbot/demo"
 import { mapErrorCodeToJa } from "@/lib/booking/domain/api-schema"
 import { bookingOnboardingDemoScript } from "@/lib/chatbot/demo"
 import type { CandidateWindow, JobContext, WorkflowEstimate } from "@/lib/chatbot/domain/workflow-estimate"
-import { isChatbotOperationError, postChatbotJson } from "./api"
+import { type BookingCompletionSummary, isChatbotOperationError, postChatbotJson } from "./api"
 import {
   CHATBOT_CONVERSATION_CONTENT_CLASS_NAME,
   CHATBOT_CONVERSATION_CONTENT_STYLE,
 } from "./conversationTypography"
 
-type BookingResult = {
-  bookingGroupId: string
-  bookingIds?: string[]
-  scheduleLabel?: string
-}
+type BookingResult = BookingCompletionSummary
 
 type ChatbotBookingCardProps = {
   conversationId?: string
@@ -31,6 +27,7 @@ type ChatbotBookingCardProps = {
   defaultCompanyName?: string
   defaultDueDate?: string
   defaultMemo?: string
+  completedBooking?: BookingCompletionSummary
   showDemo?: boolean
   onBooked?: (result: BookingResult) => void
   onRequireLogin?: () => void
@@ -177,6 +174,60 @@ function formatSelectedSlots(slots: CandidateWindow[]): string {
   return slots.map((slot) => formatCandidateDate(slot.start)).join("、")
 }
 
+function displayOptionalValue(value: string | undefined): string {
+  return value?.trim() ? value.trim() : "未入力"
+}
+
+function BookingCompletionView({ booking }: { booking: BookingCompletionSummary }) {
+  return (
+    <section className="glass-card space-y-5 p-5" aria-label="予約送信完了">
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-hp-muted">Booking</p>
+        <h2 className="mt-1 text-base font-semibold text-hp">予約を受け付けました</h2>
+      </div>
+
+      <div className="glass-inset space-y-3 p-4" role="status">
+        <div>
+          <p className="break-all text-sm font-semibold text-hp">予約番号: {booking.bookingGroupId}</p>
+        </div>
+        <dl className="grid gap-2 text-sm">
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">案件名</dt>
+            <dd className="mt-0.5 whitespace-pre-wrap text-hp">{booking.projectTitle}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">担当者氏名</dt>
+            <dd className="mt-0.5 text-hp">{booking.contactName}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">メールアドレス</dt>
+            <dd className="mt-0.5 break-all text-hp">{booking.contactEmail}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">会社名</dt>
+            <dd className="mt-0.5 text-hp">{displayOptionalValue(booking.companyName)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">候補日</dt>
+            <dd className="mt-0.5 text-hp">{booking.scheduleLabel}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-hp-muted">補足ノート</dt>
+            <dd className="mt-0.5 whitespace-pre-wrap text-hp">{displayOptionalValue(booking.memo)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <p
+        className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} text-sm font-medium text-hp`}
+        style={CHATBOT_CONVERSATION_CONTENT_STYLE}
+      >
+        ありがとうございます。内容を確認してご連絡します。
+      </p>
+    </section>
+  )
+}
+
 function safeJstMonthKey(value: string | undefined): string | null {
   if (!value) return null
   const date = /^\d{4}-\d{2}$/.test(value)
@@ -225,6 +276,7 @@ export function ChatbotBookingCard({
   defaultCompanyName = "",
   defaultDueDate = "",
   defaultMemo = "",
+  completedBooking,
   showDemo = false,
   onBooked,
 }: ChatbotBookingCardProps) {
@@ -269,7 +321,7 @@ export function ChatbotBookingCard({
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [booked, setBooked] = useState<BookingResult | null>(null)
+  const [booked, setBooked] = useState<BookingResult | null>(completedBooking ?? null)
   const projectTitleRef = useRef<HTMLTextAreaElement | null>(null)
 
   const currentJstDateKey = todayJstDateKey()
@@ -338,6 +390,13 @@ export function ChatbotBookingCard({
 
     setSubmitting(true)
     setErrorMessage(null)
+    const submission = {
+      projectTitle: projectTitle.trim(),
+      contactName: contactName.trim(),
+      contactEmail: trimmedContactEmail,
+      companyName: companyName.trim(),
+      memo: memo.trim(),
+    }
 
     try {
       const payload = await postChatbotJson<ApiResponse>(
@@ -345,13 +404,13 @@ export function ChatbotBookingCard({
         API_PATH,
         {
           conversationId,
-          projectTitle: projectTitle.trim(),
-          contactName: contactName.trim(),
-          contactEmail: trimmedContactEmail,
-          companyName: companyName.trim(),
+          projectTitle: submission.projectTitle,
+          contactName: submission.contactName,
+          contactEmail: submission.contactEmail,
+          companyName: submission.companyName,
           phone: phone.trim(),
           dueDate,
-          memo: memo.trim(),
+          memo: submission.memo,
           agreed,
           selectedSlots: selectedSlots.map((slot) => ({
             start: slot.start,
@@ -371,6 +430,7 @@ export function ChatbotBookingCard({
         bookingGroupId: payload.bookingGroupId,
         bookingIds: payload.bookingIds,
         scheduleLabel: payload.scheduleLabel ?? (selectedSlots.length > 0 ? formatSelectedSlots(selectedSlots) : "候補日未選択"),
+        ...submission,
       }
       setBooked(result)
       onBooked?.(result)
@@ -383,6 +443,10 @@ export function ChatbotBookingCard({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (booked) {
+    return <BookingCompletionView booking={booked} />
   }
 
   const body = (
@@ -405,14 +469,6 @@ export function ChatbotBookingCard({
           </p>
         ) : null}
       </div>
-
-      {booked ? (
-        <div className="glass-inset space-y-2 p-4" role="status">
-          <p className="text-sm font-semibold text-hp">予約を受け付けました</p>
-          <p className="text-xs text-hp-muted">候補日: {booked.scheduleLabel ?? "候補日未選択"}</p>
-          <p className="break-all text-xs text-hp-muted">予約番号: {booked.bookingGroupId}</p>
-        </div>
-      ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <fieldset className="space-y-2">

@@ -12,6 +12,7 @@ import {
   isChatbotRequestCancelledError,
   submitChatbotInquiry,
   submitChatbotMessage,
+  type BookingCompletionSummary,
   type ChatbotResponseTier,
   type SubmitInquiryInput,
   type WidgetUi,
@@ -474,6 +475,16 @@ export function WidgetShell({
     }
   }
 
+  const handleBookingCompleted = (booking: BookingCompletionSummary) => {
+    setActiveUi((currentUi) => {
+      if (currentUi.kind !== "booking-card") return currentUi
+      return {
+        ...currentUi,
+        completedBooking: booking,
+      }
+    })
+  }
+
   const isSidePeek = isDesktopLayout && displayMode === "side-peek"
   const isFloating = isDesktopLayout && displayMode === "floating"
   const shellSizeClassName = isDesktopLayout
@@ -593,7 +604,13 @@ export function WidgetShell({
             ))}
             {submitting ? <ThinkingIndicator showDelayNotice={showThinkingDelayNotice} /> : null}
           </div>
-          <ActiveWidgetUi ui={activeUi} conversationId={conversationId} onSubmit={handleSubmit} onInquirySubmit={handleInquirySubmit} />
+          <ActiveWidgetUi
+            ui={activeUi}
+            conversationId={conversationId}
+            onSubmit={handleSubmit}
+            onInquirySubmit={handleInquirySubmit}
+            onBookingCompleted={handleBookingCompleted}
+          />
         </div>
         {shouldShowLatestButton ? (
           <button
@@ -638,11 +655,13 @@ function ActiveWidgetUi({
   conversationId,
   onSubmit,
   onInquirySubmit,
+  onBookingCompleted,
 }: {
   ui: WidgetUi
   conversationId?: string
   onSubmit: (text: string) => void
   onInquirySubmit: (input: Omit<SubmitInquiryInput, "conversationId">) => void
+  onBookingCompleted: (booking: BookingCompletionSummary) => void
 }) {
   if (ui.kind === "choice-panel") {
     return (
@@ -668,6 +687,8 @@ function ActiveWidgetUi({
         defaultCompanyName={ui.bookingPrefill?.companyName}
         defaultDueDate={ui.bookingPrefill?.dueDate ?? ui.jobContext.publicReleaseDate}
         defaultMemo={buildBookingSupplementalNote(ui.jobContext, ui.bookingPrefill?.memo)}
+        completedBooking={ui.completedBooking}
+        onBooked={onBookingCompleted}
       />
     )
   }

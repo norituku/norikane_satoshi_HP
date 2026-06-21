@@ -13,6 +13,17 @@ export type WidgetAssistantMessage = {
   createdAt: string
 }
 
+export type BookingCompletionSummary = {
+  bookingGroupId: string
+  bookingIds?: string[]
+  scheduleLabel: string
+  projectTitle: string
+  contactName: string
+  contactEmail: string
+  companyName?: string
+  memo?: string
+}
+
 export type WidgetUi =
   | { kind: "none" }
   | { kind: "choice-panel"; choiceSet: NonNullable<Extract<RoutingDecision, { kind: "continue" }>["presentChoices"]> }
@@ -22,6 +33,7 @@ export type WidgetUi =
       busyDateKeys?: Extract<RoutingDecision, { kind: "to-booking-inline" }>["busyDateKeys"]
       jobContext: JobContext
       bookingPrefill?: BookingCardPrefill
+      completedBooking?: BookingCompletionSummary
     }
   | {
       kind: "direct-contact-card"

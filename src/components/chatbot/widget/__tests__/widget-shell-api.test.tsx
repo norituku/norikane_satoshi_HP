@@ -669,6 +669,83 @@ describe("WidgetShell API wiring", () => {
     })
   })
 
+  it("persists and restores the booking completion screen", async () => {
+    const slot = {
+      start: "2026-07-10T01:00:00.000Z",
+      end: "2026-07-10T02:00:00.000Z",
+      label: "7月10日 午前",
+    }
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === "/api/chatbot/message") {
+        return Promise.resolve(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            assistantMessage: {
+              ...assistantMessage,
+              content: "候補日時から予約できます",
+            },
+            tier: "tier-3-ollama-deepseek",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [slot],
+              jobContext: {
+                finalMedium: "web",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                workflowEstimate: { stages: [], totalMinDays: 1, totalMaxDays: 1, riskFlags: [] },
+              },
+              bookingPrefill: {
+                projectTitle: "ライブ案件",
+                contactName: "田中",
+                contactEmail: "client@example.jp",
+                companyName: "株式会社サンプル",
+                memo: "観客の顔ぼかし30カット以上",
+              },
+            },
+          }),
+        )
+      }
+      if (url === "/api/chatbot/booking-candidates") {
+        return Promise.resolve(mockJsonResponse({ candidates: [slot], busyDateKeys: [] }))
+      }
+      if (url === "/api/chatbot/create-booking-from-chat") {
+        return Promise.resolve(mockJsonResponse({ bookingGroupId: "group_1", bookingIds: ["slot_1"] }))
+      }
+      return Promise.resolve(mockJsonResponse({}))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage()
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText(/予約内容に同意します/))
+    fireEvent.click(screen.getByRole("button", { name: "予約内容を送信" }))
+
+    expect(await screen.findByLabelText("予約送信完了")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_1")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(stored.activeUi.completedBooking).toMatchObject({
+        bookingGroupId: "group_1",
+        projectTitle: "ライブ案件",
+        contactName: "田中",
+        contactEmail: "client@example.jp",
+        companyName: "株式会社サンプル",
+        memo: expect.stringContaining("観客の顔ぼかし30カット以上"),
+      })
+    })
+
+    cleanup()
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(await screen.findByLabelText("予約送信完了")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_1")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
+  })
+
   it("renders InquiryForm for tier4 responses and posts submit-inquiry", async () => {
     const fetchMock = vi
       .fn()

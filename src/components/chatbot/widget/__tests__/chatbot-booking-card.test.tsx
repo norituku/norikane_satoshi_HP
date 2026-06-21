@@ -766,7 +766,15 @@ describe("ChatbotBookingCard", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       selectedSlots: [],
     })
-    expect(await screen.findByText("候補日: 候補日未選択")).toBeInTheDocument()
+    const completion = await screen.findByLabelText("予約送信完了")
+    expect(within(completion).getByText("候補日未選択")).toBeInTheDocument()
+    expect(within(completion).getByText("予約番号: group_1")).toBeInTheDocument()
+    expect(within(completion).getByText("CM grading")).toBeInTheDocument()
+    expect(within(completion).getByText("田中")).toBeInTheDocument()
+    expect(within(completion).getByText("client@example.jp")).toBeInTheDocument()
+    expect(within(completion).getByText("株式会社サンプル")).toBeInTheDocument()
+    expect(within(completion).getByText("ありがとうございます。内容を確認してご連絡します。")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
   })
 
   it("does not fetch without agreement", () => {
@@ -841,10 +849,44 @@ describe("ChatbotBookingCard", () => {
 
     expect(await screen.findByText("予約を受け付けました")).toBeInTheDocument()
     expect(screen.getByText("予約番号: group_1")).toBeInTheDocument()
+    expect(screen.getByText("CM grading")).toBeInTheDocument()
+    expect(screen.getByText("田中")).toBeInTheDocument()
+    expect(screen.getByText("client@example.jp")).toBeInTheDocument()
+    expect(screen.getByText("株式会社サンプル")).toBeInTheDocument()
+    expect(screen.getByText("6/10(水)、6/11(木)")).toBeInTheDocument()
+    expect(screen.getByText("ありがとうございます。内容を確認してご連絡します。")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
     expect(screen.queryByText(/bookingGroupId:/)).not.toBeInTheDocument()
     expect(onBooked).toHaveBeenCalledWith(expect.objectContaining({
       bookingGroupId: "group_1",
       bookingIds: ["slot_1"],
+      projectTitle: "CM grading",
+      contactName: "田中",
+      contactEmail: "client@example.jp",
+      companyName: "株式会社サンプル",
     }))
+  })
+
+  it("restores the completion screen from a completed booking payload", () => {
+    renderCard({
+      completedBooking: {
+        bookingGroupId: "group_restored",
+        scheduleLabel: "候補日未選択",
+        projectTitle: "復元案件",
+        contactName: "佐藤",
+        contactEmail: "restore@example.jp",
+        companyName: "株式会社復元",
+        memo: "復元メモ",
+      },
+    })
+
+    expect(screen.getByLabelText("予約送信完了")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_restored")).toBeInTheDocument()
+    expect(screen.getByText("復元案件")).toBeInTheDocument()
+    expect(screen.getByText("佐藤")).toBeInTheDocument()
+    expect(screen.getByText("restore@example.jp")).toBeInTheDocument()
+    expect(screen.getByText("株式会社復元")).toBeInTheDocument()
+    expect(screen.getByText("復元メモ")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
   })
 })
