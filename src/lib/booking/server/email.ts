@@ -4,11 +4,15 @@ let cached: Resend | null = null
 
 export type BookingEmailResult = { skipped: true } | { skipped: false; id: string | null }
 
+type BookingScheduleSlot = { start: string | Date; end: string | Date }
+
 export type BookingEmailArgs = {
   to: string
   projectTitle: string
-  start: string | Date
-  end: string | Date
+  start?: string | Date
+  end?: string | Date
+  selectedSlots?: BookingScheduleSlot[]
+  bookingGroupId?: string
   workScopes: string[]
   otherWorkDetail?: string
   estimatedDuration?: string
@@ -30,7 +34,7 @@ export type ChatbotBookingOwnerNotificationArgs = {
   contactEmail: string
   companyName?: string
   memo?: string
-  selectedSlots: { start: string | Date; end: string | Date }[]
+  selectedSlots: BookingScheduleSlot[]
   submittedAt?: string | Date
 }
 
@@ -74,6 +78,10 @@ function formatWork(args: Pick<BookingEmailArgs, "workScopes" | "otherWorkDetail
   return [scopes, detail].filter(Boolean).join("\n")
 }
 
+function formatBookingWork(args: Pick<BookingEmailArgs, "workScopes" | "otherWorkDetail" | "estimatedDuration">): string {
+  return formatWork(args) || "-"
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -93,7 +101,7 @@ function paragraphsToHtml(lines: string[]): string {
 }
 
 async function sendBookingEmail(args: {
-  tag: "confirmed" | "time_changed" | "chatbot_owner"
+  tag: "tentative_hold" | "time_changed" | "chatbot_owner"
   to: string
   replyTo?: string
   subject: string
@@ -134,6 +142,18 @@ function formatSelectedSlots(slots: ChatbotBookingOwnerNotificationArgs["selecte
   return slots.map((slot) => formatSchedule(slot.start, slot.end)).join("\n")
 }
 
+function getBookingEmailSlots(args: BookingEmailArgs): BookingScheduleSlot[] {
+  if (args.selectedSlots?.length) return args.selectedSlots
+  if (args.start && args.end) return [{ start: args.start, end: args.end }]
+  return []
+}
+
+function getBookingEmailSubjectSchedule(slots: BookingScheduleSlot[]): string {
+  if (slots.length === 0) return "候補日未選択"
+  if (slots.length === 1) return formatSchedule(slots[0].start, slots[0].end)
+  return `${slots.length}件の仮キープ候補`
+}
+
 export async function sendChatbotBookingOwnerNotification(
   args: ChatbotBookingOwnerNotificationArgs,
 ): Promise<BookingEmailResult> {
@@ -164,20 +184,31 @@ export async function sendChatbotBookingOwnerNotification(
 }
 
 export async function sendBookingConfirmedEmail(args: BookingEmailArgs): Promise<BookingEmailResult> {
-  const schedule = formatSchedule(args.start, args.end)
-  const subject = `【予約確定】${args.projectTitle} のご予約を確定しました（${schedule}）`
+  const slots = getBookingEmailSlots(args)
+  const schedule = formatSelectedSlots(slots)
+  const subject = `【仮キープ受付】${args.projectTitle} のご相談を受け付けました（${getBookingEmailSubjectSchedule(slots)}）`
+  const scheduleLine = slots.length > 0
+    ? `仮キープ候補日:\n${schedule}`
+    : "候補日: 候補日未選択（候補日未選択の相談として受け付けました）"
+  const scheduleNote = slots.length > 0
+    ? "選択された日程は実施日ではなく、仮キープ候補としてお預かりしています。"
+    : "候補日は未選択のため、日程は後ほど相談させてください。"
+  const bookingGroupLine = args.bookingGroupId ? [`予約番号: ${args.bookingGroupId}`] : []
   return sendBookingEmail({
-    tag: "confirmed",
+    tag: "tentative_hold",
     to: args.to,
     subject,
     lines: [
-      "このたびはご予約いただきありがとうございます。本予約として確定しました。",
+      "このたびはご相談いただきありがとうございます。仮キープ受付として内容をお預かりしました。",
+      scheduleNote,
+      "内容を確認のうえ、後ほどのりかね本人から直接ご連絡します。",
       "",
       `案件名: ${args.projectTitle}`,
-      `日時: ${schedule}`,
-      `作業内容:\n${formatWork(args)}`,
+      ...bookingGroupLine,
+      scheduleLine,
+      `作業内容:\n${formatBookingWork(args)}`,
       "",
-      "変更やキャンセルのご相談がある場合は、このメールへの返信でお知らせください。",
+      "このメールは受付内容の控えです。変更や追加のご相談がある場合は、このメールへの返信でお知らせください。",
       ...signatureLines(),
     ],
   })

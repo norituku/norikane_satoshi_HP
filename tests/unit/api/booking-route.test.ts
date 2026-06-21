@@ -266,7 +266,7 @@ describe("POST /api/booking", () => {
 
     expect(response.status).toBe(200)
     expect(warn).toHaveBeenCalledWith(
-      "[email failed] tag=confirmed to=satoshi@example.com",
+      "[email failed] tag=tentative_hold to=satoshi@example.com",
       "resend down",
     )
     warn.mockRestore()
@@ -281,7 +281,7 @@ describe("POST /api/booking", () => {
 
     expect(response.status).toBe(200)
     expect(warn).toHaveBeenCalledWith(
-      "[email failed] tag=confirmed to=satoshi@example.com",
+      "[email failed] tag=tentative_hold to=satoshi@example.com",
       "email send failed",
     )
     warn.mockRestore()

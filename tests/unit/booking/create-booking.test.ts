@@ -100,6 +100,15 @@ describe("createBookingFromApiInput", () => {
     expect(service.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({
       summary: "【仮キープ】Color grading",
     }))
+    expect(service.sendBookingConfirmedEmail).toHaveBeenCalledWith(expect.objectContaining({
+      bookingGroupId: "group_1",
+      selectedSlots: [
+        {
+          start: "2026-06-10T01:00:00.000Z",
+          end: "2026-06-10T03:00:00.000Z",
+        },
+      ],
+    }))
   })
 
   it("persists zero selected slots as an unscheduled chatbot booking request without creating a calendar event", async () => {
@@ -134,6 +143,9 @@ describe("createBookingFromApiInput", () => {
     )
     expect(service.createCalendarEvent).not.toHaveBeenCalled()
     expect(service.invalidateCalendarFreeBusyCacheForUser).not.toHaveBeenCalled()
-    expect(service.sendBookingConfirmedEmail).not.toHaveBeenCalled()
+    expect(service.sendBookingConfirmedEmail).toHaveBeenCalledWith(expect.objectContaining({
+      bookingGroupId: "group_1",
+      selectedSlots: [],
+    }))
   })
 })

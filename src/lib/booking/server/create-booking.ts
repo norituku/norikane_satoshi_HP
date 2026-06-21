@@ -50,13 +50,12 @@ function createSummary(input: BookingApiInput): string {
   return `【仮キープ】${input.projectTitle}`
 }
 
-function createBookingEmailArgs(input: BookingApiInput, to: string): BookingEmailArgs {
-  const slot = input.selectedSlots[0]
+function createBookingEmailArgs(input: BookingApiInput, to: string, bookingGroupId: string): BookingEmailArgs {
   return {
     to,
     projectTitle: input.projectTitle,
-    start: slot.start,
-    end: slot.end,
+    selectedSlots: input.selectedSlots,
+    bookingGroupId,
     workScopes: [],
     otherWorkDetail: input.memo,
     estimatedDuration: "consult",
@@ -175,6 +174,11 @@ export async function createBookingFromApiInput({
   const bookingIds = bookingGroup.timeSlots.map((slot) => slot.id)
 
   if (!hasSelectedSlots) {
+    await warnOnEmailFailure(
+      sendBookingConfirmedEmail(createBookingEmailArgs(input, userEmail, bookingGroup.id)),
+      "tentative_hold",
+      userEmail,
+    )
     return {
       body: {
         status: "schedule_unselected",
@@ -207,8 +211,8 @@ export async function createBookingFromApiInput({
     await confirmBooking(null)
     invalidateCalendarFreeBusyCacheForUser(userId, teamId)
     await warnOnEmailFailure(
-      sendBookingConfirmedEmail(createBookingEmailArgs(input, userEmail)),
-      "confirmed",
+      sendBookingConfirmedEmail(createBookingEmailArgs(input, userEmail, bookingGroup.id)),
+      "tentative_hold",
       userEmail,
     )
     console.warn("Booking created without Google Calendar event: GOOGLE_CALENDAR_BUSY_SOURCE_ID is not set")
@@ -306,8 +310,8 @@ export async function createBookingFromApiInput({
 
   invalidateCalendarFreeBusyCacheForUser(userId, teamId)
   await warnOnEmailFailure(
-    sendBookingConfirmedEmail(createBookingEmailArgs(input, userEmail)),
-    "confirmed",
+    sendBookingConfirmedEmail(createBookingEmailArgs(input, userEmail, bookingGroup.id)),
+    "tentative_hold",
     userEmail,
   )
 

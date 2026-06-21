@@ -36,12 +36,12 @@ describe("booking email sender", () => {
       estimatedDuration: "consult",
     })).resolves.toEqual({ skipped: true })
 
-    expect(warn).toHaveBeenCalledWith("[email skipped] tag=confirmed to=satoshi@example.com")
+    expect(warn).toHaveBeenCalledWith("[email skipped] tag=tentative_hold to=satoshi@example.com")
     expect(mocks.Resend).not.toHaveBeenCalled()
     warn.mockRestore()
   })
 
-  it("sends confirmed booking mail with custom sender and escaped HTML", async () => {
+  it("sends tentative hold customer mail with custom sender and escaped HTML", async () => {
     process.env.RESEND_API_KEY = "resend_key"
     process.env.RESEND_FROM_EMAIL = "booking@norikane.studio"
     mocks.send.mockResolvedValue({ data: { id: "email_1" }, error: null })
@@ -50,8 +50,13 @@ describe("booking email sender", () => {
     await expect(sendBookingConfirmedEmail({
       to: "client@example.com",
       projectTitle: "<Project>",
-      start: new Date("2026-06-10T01:00:00.000Z"),
-      end: new Date("2026-06-10T02:00:00.000Z"),
+      selectedSlots: [
+        {
+          start: new Date("2026-06-10T01:00:00.000Z"),
+          end: new Date("2026-06-10T02:00:00.000Z"),
+        },
+      ],
+      bookingGroupId: "group_1",
       workScopes: ["grading", "online"],
       otherWorkDetail: "detail & note",
       estimatedDuration: "consult",
@@ -63,10 +68,73 @@ describe("booking email sender", () => {
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       from: "のりかね映像設計室 <booking@norikane.studio>",
       to: "client@example.com",
-      subject: expect.stringContaining("【予約確定】<Project>"),
+      subject: expect.stringContaining("【仮キープ受付】<Project>"),
       text: expect.stringContaining("grading / online\ndetail & note"),
       html: expect.stringContaining("&lt;Project&gt;"),
     }))
+    const message = mocks.send.mock.calls[0][0]
+    expect(message.text).toEqual(expect.stringContaining("仮キープ受付として内容をお預かりしました"))
+    expect(message.text).toEqual(expect.stringContaining("後ほどのりかね本人から直接ご連絡します"))
+    expect(message.text).toEqual(expect.stringContaining("仮キープ候補日:"))
+    expect(message.text).toEqual(expect.stringContaining("予約番号: group_1"))
+    expect(message.subject).not.toMatch(/予約確定|本予約として確定|確定しました/)
+    expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
+  })
+
+  it("marks zero selected dates as an unscheduled tentative consultation in customer mail", async () => {
+    process.env.RESEND_API_KEY = "resend_key"
+    mocks.send.mockResolvedValue({ data: { id: "email_zero_1" }, error: null })
+    const { sendBookingConfirmedEmail } = await import("@/lib/booking/server/email")
+
+    await sendBookingConfirmedEmail({
+      to: "client@example.com",
+      projectTitle: "Schedule later",
+      selectedSlots: [],
+      bookingGroupId: "group_zero",
+      workScopes: [],
+      otherWorkDetail: "",
+      estimatedDuration: "consult",
+    })
+
+    const message = mocks.send.mock.calls[0][0]
+    expect(message.subject).toContain("【仮キープ受付】Schedule later")
+    expect(message.subject).toContain("候補日未選択")
+    expect(message.text).toContain("候補日: 候補日未選択（候補日未選択の相談として受け付けました）")
+    expect(message.text).toContain("日程は後ほど相談させてください")
+    expect(message.text).toContain("後ほどのりかね本人から直接ご連絡します")
+    expect(message.subject).not.toMatch(/予約確定|本予約として確定|確定しました/)
+    expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
+  })
+
+  it("summarizes multiple non-contiguous selected dates as tentative candidates in customer mail", async () => {
+    process.env.RESEND_API_KEY = "resend_key"
+    mocks.send.mockResolvedValue({ data: { id: "email_multi_1" }, error: null })
+    const { sendBookingConfirmedEmail } = await import("@/lib/booking/server/email")
+
+    await sendBookingConfirmedEmail({
+      to: "client@example.com",
+      projectTitle: "Multi dates",
+      selectedSlots: [
+        { start: "2026-06-10T01:00:00.000Z", end: "2026-06-10T02:00:00.000Z" },
+        { start: "2026-06-17T03:00:00.000Z", end: "2026-06-17T04:00:00.000Z" },
+        { start: "2026-06-25T05:00:00.000Z", end: "2026-06-25T06:00:00.000Z" },
+      ],
+      bookingGroupId: "group_multi",
+      workScopes: [],
+      otherWorkDetail: "memo",
+      estimatedDuration: "consult",
+    })
+
+    const message = mocks.send.mock.calls[0][0]
+    expect(message.subject).toContain("3件の仮キープ候補")
+    expect(message.text).toContain("仮キープ候補日:")
+    expect(message.text).toContain("2026/06/10")
+    expect(message.text).toContain("2026/06/17")
+    expect(message.text).toContain("2026/06/25")
+    expect(message.text).toContain("選択された日程は実施日ではなく、仮キープ候補としてお預かりしています。")
+    expect(message.text).toContain("後ほどのりかね本人から直接ご連絡します")
+    expect(message.subject).not.toMatch(/予約確定|本予約として確定|確定しました/)
+    expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
   })
 
   it("sends chatbot booking owner notification to the default owner with selected slots", async () => {
