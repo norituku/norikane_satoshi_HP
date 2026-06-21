@@ -105,6 +105,11 @@ describe("HomePage profile press dialog trigger", () => {
       name: "Blackmagic公式ページで確認する",
     })
     expect(officialLink).toHaveAttribute("href", DAVINCI_RESOLVE_TRAINING_URL)
+    expect(officialLink).toHaveAttribute(
+      "href",
+      "https://www.blackmagicdesign.com/jp/products/davinciresolve/training#partners",
+    )
+    expect(new URL(DAVINCI_RESOLVE_TRAINING_URL).search).toBe("")
     expect(officialLink).toHaveAttribute("target", "_blank")
     expect(officialLink).toHaveAttribute("rel", "noopener noreferrer")
 
