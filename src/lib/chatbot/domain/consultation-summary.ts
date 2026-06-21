@@ -116,6 +116,21 @@ export function hasRequiredEmailConsultationSlots(input: {
   conversationState?: Partial<ConversationState>
 }): boolean {
   const state = input.conversationState ?? {}
+  if (state.requestKind === "lecture-training" || state.hasLectureTrainingIntent) {
+    return Boolean(
+      state.hasLectureTrainingContent &&
+        state.hasLectureTrainingVenue &&
+        state.hasLectureTrainingSoftware &&
+        state.hasResolveVersion &&
+        state.hasControlPanel &&
+        state.hasAudienceGuiDisplay &&
+        state.hasInstructorMonitorSetup &&
+        state.hasPreferredLectureSchedule &&
+        state.hasContactEmail &&
+        state.contactEmail,
+    )
+  }
+
   return Boolean(
     state.hasFinalMedium &&
       state.hasJobKind &&
@@ -131,6 +146,7 @@ function labelFinalMedium(value: JobContext["finalMedium"] | undefined, otherCom
   if (!value) return missing
   return labelOther(value, finalMediumLabels[value], otherComment)
 }
+
 
 function labelJobKind(value: JobContext["jobKind"] | undefined, fallback: string | undefined): string {
   if (value) return jobKindLabels[value]

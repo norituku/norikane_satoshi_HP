@@ -33,6 +33,7 @@ export type ChatbotConversation = {
 }
 
 export type ConversationState = {
+  requestKind?: "production" | "lecture-training"
   hasFinalMedium: boolean
   hasJobKind: boolean
   hasProjectLength?: boolean
@@ -61,6 +62,27 @@ export type ConversationState = {
   otherClientInformation?: boolean
   confidentialTechniqueQuestion?: boolean
   privateMethodNameExposure?: boolean
+  hasLectureTrainingIntent?: boolean
+  hasLectureTrainingContent?: boolean
+  hasLectureTrainingVenue?: boolean
+  hasLectureTrainingSoftware?: boolean
+  hasResolveVersion?: boolean
+  hasControlPanel?: boolean
+  hasAudienceGuiDisplay?: boolean
+  hasInstructorMonitorSetup?: boolean
+  hasPreferredLectureSchedule?: boolean
+  requiresNorikaneConfirmation?: boolean
+  lectureTrainingInquiry?: {
+    content?: string
+    venue?: string
+    software?: "davinci-resolve" | "davinci-resolve-studio"
+    unsupportedSoftware?: string
+    resolveVersion?: string
+    controlPanel?: string
+    audienceGuiDisplay?: string
+    instructorMonitorSetup?: string
+    preferredSchedule?: string
+  }
   daysUntilStart?: number
   contactEmail?: string
   customerName?: string

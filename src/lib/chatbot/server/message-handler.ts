@@ -48,6 +48,10 @@ import {
   loadLatestChatbotKnowledgeSnapshot,
   type ChatbotKnowledgeSnapshot,
 } from "@/lib/chatbot/server/notion-knowledge-sync"
+import {
+  applyLectureTrainingConversationState,
+  isLectureTrainingInquiry,
+} from "@/lib/chatbot/server/lecture-training"
 import { decideRoutingFallback } from "@/lib/chatbot/server/routing"
 
 type ChatbotMessageUi =
@@ -259,13 +263,17 @@ export async function handleChatbotMessage(
     knowledgeSnapshot,
   })
   const jobContext = durationContext.jobContext
-  const conversationState = buildConversationState({
-    inputConversationState: input.conversationState,
+  const conversationState = applyLectureTrainingConversationState({
     conversation,
-    userMessage,
-    activeChoiceConversationState: activeChoiceAnswer?.conversationState,
-    jobContext,
-    durationStatePatch: durationContext.conversationStatePatch,
+    latestUserMessage: input.message,
+    conversationState: buildConversationState({
+      inputConversationState: input.conversationState,
+      conversation,
+      userMessage,
+      activeChoiceConversationState: activeChoiceAnswer?.conversationState,
+      jobContext,
+      durationStatePatch: durationContext.conversationStatePatch,
+    }),
   })
   const systemPrompt = buildChatbotSystemPrompt(
     userContext,
@@ -294,6 +302,7 @@ export async function handleChatbotMessage(
   const resolvedRoutingDecision = await resolveRoutingDecision({
     llmResponse,
     jobContext,
+    conversationState,
     fallbackRoutingDecision,
     candidateWindowFinder,
     knowledgeSnapshot,
@@ -402,6 +411,10 @@ function buildChatbotSystemPrompt(
   const lines = [
     "あなたは新規映像案件の相談受付アシスタントです。",
     "回答範囲は新規案件の調整、要件整理、予約導線に限定し、技術指導、作品レビュー、標準外要望は担当者確認へ誘導します。",
+    "ただし講演会、講習会、セミナー、講師依頼、研修、ワークショップは新規依頼種別として扱い、通常の制作案件に寄せません。",
+    "講習依頼では開催場所、DaVinci Resolve Studio / DaVinci Resolve とバージョン、コントロールパネル有無、参加者がGUI操作を大画面で見られる環境、講師側モニター構成、10:00〜18:00を基本にした希望時間を確認します。",
+    "講習依頼はその場で予約確定せず、内容を整理したうえで、のりかね本人と実施可否・最終内容・日程を相談・確認する案内にします。",
+    "講習依頼では show_booking_card を出さず、連絡先メールを添えた問い合わせ・相談に誘導します。",
     "不明なことを推測で断定せず、未確認事項として質問します。",
     "LOOK Decomposer v2 の詳細には触れず、直接確認が必要な事項として扱います。",
     "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
@@ -666,6 +679,7 @@ function labelDocumentaryAttachmentItemSummary(value: DocumentaryAttachmentItem)
 async function resolveRoutingDecision(input: {
   llmResponse: ChatbotLlmResponse
   jobContext: JobContext
+  conversationState: ConversationState
   fallbackRoutingDecision: RoutingDecision
   candidateWindowFinder: CandidateWindowFinder
   knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
@@ -673,6 +687,7 @@ async function resolveRoutingDecision(input: {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
   if (input.fallbackRoutingDecision.kind === "to-direct-contact") return input.fallbackRoutingDecision
   if (input.fallbackRoutingDecision.kind === "to-email") return input.fallbackRoutingDecision
+  if (isLectureTrainingInquiry(input.conversationState)) return input.fallbackRoutingDecision
 
   const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   if (!toolCall) return undefined

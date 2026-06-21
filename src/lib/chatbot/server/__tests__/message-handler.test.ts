@@ -1379,4 +1379,39 @@ describe("handleChatbotMessage user context", () => {
     expect(JSON.stringify(result.ui)).not.toContain("Stored Company")
     expect(JSON.stringify(result.ui)).not.toContain("stored@example.com")
   })
+
+  it("keeps lecture and training inquiries out of inline booking even when the LLM emits a booking tool call", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '候補を確認します。 {"tool":"show_booking_card","args":{"projectTitle":"DaVinci Resolve 講習","contactEmail":"client@example.com","dueDate":"2026-07-10"}}',
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "DaVinci Resolve のカラーグレーディング講習を講師としてお願いしたいです。",
+      },
+      harness.options,
+    )
+
+    expect(harness.candidateWindowFinder).not.toHaveBeenCalled()
+    expect(result.routingDecision).toMatchObject({
+      kind: "continue",
+      nextQuestion: expect.stringContaining("開催場所"),
+    })
+    expect(result.ui).not.toMatchObject({ kind: "booking-card" })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationState: expect.objectContaining({
+          requestKind: "lecture-training",
+          hasLectureTrainingIntent: true,
+          hasLectureTrainingContent: true,
+          requiresNorikaneConfirmation: true,
+        }),
+      }),
+    )
+  })
 })

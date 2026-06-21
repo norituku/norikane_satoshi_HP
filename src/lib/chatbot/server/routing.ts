@@ -13,6 +13,10 @@ import {
 } from "@/lib/chatbot/knowledge/workflow-duration"
 import { directContactPolicyMessage } from "@/lib/chatbot/knowledge/forbidden-topics"
 import { estimateWorkflow } from "@/lib/chatbot/server/duration-estimator"
+import {
+  decideLectureTrainingRouting,
+  isLectureTrainingInquiry,
+} from "@/lib/chatbot/server/lecture-training"
 import type { ChatbotKnowledgeSnapshot } from "@/lib/chatbot/server/notion-knowledge-sync"
 
 export type RoutingDecisionInput = {
@@ -24,6 +28,10 @@ export type RoutingDecisionInput = {
 
 export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecision {
   const { jobContext, conversationState } = input
+  if (isLectureTrainingInquiry(conversationState)) {
+    return decideLectureTrainingRouting({ jobContext, conversationState })
+  }
+
   const estimate = jobContext.jobKind
     ? estimateWorkflow(jobContext, { knowledgeSnapshot: input.knowledgeSnapshot })
     : undefined
