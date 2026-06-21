@@ -81,6 +81,27 @@ afterEach(() => {
 })
 
 describe("createBookingFromApiInput", () => {
+  it("creates selected-slot calendar entries as tentative holds", async () => {
+    const service = await loadCreateBooking()
+
+    await service.createBookingFromApiInput({
+      input: bookingInput({
+        selectedSlots: [
+          {
+            start: "2026-06-10T01:00:00.000Z",
+            end: "2026-06-10T03:00:00.000Z",
+          },
+        ],
+      }),
+      userId: "user_1",
+      userEmail: "satoshi@example.com",
+    })
+
+    expect(service.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({
+      summary: "【仮キープ】Color grading",
+    }))
+  })
+
   it("persists zero selected slots as an unscheduled chatbot booking request without creating a calendar event", async () => {
     const service = await loadCreateBooking()
 

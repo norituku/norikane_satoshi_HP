@@ -47,7 +47,7 @@ function createDescription(input: BookingApiInput): string {
 }
 
 function createSummary(input: BookingApiInput): string {
-  return `【予約確定】${input.projectTitle}`
+  return `【仮キープ】${input.projectTitle}`
 }
 
 function createBookingEmailArgs(input: BookingApiInput, to: string): BookingEmailArgs {

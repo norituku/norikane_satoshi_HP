@@ -150,8 +150,8 @@ describe("findCandidateWindows", () => {
       busyMode: "block",
       freeBusyFetcher: freeBusy([
         {
-          start: "2026-10-01T15:00:00.000Z",
-          end: "2026-10-02T15:00:00.000Z",
+          start: "2026-10-02T01:00:00.000Z",
+          end: "2026-10-02T03:00:00.000Z",
         },
       ]),
       attendanceConflictResolver: attendance(),
@@ -238,8 +238,8 @@ describe("findCandidateWindows", () => {
   it("uses IB_仕事 timed rows as the default busy source without booking-record conflicts", async () => {
     mocks.getNotionWorkScheduleBusyIntervals.mockResolvedValueOnce([
       {
-        start: "2026-09-30T15:00:00.000Z",
-        end: "2026-10-01T15:00:00.000Z",
+        start: "2026-10-01T01:00:00.000Z",
+        end: "2026-10-01T03:00:00.000Z",
       },
     ])
 
@@ -257,11 +257,30 @@ describe("findCandidateWindows", () => {
     expect(windows[0]?.label).toBe("2026-10-02 単日")
   })
 
+  it("keeps all-day date-only work rows available for tentative hold candidates", async () => {
+    mocks.getNotionWorkScheduleBusyIntervals.mockResolvedValueOnce([
+      {
+        start: "2026-09-30T15:00:00.000Z",
+        end: "2026-10-01T15:00:00.000Z",
+      },
+    ])
+
+    const calendar = await findCandidateCalendar({
+      jobContext: jobContext(),
+      workflowEstimate: workflowEstimate(1),
+      now: NOW_AFTER_STUDIO,
+      busyMode: "block",
+    })
+
+    expect(calendar.candidates[0]?.label).toBe("2026-10-01 単日")
+    expect(calendar.busyDateKeys).not.toContain("2026-10-01")
+  })
+
   it("returns only public busy date keys for timed work rows", async () => {
     mocks.getNotionWorkScheduleBusyIntervals.mockResolvedValueOnce([
       {
-        start: "2026-10-04T15:00:00.000Z",
-        end: "2026-10-05T15:00:00.000Z",
+        start: "2026-10-05T01:00:00.000Z",
+        end: "2026-10-05T03:00:00.000Z",
       },
       {
         start: "2026-10-06T01:00:00.000Z",
@@ -284,12 +303,12 @@ describe("findCandidateWindows", () => {
   it("keeps busy date keys visible from busyFrom even when selectable candidates start later", async () => {
     const fetcher = freeBusy([
       {
-        start: "2026-06-11T15:00:00.000Z",
-        end: "2026-06-12T15:00:00.000Z",
+        start: "2026-06-12T01:00:00.000Z",
+        end: "2026-06-12T03:00:00.000Z",
       },
       {
-        start: "2026-06-23T15:00:00.000Z",
-        end: "2026-06-24T15:00:00.000Z",
+        start: "2026-06-24T01:00:00.000Z",
+        end: "2026-06-24T03:00:00.000Z",
       },
     ])
 

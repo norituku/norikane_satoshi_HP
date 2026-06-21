@@ -75,7 +75,10 @@ export async function findCandidateCalendar(args: CandidateSearchArgs): Promise<
     runAttendanceResolver(resolver, searchFrom, searchTo),
   ])
 
-  const normalizedBusyIntervals = busyIntervals.map(normalizeInterval).filter(isValidInterval)
+  const normalizedBusyIntervals = busyIntervals
+    .map(normalizeInterval)
+    .filter(isValidInterval)
+    .filter(isTimedBusyInterval)
   const candidates = buildCandidateWindows({
     searchFrom,
     searchTo,
@@ -295,6 +298,20 @@ function isValidInterval(interval: Interval): boolean {
     !Number.isNaN(interval.end.getTime()) &&
     interval.start.getTime() < interval.end.getTime()
   )
+}
+
+function isTimedBusyInterval(interval: Interval): boolean {
+  return !isJstAllDayInterval(interval)
+}
+
+function isJstAllDayInterval(interval: Interval): boolean {
+  const durationMs = interval.end.getTime() - interval.start.getTime()
+  if (durationMs <= 0 || durationMs % DAY_MS !== 0) return false
+  return isJstDayStart(interval.start) && isJstDayStart(interval.end)
+}
+
+function isJstDayStart(date: Date): boolean {
+  return (date.getTime() + JST_OFFSET_MS) % DAY_MS === 0
 }
 
 function overlaps(a: Interval, b: Interval): boolean {
