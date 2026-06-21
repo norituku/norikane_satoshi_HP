@@ -30,6 +30,7 @@ import {
 } from "@/lib/chatbot/server"
 import { ChatbotAvailabilityError, findCandidateWindows } from "@/lib/chatbot/server/availability-finder"
 import { applyActiveChoiceAnswer } from "@/lib/chatbot/server/choice-panel-state"
+import { buildConversationState } from "@/lib/chatbot/server/conversation-state"
 import {
   resolveWorkflowDurationContext,
   type DurationTraceContext,
@@ -224,14 +225,14 @@ export async function handleChatbotMessage(
     knowledgeSnapshot,
   })
   const jobContext = durationContext.jobContext
-  const conversationState = buildConversationState(
-    input.conversationState,
+  const conversationState = buildConversationState({
+    inputConversationState: input.conversationState,
     conversation,
     userMessage,
-    activeChoiceAnswer?.conversationState,
+    activeChoiceConversationState: activeChoiceAnswer?.conversationState,
     jobContext,
-    durationContext.conversationStatePatch,
-  )
+    durationStatePatch: durationContext.conversationStatePatch,
+  })
   const systemPrompt = buildChatbotSystemPrompt(
     userContext,
     userContextFormatter,
@@ -502,49 +503,6 @@ function isAssistantNameQuestion(message: string): boolean {
     ) ||
     /^(お)?名前は(何|なに|なん)/.test(compact)
   )
-}
-
-function buildConversationState(
-  input: Partial<ConversationState> | undefined,
-  conversation: ChatbotConversation,
-  userMessage: ChatbotMessage,
-  activeChoiceConversationState: Partial<ConversationState> | undefined,
-  jobContext: JobContext,
-  durationStatePatch: Partial<ConversationState>,
-): ConversationState {
-  const userTurnCount =
-    conversation.messages.filter((message) => message.role === "user").length +
-    (userMessage.role === "user" ? 1 : 0)
-  const stored = conversation.context.conversationState ?? {}
-
-  const state: ConversationState = {
-    hasFinalMedium: false,
-    hasJobKind: false,
-    hasAdditionalWork: false,
-    hasDocumentaryAttachments: false,
-    hasWorkSite: false,
-    hasReferenceUrls: false,
-    hasContactEmail: false,
-    hasDesiredSchedule: false,
-    turnCount: userTurnCount,
-    ...stored,
-    ...(input ?? {}),
-    ...activeChoiceConversationState,
-    ...durationStatePatch,
-  }
-  const otherChoiceComments = {
-    ...(stored.otherChoiceComments ?? {}),
-    ...(input?.otherChoiceComments ?? {}),
-    ...(activeChoiceConversationState?.otherChoiceComments ?? {}),
-  }
-
-  return {
-    ...state,
-    ...(Object.keys(otherChoiceComments).length > 0 ? { otherChoiceComments } : {}),
-    ...(jobContext.finalMedium !== "other" ? { hasFinalMedium: true } : {}),
-    ...(jobContext.jobKind ? { hasJobKind: true } : {}),
-    ...(typeof jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
-  }
 }
 
 function toMessageUi(input: {

@@ -85,7 +85,30 @@ async function guardLocal41238Runtime(): Promise<TierResult> {
       tier: "local-41238-runtime",
       status: "green",
       action: "none",
-      detail: `head_current:${inspection.head.slice(0, 12)}`,
+      httpStatus: inspection.httpStatus,
+      detail: `pid:${inspection.pid};head_current:${inspection.head.slice(0, 12)};dirty:${inspection.dirtyFiles};cwd:${inspection.cwd}`,
+    }
+  }
+
+  if (inspection.status === "dirty") {
+    return {
+      tier: "local-41238-runtime",
+      status: "yellow",
+      action: "inspect-41238-dirty-diff",
+      httpStatus: inspection.httpStatus,
+      detail: `pid:${inspection.pid};head_current:${inspection.head.slice(0, 12)};dirty:${inspection.dirtyFiles};cwd:${inspection.cwd}`,
+      nextAction: "inspect_41238_dirty_diff_without_reset",
+    }
+  }
+
+  if (inspection.status === "unreachable") {
+    return {
+      tier: "local-41238-runtime",
+      status: "red",
+      action: "inspect-41238-http-required",
+      httpStatus: inspection.httpStatus,
+      detail: `pid:${inspection.pid};http_status:${inspection.httpStatus};head:${inspection.head.slice(0, 12)};expected:${inspection.expectedHead.slice(0, 12)};dirty:${inspection.dirtyFiles};cwd:${inspection.cwd}`,
+      nextAction: "inspect_41238_http_without_restart",
     }
   }
 
@@ -94,7 +117,8 @@ async function guardLocal41238Runtime(): Promise<TierResult> {
       tier: "local-41238-runtime",
       status: "red",
       action: "update-41238-worktree-required",
-      detail: `head_stale:${inspection.head.slice(0, 12)};expected:${inspection.expectedHead.slice(0, 12)};cwd:${inspection.cwd}`,
+      httpStatus: inspection.httpStatus,
+      detail: `pid:${inspection.pid};head_stale:${inspection.head.slice(0, 12)};expected:${inspection.expectedHead.slice(0, 12)};dirty:${inspection.dirtyFiles};cwd:${inspection.cwd}`,
       nextAction: "update_41238_to_origin_staging_without_restart",
     }
   }
@@ -389,46 +413,86 @@ async function guardTier4(options: GuardOptions): Promise<TierResult> {
 }
 
 type Local41238RuntimeInspection =
-  | { status: "current"; cwd: string; head: string; expectedHead: string }
-  | { status: "stale"; cwd: string; head: string; expectedHead: string }
+  | { status: "current"; cwd: string; pid: string; head: string; expectedHead: string; httpStatus: number; dirtyFiles: number }
+  | { status: "dirty"; cwd: string; pid: string; head: string; expectedHead: string; httpStatus: number; dirtyFiles: number }
+  | { status: "stale"; cwd: string; pid: string; head: string; expectedHead: string; httpStatus: number; dirtyFiles: number }
+  | { status: "unreachable"; cwd: string; pid: string; head: string; expectedHead: string; httpStatus: number; dirtyFiles: number }
   | { status: "unknown"; detail: string }
 
 export function classifyLocal41238Runtime(input: {
   cwd?: string
+  pid?: string
   head?: string
   expectedHead?: string
+  httpStatus?: number
+  dirtyFiles?: number
   error?: string
 }): Local41238RuntimeInspection {
   if (input.error) return { status: "unknown", detail: input.error }
   if (!input.cwd) return { status: "unknown", detail: "41238_listener_cwd_missing" }
+  if (!input.pid) return { status: "unknown", detail: `41238_listener_pid_missing;cwd:${input.cwd}` }
   if (!input.head) return { status: "unknown", detail: `41238_head_missing;cwd:${input.cwd}` }
   if (!input.expectedHead) return { status: "unknown", detail: `41238_expected_head_missing;cwd:${input.cwd}` }
+  if (input.httpStatus === undefined) return { status: "unknown", detail: `41238_http_status_missing;cwd:${input.cwd}` }
+  const dirtyFiles = input.dirtyFiles ?? 0
+
+  if (input.httpStatus !== 200) {
+    return {
+      status: "unreachable",
+      cwd: input.cwd,
+      pid: input.pid,
+      head: input.head,
+      expectedHead: input.expectedHead,
+      httpStatus: input.httpStatus,
+      dirtyFiles,
+    }
+  }
 
   if (input.head === input.expectedHead) {
+    if (dirtyFiles > 0) {
+      return {
+        status: "dirty",
+        cwd: input.cwd,
+        pid: input.pid,
+        head: input.head,
+        expectedHead: input.expectedHead,
+        httpStatus: input.httpStatus,
+        dirtyFiles,
+      }
+    }
     return {
       status: "current",
       cwd: input.cwd,
+      pid: input.pid,
       head: input.head,
       expectedHead: input.expectedHead,
+      httpStatus: input.httpStatus,
+      dirtyFiles,
     }
   }
 
   return {
     status: "stale",
     cwd: input.cwd,
+    pid: input.pid,
     head: input.head,
     expectedHead: input.expectedHead,
+    httpStatus: input.httpStatus,
+    dirtyFiles,
   }
 }
 
 async function inspectLocal41238Runtime(): Promise<Local41238RuntimeInspection> {
   try {
-    const cwd = await read41238ListenerCwd()
-    const [head, expectedHead] = await Promise.all([
+    const pid = await read41238ListenerPid()
+    const cwd = await read41238ListenerCwd(pid)
+    const [head, expectedHead, httpStatus, dirtyFiles] = await Promise.all([
       readGitRevision(cwd, "HEAD"),
       readGitRevision(cwd, process.env.CHATBOT_41238_EXPECTED_REF ?? "origin/staging"),
+      readLocal41238HttpStatus(),
+      readGitDirtyFileCount(cwd),
     ])
-    return classifyLocal41238Runtime({ cwd, head, expectedHead })
+    return classifyLocal41238Runtime({ cwd, pid, head, expectedHead, httpStatus, dirtyFiles })
   } catch (error) {
     return classifyLocal41238Runtime({
       error: error instanceof Error ? error.message : String(error),
@@ -436,8 +500,7 @@ async function inspectLocal41238Runtime(): Promise<Local41238RuntimeInspection> 
   }
 }
 
-async function read41238ListenerCwd(): Promise<string> {
-  const pid = await read41238ListenerPid()
+async function read41238ListenerCwd(pid: string): Promise<string> {
   const result = await spawnCapture("/usr/sbin/lsof", ["-p", pid, "-a", "-d", "cwd", "-Fn"])
   if (result.exitCode !== 0) {
     throw new Error(`lsof_cwd_failed:${result.stderr.trim() || result.stdout.trim()}`)
@@ -476,6 +539,34 @@ async function readGitRevision(cwd: string, ref: string): Promise<string> {
   }
 
   return result.stdout.trim()
+}
+
+async function readGitDirtyFileCount(cwd: string): Promise<number> {
+  const result = await spawnCapture("git", ["-C", cwd, "status", "--porcelain"])
+  if (result.exitCode !== 0) {
+    throw new Error(`git_status_failed:${result.stderr.trim() || result.stdout.trim()}`)
+  }
+
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean).length
+}
+
+async function readLocal41238HttpStatus(): Promise<number> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs)
+  try {
+    const response = await fetch("http://127.0.0.1:41238/", {
+      method: "HEAD",
+      signal: controller.signal,
+    })
+    return response.status
+  } catch {
+    return 0
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export function hasOllamaModel(models: unknown[], modelName: string): boolean {
