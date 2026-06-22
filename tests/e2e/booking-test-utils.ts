@@ -6,6 +6,55 @@ import { encode } from "next-auth/jwt"
 export const testUserEmail = "norikane.satoshi@gmail.com"
 export const cookieName = "authjs.session-token"
 
+const dayMs = 24 * 60 * 60 * 1000
+
+function startOfUtcDay(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function addUtcDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * dayMs)
+}
+
+function currentWeekStart(date = new Date()) {
+  const today = startOfUtcDay(date)
+  return addUtcDays(today, -today.getUTCDay())
+}
+
+export function e2eCurrentWeekdayOffset(date = new Date()) {
+  const day = date.getUTCDay()
+  if (day === 0) return 1
+  if (day >= 1 && day <= 4) return day + 1
+  return 5
+}
+
+export function e2eDateInCurrentWeek(dayOffset = e2eCurrentWeekdayOffset()) {
+  return isoDate(addUtcDays(currentWeekStart(), dayOffset))
+}
+
+export function e2eCurrentWeekRange() {
+  const start = currentWeekStart()
+  return {
+    startIso: start.toISOString(),
+    endIso: addUtcDays(start, 7).toISOString(),
+  }
+}
+
+export function e2eSlot(dayOffset: number, startHourUtc: number, durationHours = 1) {
+  const date = e2eDateInCurrentWeek(dayOffset)
+  const hour = String(startHourUtc).padStart(2, "0")
+  const endHour = String(startHourUtc + durationHours).padStart(2, "0")
+  return {
+    date,
+    start: `${date}T${hour}:00:00.000Z`,
+    end: `${date}T${endHour}:00:00.000Z`,
+  }
+}
+
 export function prismaForE2E() {
   const url = process.env.TURSO_DATABASE_URL
   if (!url) throw new Error("TURSO_DATABASE_URL is required for e2e")

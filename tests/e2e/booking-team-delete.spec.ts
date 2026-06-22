@@ -5,6 +5,9 @@ import {
   cleanupBookingE2E,
   createBookingForUser,
   createTeamWithMembers,
+  e2eCurrentWeekRange,
+  e2eCurrentWeekdayOffset,
+  e2eSlot,
   hasBooking,
   jsonRequest,
   prismaForE2E,
@@ -14,6 +17,10 @@ import {
 } from "./booking-test-utils"
 
 const prefix = `booking-delete-${Date.now()}`
+const bookingWeek = e2eCurrentWeekRange()
+const bookingDayOffset = e2eCurrentWeekdayOffset()
+const bookingSlotA = e2eSlot(bookingDayOffset, 9)
+const bookingSlotB = e2eSlot(bookingDayOffset, 11)
 
 test.describe("booking team delete", () => {
   test("channel deletion removes the shared channel while preserving personal histories", async ({ page, request }) => {
@@ -30,15 +37,15 @@ test.describe("booking team delete", () => {
       const bookingA = await createBookingForUser(prisma, userA, {
         prefix,
         label: "A team booking",
-        start: "2026-05-22T01:00:00.000Z",
-        end: "2026-05-22T02:00:00.000Z",
+        start: bookingSlotA.start,
+        end: bookingSlotA.end,
         teamId: team.id,
       })
       const bookingB = await createBookingForUser(prisma, userB, {
         prefix,
         label: "B personal booking",
-        start: "2026-05-23T01:00:00.000Z",
-        end: "2026-05-23T02:00:00.000Z",
+        start: bookingSlotB.start,
+        end: bookingSlotB.end,
       })
 
       await addSessionCookie(page.context(), userA)
@@ -61,7 +68,7 @@ test.describe("booking team delete", () => {
       const oldTeamScope = await jsonRequest(
         request,
         "get",
-        `/api/calendar/free-busy?start=2026-05-01T00:00:00.000Z&end=2026-06-01T00:00:00.000Z&teamId=${team.id}`,
+        `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}&teamId=${team.id}`,
         cookieA,
       )
       expect(oldTeamScope.response.status()).toBe(404)
@@ -70,7 +77,7 @@ test.describe("booking team delete", () => {
       const personalB = await jsonRequest(
         request,
         "get",
-        "/api/calendar/free-busy?start=2026-05-01T00:00:00.000Z&end=2026-06-01T00:00:00.000Z",
+        `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}`,
         cookieB,
       )
       expect(personalB.response.status()).toBe(200)

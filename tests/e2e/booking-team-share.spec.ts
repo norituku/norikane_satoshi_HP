@@ -2,12 +2,19 @@ import { expect, test, type APIRequestContext } from "@playwright/test"
 
 import {
   createBookingForUser,
+  e2eCurrentWeekRange,
+  e2eCurrentWeekdayOffset,
+  e2eSlot,
   prismaForE2E,
   sessionCookieFor,
   upsertUser,
 } from "./booking-test-utils"
 
 const prefix = `booking-team-${Date.now()}`
+const bookingWeek = e2eCurrentWeekRange()
+const bookingDayOffset = e2eCurrentWeekdayOffset()
+const bookingSlotA = e2eSlot(bookingDayOffset, 13)
+const bookingSlotB = e2eSlot(bookingDayOffset, 15)
 
 async function jsonRequest(
   request: APIRequestContext,
@@ -45,14 +52,14 @@ test.describe("booking team share", () => {
     const bookingA = await createBookingForUser(prisma, userA, {
       prefix,
       label: "A personal",
-      start: "2026-06-10T01:00:00.000Z",
-      end: "2026-06-10T02:00:00.000Z",
+      start: bookingSlotA.start,
+      end: bookingSlotA.end,
     })
     const bookingB = await createBookingForUser(prisma, userB, {
       prefix,
       label: "B personal",
-      start: "2026-06-11T01:00:00.000Z",
-      end: "2026-06-11T02:00:00.000Z",
+      start: bookingSlotB.start,
+      end: bookingSlotB.end,
     })
 
     const created = await jsonRequest(request, "post", "/api/teams", cookieA, { name: `${prefix} channel` })
@@ -71,7 +78,7 @@ test.describe("booking team share", () => {
     const teamBeforeLeave = await jsonRequest(
       request,
       "get",
-      `/api/calendar/free-busy?start=2026-06-01T00:00:00.000Z&end=2026-06-30T00:00:00.000Z&teamId=${teamId}`,
+      `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}&teamId=${teamId}`,
       cookieA,
     )
     expect(teamBeforeLeave.response.status()).toBe(200)
@@ -84,7 +91,7 @@ test.describe("booking team share", () => {
     const teamAfterLeave = await jsonRequest(
       request,
       "get",
-      `/api/calendar/free-busy?start=2026-06-01T00:00:00.000Z&end=2026-06-30T00:00:00.000Z&teamId=${teamId}`,
+      `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}&teamId=${teamId}`,
       cookieA,
     )
     expect(teamAfterLeave.response.status()).toBe(200)
@@ -94,7 +101,7 @@ test.describe("booking team share", () => {
     const personalB = await jsonRequest(
       request,
       "get",
-      "/api/calendar/free-busy?start=2026-06-01T00:00:00.000Z&end=2026-06-30T00:00:00.000Z",
+      `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}`,
       cookieB,
     )
     expect(personalB.response.status()).toBe(200)

@@ -1,11 +1,20 @@
 import { expect, test } from "@playwright/test"
 
-import { createBookingForUser, prismaForE2E, testUserEmail, upsertUser } from "./booking-test-utils"
+import {
+  createBookingForUser,
+  e2eCurrentWeekRange,
+  e2eCurrentWeekdayOffset,
+  e2eSlot,
+  prismaForE2E,
+  testUserEmail,
+  upsertUser,
+} from "./booking-test-utils"
 
 const prefix = `booking-smoke-${Date.now()}`
-const bookingWeekStartIso = "2026-05-24T00:00:00.000Z"
-const bookingWeekEndIso = "2026-05-31T00:00:00.000Z"
-const bookingWeekSelectionDate = "2026-05-25"
+const bookingWeek = e2eCurrentWeekRange()
+const bookingWeekdayOffset = e2eCurrentWeekdayOffset()
+const existingSlot = e2eSlot(bookingWeekdayOffset, 1)
+const bookingWeekSelectionDate = existingSlot.date
 
 test.describe("booking personal smoke", () => {
   test("personal booking surfaces calendar failure and marks the pending group failed", async ({ page }) => {
@@ -15,8 +24,8 @@ test.describe("booking personal smoke", () => {
     await createBookingForUser(prisma, user, {
       prefix,
       label: "existing",
-      start: `${bookingWeekSelectionDate}T01:00:00.000Z`,
-      end: `${bookingWeekSelectionDate}T02:00:00.000Z`,
+      start: existingSlot.start,
+      end: existingSlot.end,
     })
 
     const authResponse = await page.goto("/api/dev/auth-bypass")
@@ -27,7 +36,7 @@ test.describe("booking personal smoke", () => {
     expect(bookingHtml).toContain('data-testid="booking-month-skeleton"')
     expect(bookingHtml).toContain('data-state="pending"')
 
-    const freeBusyUrl = `/api/calendar/free-busy?start=${bookingWeekStartIso}&end=${bookingWeekEndIso}`
+    const freeBusyUrl = `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}`
     const cachedBeforeSubmit = await page.request.get(freeBusyUrl)
     expect(cachedBeforeSubmit.status()).toBe(200)
     const cachedBeforeSubmitJson = (await cachedBeforeSubmit.json()) as { bookings: { title: string }[] }

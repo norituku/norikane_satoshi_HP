@@ -4,6 +4,9 @@ import {
   addSessionCookie,
   cleanupBookingE2E,
   createBookingForUser,
+  e2eCurrentWeekRange,
+  e2eCurrentWeekdayOffset,
+  e2eSlot,
   hasBooking,
   jsonRequest,
   prismaForE2E,
@@ -13,6 +16,8 @@ import {
 } from "./booking-test-utils"
 
 const prefix = `booking-invite-${Date.now()}`
+const bookingWeek = e2eCurrentWeekRange()
+const bookingSlot = e2eSlot(e2eCurrentWeekdayOffset(), 3)
 
 test.describe("booking invitation flow", () => {
   test("invited user accepts a channel and can view the owner's booking in the channel scope", async ({ page, request }) => {
@@ -25,8 +30,8 @@ test.describe("booking invitation flow", () => {
       const bookingA = await createBookingForUser(prisma, userA, {
         prefix,
         label: "A booking",
-        start: "2026-05-24T01:00:00.000Z",
-        end: "2026-05-24T02:00:00.000Z",
+        start: bookingSlot.start,
+        end: bookingSlot.end,
       })
 
       await addSessionCookie(page.context(), userA)
@@ -60,7 +65,7 @@ test.describe("booking invitation flow", () => {
       const busy = await jsonRequest(
         request,
         "get",
-        `/api/calendar/free-busy?start=2026-05-01T00:00:00.000Z&end=2026-06-01T00:00:00.000Z&teamId=${teamId}`,
+        `/api/calendar/free-busy?start=${bookingWeek.startIso}&end=${bookingWeek.endIso}&teamId=${teamId}`,
         cookieB,
       )
       expect(busy.response.status()).toBe(200)
