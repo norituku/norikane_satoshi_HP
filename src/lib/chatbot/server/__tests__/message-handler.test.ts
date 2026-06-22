@@ -570,8 +570,8 @@ describe("handleChatbotMessage user context", () => {
         referenceRange: "公開本文",
         content: "カラーコレクションは素材のばらつきを設計に戻す工程です。",
         source: "notion-sync",
-        publicStatus: "public",
-        publicStatusReason: "hp-public-true-with-slug",
+        status: "published",
+        statusReason: "hp-public-true-with-slug",
         slug: "correction",
         includedInPrompt: true,
       },
@@ -582,8 +582,8 @@ describe("handleChatbotMessage user context", () => {
         referenceRange: "公開本文",
         content: "カラーグレーディングは作品の意図を観客の印象へ翻訳する工程です。",
         source: "notion-sync",
-        publicStatus: "public",
-        publicStatusReason: "hp-public-true-with-slug",
+        status: "published",
+        statusReason: "hp-public-true-with-slug",
         slug: "grading",
         includedInPrompt: true,
       },
@@ -594,8 +594,8 @@ describe("handleChatbotMessage user context", () => {
         referenceRange: "公開本文",
         content: "フィルムルックは階調、色分離、粒状感の関係として扱います。",
         source: "notion-sync",
-        publicStatus: "public",
-        publicStatusReason: "hp-public-true-with-slug",
+        status: "published",
+        statusReason: "hp-public-true-with-slug",
         slug: "filmlook",
         includedInPrompt: true,
       },
@@ -620,7 +620,7 @@ describe("handleChatbotMessage user context", () => {
     expect(prompt).toContain("フィルムルックは階調、色分離、粒状感")
   })
 
-  it("keeps unpublished note knowledge out of the customer-facing system prompt", async () => {
+  it("injects published and planned note knowledge into the customer-facing system prompt with distinct guidance", async () => {
     const harness = setup()
     const snapshot = createStaticChatbotKnowledgeSnapshot("2026-06-22T01:10:34.550Z")
     snapshot.noteKnowledge = [
@@ -631,8 +631,8 @@ describe("handleChatbotMessage user context", () => {
         referenceRange: "公開本文",
         content: "カラーコレクションは公開済みの記事本文です。",
         source: "notion-sync",
-        publicStatus: "public",
-        publicStatusReason: "hp-public-true-with-slug",
+        status: "published",
+        statusReason: "hp-public-true-with-slug",
         slug: "correction",
         includedInPrompt: true,
       },
@@ -643,10 +643,10 @@ describe("handleChatbotMessage user context", () => {
         referenceRange: "公開本文",
         content: "カラーグレーディングは未公開の記事本文です。",
         source: "notion-sync",
-        publicStatus: "unpublished",
-        publicStatusReason: "hp-public-false",
+        status: "planned",
+        statusReason: "hp-public-false",
         slug: "grading",
-        includedInPrompt: false,
+        includedInPrompt: true,
       },
     ]
 
@@ -659,15 +659,22 @@ describe("handleChatbotMessage user context", () => {
     )
 
     const prompt = harness.generate.mock.calls[0]?.[0].systemPrompt
-    expect(prompt).toContain("公開済みの記事として案内できる note だけを使います")
-    expect(prompt).toContain("公開済みとして案内できない note に関する語が含まれます")
+    expect(prompt).toContain("published は公開済み記事として内容を説明し")
+    expect(prompt).toContain("planned は公開済み記事とは呼ばず")
+    expect(prompt).toContain("公開予定のノート")
     expect(prompt).toContain("カラーコレクションは公開済みの記事本文")
-    expect(prompt).not.toContain("カラーグレーディングは未公開の記事本文")
-    expect(prompt).not.toContain("カラーグレーディングの因数分解")
+    expect(prompt).toContain("カラーグレーディングは未公開の記事本文")
+    expect(prompt).toContain("カラーグレーディングの因数分解")
+    expect(prompt).toContain("公開URL: https://norikane.studio/notes/correction")
+    expect(prompt).not.toContain("公開URL: https://norikane.studio/notes/grading")
   })
 
-  it("answers safely without LLM generation when a note question only matches unpublished sources", async () => {
+  it("passes planned-only note questions to the LLM as customer-facing planned context", async () => {
     const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "カラーグレーディングの因数分解は公開予定のノートです。作品意図を観客の印象へ翻訳する考え方を扱う予定です。",
+      tier: "tier-3-ollama-deepseek",
+    })
     const snapshot = createStaticChatbotKnowledgeSnapshot("2026-06-22T01:10:34.550Z")
     snapshot.noteKnowledge = [
       {
@@ -675,12 +682,12 @@ describe("handleChatbotMessage user context", () => {
         pageId: "2d61194573e140789602864a9040affe",
         pageTitle: "カラーグレーディングの因数分解",
         referenceRange: "公開本文",
-        content: "",
+        content: "カラーグレーディングは作品の意図を観客の印象へ翻訳する工程です。",
         source: "notion-sync",
-        publicStatus: "unpublished",
-        publicStatusReason: "hp-public-false",
+        status: "planned",
+        statusReason: "hp-public-false",
         slug: "grading",
-        includedInPrompt: false,
+        includedInPrompt: true,
       },
     ]
 
@@ -692,10 +699,13 @@ describe("handleChatbotMessage user context", () => {
       },
     )
 
-    expect(result.tier).toBe("local-deterministic")
-    expect(result.assistantMessage.content).toContain("公開済みの記事として案内できるものに限って回答します")
-    expect(result.assistantMessage.content).not.toContain("カラーグレーディング")
-    expect(harness.generate).not.toHaveBeenCalled()
+    expect(result.tier).toBe("tier-3-ollama-deepseek")
+    expect(result.assistantMessage.content).toContain("公開予定のノート")
+    expect(harness.generate).toHaveBeenCalled()
+    const prompt = harness.generate.mock.calls[0]?.[0].systemPrompt
+    expect(prompt).toContain("planned")
+    expect(prompt).toContain("カラーグレーディングは作品の意図を観客の印象へ翻訳")
+    expect(prompt).not.toContain("公開URL: https://norikane.studio/notes/grading")
   })
 
   it("accepts short requested durations as consultation candidates without promising availability", async () => {

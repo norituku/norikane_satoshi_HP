@@ -27,7 +27,7 @@ export type SyncedWorkflowDurationPreset = WorkflowDurationPreset & {
   source: "static" | "notion-sync"
 }
 
-export type ChatbotNotePublicStatus = "public" | "unpublished"
+export type ChatbotNoteKnowledgeStatus = "published" | "planned"
 
 export type SyncedNoteKnowledge = {
   usage: Exclude<ChatbotKnowledgeEntryUsage, "workflow-duration">
@@ -37,8 +37,8 @@ export type SyncedNoteKnowledge = {
   content: string
   source: "notion-sync"
   slug?: string
-  publicStatus: ChatbotNotePublicStatus
-  publicStatusReason: string
+  status: ChatbotNoteKnowledgeStatus
+  statusReason: string
   includedInPrompt: boolean
 }
 
@@ -160,24 +160,21 @@ export async function syncChatbotNotionKnowledge(input: {
           extractWorkflowDurationPresets(sourceBlocks, entry.referenceRange),
         )
       } else {
-        const publicStatus = await resolveNotePublicStatus(client, entry)
-        const content =
-          publicStatus.publicStatus === "public"
-            ? extractPublicNoteKnowledge(await listAllChildren(client, entry.pageId), entry.referenceRange)
-            : ""
-        const includedInPrompt = publicStatus.publicStatus === "public" && content.trim().length > 0
+        const noteStatus = await resolveNoteKnowledgeStatus(client, entry)
+        const content = extractPublicNoteKnowledge(await listAllChildren(client, entry.pageId), entry.referenceRange)
+        const includedInPrompt = content.trim().length > 0
         noteKnowledge.push({
           usage: entry.usage,
           pageId: entry.pageId,
-          ...(publicStatus.pageTitle ?? entry.pageTitle
-            ? { pageTitle: publicStatus.pageTitle ?? entry.pageTitle }
+          ...(noteStatus.pageTitle ?? entry.pageTitle
+            ? { pageTitle: noteStatus.pageTitle ?? entry.pageTitle }
             : {}),
           referenceRange: entry.referenceRange,
           content,
           source: "notion-sync",
-          ...(publicStatus.slug ? { slug: publicStatus.slug } : {}),
-          publicStatus: publicStatus.publicStatus,
-          publicStatusReason: publicStatus.publicStatusReason,
+          ...(noteStatus.slug ? { slug: noteStatus.slug } : {}),
+          status: noteStatus.status,
+          statusReason: noteStatus.statusReason,
           includedInPrompt,
         })
       }
@@ -283,8 +280,13 @@ function parseSnapshotJson(value: string): ChatbotKnowledgeSnapshot | null {
 }
 
 function normalizeSyncedNoteKnowledge(entry: Partial<SyncedNoteKnowledge>): SyncedNoteKnowledge {
-  const publicStatus = entry.publicStatus === "public" ? "public" : "unpublished"
+  const legacyPublicStatus = (entry as Partial<SyncedNoteKnowledge> & { publicStatus?: string }).publicStatus
+  const status =
+    entry.status === "published" || legacyPublicStatus === "public"
+      ? "published"
+      : "planned"
   const content = typeof entry.content === "string" ? entry.content : ""
+  const legacyPublicStatusReason = (entry as Partial<SyncedNoteKnowledge> & { publicStatusReason?: string }).publicStatusReason
   return {
     usage: entry.usage ?? "color-correction",
     pageId: typeof entry.pageId === "string" ? entry.pageId : "",
@@ -293,26 +295,30 @@ function normalizeSyncedNoteKnowledge(entry: Partial<SyncedNoteKnowledge>): Sync
     content,
     source: "notion-sync",
     ...(typeof entry.slug === "string" ? { slug: entry.slug } : {}),
-    publicStatus,
-    publicStatusReason:
-      typeof entry.publicStatusReason === "string" ? entry.publicStatusReason : "legacy-missing-public-status",
-    includedInPrompt: publicStatus === "public" && entry.includedInPrompt === true && content.trim().length > 0,
+    status,
+    statusReason:
+      typeof entry.statusReason === "string"
+        ? entry.statusReason
+        : typeof legacyPublicStatusReason === "string"
+          ? legacyPublicStatusReason
+          : "legacy-missing-note-status",
+    includedInPrompt: entry.includedInPrompt === true && content.trim().length > 0,
   }
 }
 
-async function resolveNotePublicStatus(
+async function resolveNoteKnowledgeStatus(
   client: NotionBlockListClient,
   entry: ChatbotKnowledgeManifestEntry,
 ): Promise<{
-  publicStatus: ChatbotNotePublicStatus
-  publicStatusReason: string
+  status: ChatbotNoteKnowledgeStatus
+  statusReason: string
   pageTitle?: string
   slug?: string
 }> {
   if (!client.pages?.retrieve) {
     return {
-      publicStatus: "unpublished",
-      publicStatusReason: "metadata-client-unavailable",
+      status: "planned",
+      statusReason: "metadata-client-unavailable",
       pageTitle: entry.pageTitle,
     }
   }
@@ -322,8 +328,8 @@ async function resolveNotePublicStatus(
     const properties = isRecord(page) && isRecord(page.properties) ? page.properties : undefined
     if (!properties) {
       return {
-        publicStatus: "unpublished",
-        publicStatusReason: "metadata-missing",
+        status: "planned",
+        statusReason: "metadata-missing",
         pageTitle: entry.pageTitle,
       }
     }
@@ -333,29 +339,29 @@ async function resolveNotePublicStatus(
     const isPublished = readCheckboxProperty(properties[PUBLISHED_PROPERTY])
     if (!isPublished) {
       return {
-        publicStatus: "unpublished",
-        publicStatusReason: "hp-public-false",
+        status: "planned",
+        statusReason: "hp-public-false",
         pageTitle,
         slug,
       }
     }
     if (!slug) {
       return {
-        publicStatus: "unpublished",
-        publicStatusReason: "missing-slug",
+        status: "planned",
+        statusReason: "missing-slug",
         pageTitle,
       }
     }
     return {
-      publicStatus: "public",
-      publicStatusReason: "hp-public-true-with-slug",
+      status: "published",
+      statusReason: "hp-public-true-with-slug",
       pageTitle,
       slug,
     }
   } catch {
     return {
-      publicStatus: "unpublished",
-      publicStatusReason: "metadata-fetch-failed",
+      status: "planned",
+      statusReason: "metadata-fetch-failed",
       pageTitle: entry.pageTitle,
     }
   }

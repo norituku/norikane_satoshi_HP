@@ -231,7 +231,7 @@ describe("Notion chatbot knowledge sync", () => {
     })
   })
 
-  it("syncs the registered workflow and customer-facing public note knowledge only", async () => {
+  it("syncs registered workflow and customer-facing published or planned note knowledge", async () => {
     const repo = repository()
     const manifestPageId = "3088971f957b481baff8499ff911051b"
     const durationPageId = "830dd59bc735483fae4feea1d6f4fbc7"
@@ -333,10 +333,22 @@ describe("Notion chatbot knowledge sync", () => {
               }
             }
             if (block_id === gradingPageId) {
-              throw new Error("unpublished grading page must not be fetched")
+              return {
+                results: [
+                  heading("grading-public", "公開本文"),
+                  paragraph("grading-body", "カラーグレーディングは、作品の意図を観客の印象に届くルックへ翻訳する工程です。"),
+                ],
+                has_more: false,
+              }
             }
             if (block_id === filmLookPageId) {
-              throw new Error("unpublished film-look page must not be fetched")
+              return {
+                results: [
+                  heading("filmlook-public", "公開本文"),
+                  paragraph("filmlook-body", "フィルムルックは単一のLUT名ではなく、階調、色分離、粒状感の関係として扱います。"),
+                ],
+                has_more: false,
+              }
             }
             return { results: [], has_more: false }
           }),
@@ -366,15 +378,15 @@ describe("Notion chatbot knowledge sync", () => {
       "color-grading",
       "film-look",
     ])
-    expect(result.snapshot.noteKnowledge.map((entry) => entry.publicStatus)).toEqual([
-      "public",
-      "unpublished",
-      "unpublished",
+    expect(result.snapshot.noteKnowledge.map((entry) => entry.status)).toEqual([
+      "published",
+      "planned",
+      "planned",
     ])
-    expect(result.snapshot.noteKnowledge.map((entry) => entry.includedInPrompt)).toEqual([true, false, false])
+    expect(result.snapshot.noteKnowledge.map((entry) => entry.includedInPrompt)).toEqual([true, true, true])
     expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).toContain("カラーコレクション")
-    expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).not.toContain("カラーグレーディング")
-    expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).not.toContain("フィルムルック")
+    expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).toContain("カラーグレーディング")
+    expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).toContain("フィルムルック")
     expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).not.toContain("system:")
     expect(result.snapshot.noteKnowledge.map((entry) => entry.content).join("\n")).not.toContain("非公開")
   })
