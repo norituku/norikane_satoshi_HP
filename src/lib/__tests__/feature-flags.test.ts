@@ -33,7 +33,7 @@ describe("feature flags", () => {
   })
 
   describe("isChatbotEnabled", () => {
-    it("returns true only for the literal true string", () => {
+    it("returns true for the literal true string", () => {
       vi.stubEnv("NEXT_PUBLIC_ENABLE_CHATBOT", "true")
 
       expect(isChatbotEnabled()).toBe(true)
@@ -45,16 +45,16 @@ describe("feature flags", () => {
       expect(isChatbotEnabled()).toBe(false)
     })
 
-    it("returns false when unset", () => {
+    it("returns true when unset", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_CHATBOT
 
-      expect(isChatbotEnabled()).toBe(false)
+      expect(isChatbotEnabled()).toBe(true)
     })
 
-    it.each(["1", "yes", "TRUE"])("returns false for invalid value %s", (value) => {
+    it.each(["1", "yes", "TRUE"])("returns true for non-false value %s", (value) => {
       process.env.NEXT_PUBLIC_ENABLE_CHATBOT = value
 
-      expect(isChatbotEnabled()).toBe(false)
+      expect(isChatbotEnabled()).toBe(true)
     })
   })
 })

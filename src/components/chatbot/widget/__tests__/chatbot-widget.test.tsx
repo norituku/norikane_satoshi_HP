@@ -162,6 +162,18 @@ describe("chatbot widget shell", () => {
     expect(screen.getByRole("complementary", { name: "AI 相談窓口" })).toBeInTheDocument()
   })
 
+  it("keeps the chatbot enabled when the public chatbot flag is unset", async () => {
+    delete process.env.NEXT_PUBLIC_ENABLE_CHATBOT
+    render(<ChatbotWidget />)
+    await vi.runOnlyPendingTimersAsync()
+
+    await act(async () => {
+      window.dispatchEvent(new Event("hp-chatbot:open"))
+    })
+
+    expect(screen.getByRole("complementary", { name: "AI 相談窓口" })).toBeInTheDocument()
+  })
+
   it("opens from the legacy contact hash after hydration", async () => {
     window.location.hash = "#contact"
     render(<ChatbotWidget />)

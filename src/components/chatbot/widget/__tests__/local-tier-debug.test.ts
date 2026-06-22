@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { formatChatbotTierDebugLabel, isLocalChatbotTierDebugHostname } from "@/components/chatbot/widget/local-tier-debug"
+import { formatChatbotTierDebugLabel, isLocalChatbotTierDebugLocation } from "@/components/chatbot/widget/local-tier-debug"
 
 describe("local chatbot tier debug helpers", () => {
   it("formats human labels with raw tier ids", () => {
@@ -21,10 +21,11 @@ describe("local chatbot tier debug helpers", () => {
     )
   })
 
-  it("only enables the debug display on local hostnames", () => {
-    expect(isLocalChatbotTierDebugHostname("localhost")).toBe(true)
-    expect(isLocalChatbotTierDebugHostname("127.0.0.1")).toBe(true)
-    expect(isLocalChatbotTierDebugHostname("norikane.studio")).toBe(false)
-    expect(isLocalChatbotTierDebugHostname("norikane-satoshi-hp.vercel.app")).toBe(false)
+  it("only enables the debug display on the shared local 41238 surface", () => {
+    expect(isLocalChatbotTierDebugLocation("localhost", "41238")).toBe(true)
+    expect(isLocalChatbotTierDebugLocation("127.0.0.1", "41238")).toBe(true)
+    expect(isLocalChatbotTierDebugLocation("localhost", "3000")).toBe(false)
+    expect(isLocalChatbotTierDebugLocation("norikane.studio", "")).toBe(false)
+    expect(isLocalChatbotTierDebugLocation("norikane-satoshi-hp.vercel.app", "")).toBe(false)
   })
 })

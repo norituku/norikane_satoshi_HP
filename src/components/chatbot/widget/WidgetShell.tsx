@@ -24,7 +24,7 @@ import { ChatbotBookingCard } from "./ChatbotBookingCard"
 import { ChoicePanel } from "./ChoicePanel"
 import { DirectContactCard } from "./DirectContactCard"
 import { InquiryForm } from "./InquiryForm"
-import { formatChatbotTierDebugLabel, isLocalChatbotTierDebugHostname } from "./local-tier-debug"
+import { formatChatbotTierDebugLabel, isLocalChatbotTierDebugLocation } from "./local-tier-debug"
 import { SecurityNote } from "./SecurityNote"
 import { ThinkingIndicator } from "./ThinkingIndicator"
 import { useConversationScroll } from "./useConversationScroll"
@@ -213,7 +213,7 @@ export function WidgetShell({
   const [hasRestoredSession, setHasRestoredSession] = useState(false)
   const activeRequestControllerRef = useRef<AbortController | null>(null)
   const showLocalTierDebug =
-    typeof window !== "undefined" && isLocalChatbotTierDebugHostname(window.location.hostname)
+    typeof window !== "undefined" && isLocalChatbotTierDebugLocation(window.location.hostname, window.location.port)
   const conversationContentKey = [
     messages
       .map((message) => `${message.id ?? ""}:${message.role}:${message.createdAt.toISOString()}:${message.content}`)

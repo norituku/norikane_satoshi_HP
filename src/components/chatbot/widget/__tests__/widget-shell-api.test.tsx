@@ -99,6 +99,25 @@ describe("WidgetShell API wiring", () => {
     delete process.env.NEXT_PUBLIC_ENABLE_BOOKING
   })
 
+  it("does not render tier or model debug text on production-like locations", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage,
+        tier: "tier-3-ollama-deepseek",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage()
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/Local debug|Notion AI|DeepSeek|Ollama|local deterministic|Tier|\bmodel\b/i)
+  })
+
   it("posts submitted chat text to /api/chatbot/message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({
@@ -114,7 +133,8 @@ describe("WidgetShell API wiring", () => {
     submitMessage()
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    expect(await screen.findByText("Local debug: Tier 3 Ollama DeepSeek (tier-3-ollama-deepseek)")).toBeInTheDocument()
+    expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
+    expect(screen.queryByText(/Local debug/)).not.toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/chatbot/message",
       expect.objectContaining({
