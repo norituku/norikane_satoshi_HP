@@ -58,7 +58,7 @@ export function DirectContactCard({ reason, suggestedMessage, onSubmitEmail }: D
       </div>
       <div className="glass-card-sm space-y-1 px-3 py-3 text-xs leading-relaxed text-hp-muted" aria-label="送信前の整理内容">
         <p className="font-semibold text-hp">送信前の整理内容</p>
-        <p>確認が必要な内容として、入力された相談内容とご連絡先のメールアドレスをのりかね本人へ送ります。</p>
+        <p>確認が必要な内容として、入力された相談内容とご連絡先のメールアドレスを則兼本人へ送ります。</p>
         <p>送信ボタンを押すまでメールは送信されません。</p>
       </div>
       <form className="space-y-3" onSubmit={handleSubmit}>

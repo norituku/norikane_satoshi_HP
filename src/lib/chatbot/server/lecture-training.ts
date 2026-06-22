@@ -106,7 +106,7 @@ export function decideLectureTrainingRouting(input: {
     return continueWith("DaVinci Resolve のバージョンを教えてください。")
   }
   if (!conversationState.hasControlPanel) {
-    return continueWith("コントロールパネルの有無を教えてください。現場にない場合は、のりかね本人の Micro Color Panel を持参できる可能性があります。")
+    return continueWith("コントロールパネルの有無を教えてください。現場にない場合は、則兼本人の Micro Color Panel を持参できる可能性があります。")
   }
   if (!conversationState.hasAudienceGuiDisplay) {
     return continueWith("参加者全員が講師の GUI 操作を大きな画面で十分に見られる環境か教えてください。")
@@ -118,7 +118,7 @@ export function decideLectureTrainingRouting(input: {
     return continueWith("希望日程と、10:00〜18:00 を基本にした開始時刻・終了時刻・所要時間の希望を教えてください。")
   }
   if (!conversationState.hasContactEmail || !conversationState.contactEmail) {
-    return continueWith("内容を整理したうえで、のりかね本人と相談・確認します。ご連絡先メールを教えてください。")
+    return continueWith("内容を整理したうえで、則兼本人と相談・確認します。ご連絡先メールを教えてください。")
   }
 
   return {
@@ -138,7 +138,7 @@ export function buildLectureTrainingOpenQuestions(conversationState: Partial<Con
     conversationState.hasInstructorMonitorSetup ? undefined : "講師側モニター構成未確認",
     conversationState.hasPreferredLectureSchedule ? undefined : "10:00〜18:00 基本の希望日時・所要時間未確認",
     conversationState.hasContactEmail && conversationState.contactEmail ? undefined : "連絡先メール未確認",
-    "実施可否・最終内容・日程確定はのりかね本人確認が必要",
+    "実施可否・最終内容・日程確定は則兼本人確認が必要",
   ].filter((item): item is string => Boolean(item))
 }
 
@@ -147,7 +147,7 @@ function buildLectureTrainingSummary(jobContext: JobContext, conversationState: 
   const detailSegments = [
     "依頼種別: 講演・講習・講師依頼",
     "基本対応時間: 10:00〜18:00",
-    "確定方針: 内容整理後にのりかね本人が実施可否・最終内容・日程を確認",
+    "確定方針: 内容整理後に則兼本人が実施可否・最終内容・日程を確認",
     inquiry.content ? `内容: ${inquiry.content}` : undefined,
     inquiry.venue ? `開催場所: ${inquiry.venue}` : undefined,
     inquiry.software ? `使用ソフト: ${labelSoftware(inquiry.software)}` : undefined,

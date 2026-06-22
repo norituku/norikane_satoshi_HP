@@ -773,7 +773,7 @@ describe("ChatbotBookingCard", () => {
     expect(within(completion).getByText("田中")).toBeInTheDocument()
     expect(within(completion).getByText("client@example.jp")).toBeInTheDocument()
     expect(within(completion).getByText("株式会社サンプル")).toBeInTheDocument()
-    expect(within(completion).getByText("ありがとうございます。内容を確認してご連絡します。")).toBeInTheDocument()
+    expect(within(completion).getByText("ありがとうございます。則兼が内容を確認してご連絡します。")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
   })
 
@@ -854,7 +854,7 @@ describe("ChatbotBookingCard", () => {
     expect(screen.getByText("client@example.jp")).toBeInTheDocument()
     expect(screen.getByText("株式会社サンプル")).toBeInTheDocument()
     expect(screen.getByText("6/10(水)、6/11(木)")).toBeInTheDocument()
-    expect(screen.getByText("ありがとうございます。内容を確認してご連絡します。")).toBeInTheDocument()
+    expect(screen.getByText("ありがとうございます。則兼が内容を確認してご連絡します。")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
     expect(screen.queryByText(/bookingGroupId:/)).not.toBeInTheDocument()
     expect(onBooked).toHaveBeenCalledWith(expect.objectContaining({

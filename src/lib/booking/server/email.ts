@@ -201,7 +201,7 @@ export async function sendBookingConfirmedEmail(args: BookingEmailArgs): Promise
     lines: [
       "このたびはご相談いただきありがとうございます。仮キープ受付として内容をお預かりしました。",
       scheduleNote,
-      "内容を確認のうえ、後ほどのりかね本人から直接ご連絡します。",
+      "内容を確認のうえ、後ほど則兼本人から直接ご連絡します。",
       "",
       `案件名: ${args.projectTitle}`,
       ...bookingGroupLine,

@@ -222,7 +222,7 @@ function BookingCompletionView({ booking }: { booking: BookingCompletionSummary 
         className={`${CHATBOT_CONVERSATION_CONTENT_CLASS_NAME} text-sm font-medium text-hp`}
         style={CHATBOT_CONVERSATION_CONTENT_STYLE}
       >
-        ありがとうございます。内容を確認してご連絡します。
+        ありがとうございます。則兼が内容を確認してご連絡します。
       </p>
     </section>
   )
