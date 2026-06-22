@@ -233,6 +233,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
   private readonly fetchClient: CdpFetchClient
   private readonly sessionFactory: NotionAiCdpSessionFactory
   private readonly idFactory: IdFactory
+  private lastHealthError?: ChatbotLlmError | Error
 
   constructor(options: Tier1ChromeNotionAiClientOptions = {}) {
     this.config = {
@@ -321,6 +322,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
     let session: NotionAiCdpSession | undefined
 
     try {
+      this.lastHealthError = undefined
       const opened = await this.openTargetSession(this.config.healthCheckTimeoutMs)
       session = opened.session
       const runtimeContext = await this.evaluate<NotionAiRuntimeContext>(
@@ -333,15 +335,43 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
         this.config.targetUrlIncludes,
       )
 
-      if (!effectiveRuntimeContext.spaceId) return false
+      if (!effectiveRuntimeContext.spaceId) {
+        this.lastHealthError = this.toLlmError({
+          message: "Notion AI runtime context does not expose a space id.",
+          code: "auth",
+          isRetryable: false,
+        })
+        return false
+      }
       if (!this.config.preferredModel) return true
 
-      return modelIsAvailable(this.config.preferredModel, effectiveRuntimeContext.availableModels)
-    } catch {
+      const preferredModelAvailable = modelIsAvailable(
+        this.config.preferredModel,
+        effectiveRuntimeContext.availableModels,
+      )
+      if (!preferredModelAvailable) {
+        this.lastHealthError = this.toLlmError({
+          message: "Preferred Notion AI model is unavailable.",
+          code: "connection",
+          isRetryable: true,
+        })
+      }
+      return preferredModelAvailable
+    } catch (error) {
+      this.lastHealthError = error instanceof Error ? error : this.toLlmError({
+        message: "Notion AI Chrome CDP health check failed.",
+        code: "unknown",
+        isRetryable: true,
+        cause: error,
+      })
       return false
     } finally {
       await session?.close()
     }
+  }
+
+  getLastHealthError(): ChatbotLlmError | Error | undefined {
+    return this.lastHealthError
   }
 
   async inspectRuntimeContext(): Promise<NotionAiRuntimeInspection> {

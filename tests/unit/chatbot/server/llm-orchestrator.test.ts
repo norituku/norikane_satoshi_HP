@@ -75,6 +75,7 @@ function fakeClient(
   overrides: {
     healthy?: boolean
     healthPromise?: Promise<boolean>
+    healthError?: Error
     generateResult?: ChatbotLlmResponse
     generateError?: Error
   } = {},
@@ -86,6 +87,7 @@ function fakeClient(
       if (overrides.generateError) throw overrides.generateError
       return overrides.generateResult ?? llmResponse(tier)
     }),
+    getLastHealthError: vi.fn(() => overrides.healthError),
   } satisfies ChatbotLlmClient
 
   return client
@@ -250,6 +252,35 @@ describe("createChatbotLlmTierOrchestrator", () => {
         latencyMs: expect.any(Number),
       },
     ])
+  })
+
+  it("emits the client health error when a false health check exposes one", async () => {
+    const events: TierAttemptEvent[] = []
+    const healthError = llmError("tier-2-hosted-chrome-notion-ai", {
+      message: "Hosted Notion AI worker URL or token is not configured.",
+      code: "auth",
+      isRetryable: false,
+    })
+    const tier2 = fakeClient("tier-2-hosted-chrome-notion-ai", {
+      healthy: false,
+      healthError,
+    })
+    const tier4 = fakeClient("tier-4-form-fallback")
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier2, tier4],
+      onTierAttempt: (event) => events.push(event),
+    })
+
+    await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
+      llmResponse("tier-4-form-fallback"),
+    )
+
+    expect(events[0]).toMatchObject({
+      tier: "tier-2-hosted-chrome-notion-ai",
+      phase: "health-check",
+      outcome: "unhealthy",
+      error: healthError,
+    })
   })
 
   it("ignores onTierAttempt errors and keeps fallback behavior", async () => {

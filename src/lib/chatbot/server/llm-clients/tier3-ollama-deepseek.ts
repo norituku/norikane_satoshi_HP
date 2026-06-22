@@ -66,6 +66,7 @@ export class Tier3OllamaDeepSeekClient implements ChatbotLlmClient {
   readonly tier = tier
   private readonly config: Tier3OllamaDeepSeekClientConfig
   private readonly httpClient: Tier3OllamaHttpClient
+  private lastHealthError?: ChatbotLlmError | Error
 
   constructor(options: Tier3OllamaDeepSeekClientOptions) {
     this.config = {
@@ -117,16 +118,35 @@ export class Tier3OllamaDeepSeekClient implements ChatbotLlmClient {
 
   async isHealthy(): Promise<boolean> {
     try {
+      this.lastHealthError = undefined
       const response = await this.requestJson<OllamaTagsResponse>(
         tagsEndpointPath,
         { method: httpMethodGet },
         this.config.healthCheckTimeoutMs,
       )
 
-      return hasModel(response.models, this.config.modelName)
-    } catch {
+      const healthy = hasModel(response.models, this.config.modelName)
+      if (!healthy) {
+        this.lastHealthError = this.toLlmError({
+          message: "Configured Ollama DeepSeek model is not available.",
+          code: "connection",
+          isRetryable: true,
+        })
+      }
+      return healthy
+    } catch (error) {
+      this.lastHealthError = error instanceof Error ? error : this.toLlmError({
+        message: "Ollama DeepSeek health check failed.",
+        code: "unknown",
+        isRetryable: true,
+        cause: error,
+      })
       return false
     }
+  }
+
+  getLastHealthError(): ChatbotLlmError | Error | undefined {
+    return this.lastHealthError
   }
 
   private async requestJson<T>(
