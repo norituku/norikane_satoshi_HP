@@ -98,33 +98,93 @@ export async function sendChatbotSlackNotification(
 }
 
 function buildSlackText(input: ChatbotSlackNotificationInput): string {
-  const header =
-    input.kind === "issue"
-      ? "⚠️ Chatbot issue"
-      : input.kind === "booking-completed"
-        ? "Chatbot booking completed"
-        : "Chatbot conversation"
   const isThreadReply = Boolean(input.threadTs)
-  const trackingLines = isThreadReply
-    ? input.kind === "issue" && input.requestId
-      ? [`requestId: ${input.requestId}`]
-      : []
-    : [
-        `conversationId: ${input.conversationId}`,
-        ...(input.sessionId ? [`sessionId: ${input.sessionId}`] : []),
-        ...(input.requestId ? [`requestId: ${input.requestId}`] : []),
-      ]
+
+  if (input.kind === "issue") {
+    const lines = [
+      "応答でエラーが出ました",
+      ...(input.requestId ? [`調査ID: ${input.requestId}`] : []),
+      ...formatIssueReasonLines(input.issueReasons),
+    ]
+    return lines.join("\n")
+  }
+
+  if (input.kind === "booking-completed") {
+    const lines = [
+      "予約が確定しました",
+      ...(input.bookingGroupId ? [`予約ID: ${input.bookingGroupId}`] : []),
+      ...(typeof input.selectedSlotCount === "number" ? [`候補数: ${input.selectedSlotCount}件`] : []),
+      ...(!isThreadReply ? formatTrackingLines(input) : []),
+    ]
+    return lines.join("\n")
+  }
+
   const lines = [
-    header,
-    ...trackingLines,
-    ...(input.tier ? [`tier: ${input.tier}`] : []),
-    ...(input.routingDecisionKind ? [`routingDecision: ${input.routingDecisionKind}`] : []),
-    ...(typeof input.bookingProgress === "boolean" ? [`bookingProgress: ${input.bookingProgress ? "yes" : "no"}`] : []),
-    ...(input.bookingGroupId ? [`bookingId: ${input.bookingGroupId}`] : []),
-    ...(typeof input.selectedSlotCount === "number" ? [`selectedSlotCount: ${input.selectedSlotCount}`] : []),
-    ...(input.issueReasons?.length ? [`reasons: ${input.issueReasons.join(", ")}`] : []),
-    ...(input.userMessage ? ["", `user: ${redactForChatbotLog(input.userMessage)}`] : []),
-    ...(input.assistantResponse ? [`assistant: ${redactForChatbotLog(input.assistantResponse)}`] : []),
+    ...(!isThreadReply ? ["新しいチャット相談", ...formatTrackingLines(input), ...formatConversationStateLines(input)] : []),
+    ...(input.userMessage ? [`ユーザー: ${redactForChatbotLog(input.userMessage)}`] : []),
+    ...(input.assistantResponse ? [`AI: ${redactForChatbotLog(input.assistantResponse)}`] : []),
   ]
   return lines.join("\n")
+}
+
+function formatTrackingLines(input: ChatbotSlackNotificationInput): string[] {
+  return [
+    `会話ID: ${input.conversationId}`,
+    ...(input.sessionId ? [`セッションID: ${input.sessionId}`] : []),
+    ...(input.requestId ? [`調査ID: ${input.requestId}`] : []),
+  ]
+}
+
+function formatConversationStateLines(input: ChatbotSlackNotificationInput): string[] {
+  return [
+    ...(input.tier ? [`応答: ${formatTier(input.tier)}`] : []),
+    ...(input.routingDecisionKind ? [`状態: ${formatRoutingDecision(input.routingDecisionKind)}`] : []),
+    ...(typeof input.bookingProgress === "boolean" ? [`予約相談: ${input.bookingProgress ? "進行中" : "なし"}`] : []),
+    "",
+  ]
+}
+
+function formatTier(tier: ChatbotLlmTier): string {
+  switch (tier) {
+    case "local-deterministic":
+      return "ローカル応答"
+    case "tier-1-chrome-notion-ai":
+    case "tier-2-hosted-chrome-notion-ai":
+      return "通常応答"
+    case "tier-3-ollama-deepseek":
+      return "代替AI応答"
+    case "tier-4-form-fallback":
+      return "問い合わせフォーム案内"
+  }
+}
+
+function formatRoutingDecision(kind: RoutingDecision["kind"]): string {
+  switch (kind) {
+    case "continue":
+      return "相談継続"
+    case "to-booking-inline":
+      return "予約候補を案内"
+    case "to-email":
+      return "問い合わせ案内"
+    case "to-direct-contact":
+      return "直接連絡を案内"
+  }
+}
+
+function formatIssueReasonLines(reasons: string[] | undefined): string[] {
+  const labels = reasons?.map(formatIssueReason) ?? []
+  return labels.length > 0 ? labels.map((label) => `内容: ${label}`) : []
+}
+
+function formatIssueReason(reason: string): string {
+  switch (reason) {
+    case "tier4-form-fallback":
+      return "AI応答を完了できず、問い合わせフォーム案内へ切り替え"
+    case "booking-owner-email-send-failed":
+      return "予約通知メールの送信に失敗"
+    default:
+      if (reason.startsWith("message-")) return "サーバー側で処理に失敗"
+      if (reason.startsWith("booking-")) return "予約処理に失敗"
+      return "サーバー側で処理に失敗"
+  }
 }
