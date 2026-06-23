@@ -62,10 +62,15 @@ describe("sendChatbotSlackNotification", () => {
     const body = postedBody(fetcher)
     expect(body.unfurl_links).toBe(false)
     expect(body.thread_ts).toBeUndefined()
-    expect(body.text).toContain("conversationId: conv_1")
-    expect(body.text).toContain("sessionId: session_1")
-    expect(body.text).toContain("requestId: req_1")
-    expect(body.text).toContain("user: email [email] phone [phone] token=[secret]")
+    expect(body.text).toContain("新しいチャット相談")
+    expect(body.text).toContain("会話ID: conv_1")
+    expect(body.text).toContain("セッションID: session_1")
+    expect(body.text).toContain("調査ID: req_1")
+    expect(body.text).toContain("応答: 通常応答")
+    expect(body.text).toContain("状態: 相談継続")
+    expect(body.text).toContain("ユーザー: email [email] phone [phone] token=[secret]")
+    expect(body.text).not.toMatch(/Chatbot conversation/i)
+    expect(body.text).not.toContain("requestId:")
     expect(body.text).not.toContain("client@example.com")
     expect(body.text).not.toContain("abc12345")
     expect(body.text).not.toContain("abc67890")
@@ -89,14 +94,18 @@ describe("sendChatbotSlackNotification", () => {
 
     const body = postedBody(fetcher)
     expect(body.thread_ts).toBe("1700000000.000100")
-    expect(body.text).toContain("Chatbot conversation")
-    expect(body.text).toContain("user: 2通目です")
+    expect(body.text).toContain("ユーザー: 2通目です")
+    expect(body.text).toContain("AI: 返信です")
+    expect(body.text).not.toMatch(/Chatbot conversation/i)
     expect(body.text).not.toContain("conversationId:")
     expect(body.text).not.toContain("sessionId:")
     expect(body.text).not.toContain("requestId:")
+    expect(body.text).not.toContain("会話ID:")
+    expect(body.text).not.toContain("セッションID:")
+    expect(body.text).not.toContain("調査ID:")
   })
 
-  it("posts issue thread replies without repeated conversation or session ids", async () => {
+  it("posts issue thread replies without loud English headers or internal keys", async () => {
     const fetcher = okFetch("1700000000.000200")
 
     await sendChatbotSlackNotification(
@@ -114,11 +123,36 @@ describe("sendChatbotSlackNotification", () => {
     const body = postedBody(fetcher)
     expect(body.unfurl_links).toBe(false)
     expect(body.thread_ts).toBe("1700000000.000100")
-    expect(body.text).toContain("⚠️ Chatbot issue")
-    expect(body.text).toContain("requestId: req_issue")
-    expect(body.text).toContain("reasons: tier4-form-fallback")
+    expect(body.text).toContain("応答でエラーが出ました")
+    expect(body.text).toContain("調査ID: req_issue")
+    expect(body.text).toContain("内容: AI応答を完了できず、問い合わせフォーム案内へ切り替え")
+    expect(body.text).not.toMatch(/Chatbot issue/i)
+    expect(body.text).not.toContain("⚠️")
+    expect(body.text).not.toContain("requestId:")
+    expect(body.text).not.toContain("reasons:")
+    expect(body.text).not.toContain("tier4-form-fallback")
     expect(body.text).not.toContain("conversationId:")
     expect(body.text).not.toContain("sessionId:")
+  })
+
+  it("maps message issue reasons to human-readable Japanese text", async () => {
+    const fetcher = okFetch("1700000000.000200")
+
+    await sendChatbotSlackNotification(
+      {
+        kind: "issue",
+        requestId: "req_issue",
+        conversationId: "conv_1",
+        threadTs: "1700000000.000100",
+        issueReasons: ["message-server-handler"],
+      },
+      { env: enabledEnv, fetcher },
+    )
+
+    const body = postedBody(fetcher)
+    expect(body.text).toContain("内容: サーバー側で処理に失敗")
+    expect(body.text).not.toContain("message-server-handler")
+    expect(body.text).not.toContain("reasons:")
   })
 
   it("posts booking completion thread replies without repeated conversation or session ids", async () => {
@@ -138,9 +172,12 @@ describe("sendChatbotSlackNotification", () => {
 
     const body = postedBody(fetcher)
     expect(body.thread_ts).toBe("1700000000.000100")
-    expect(body.text).toContain("Chatbot booking completed")
-    expect(body.text).toContain("bookingId: booking_1")
-    expect(body.text).toContain("selectedSlotCount: 2")
+    expect(body.text).toContain("予約が確定しました")
+    expect(body.text).toContain("予約ID: booking_1")
+    expect(body.text).toContain("候補数: 2件")
+    expect(body.text).not.toMatch(/Chatbot booking completed/i)
+    expect(body.text).not.toContain("bookingId:")
+    expect(body.text).not.toContain("selectedSlotCount:")
     expect(body.text).not.toContain("conversationId:")
     expect(body.text).not.toContain("sessionId:")
   })
