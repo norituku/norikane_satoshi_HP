@@ -60,11 +60,13 @@ export async function POST(request: NextRequest) {
   const session = await auth()
   const existingSessionId = request.cookies.get(sessionCookieName)?.value
   const sessionId = parsed.data.clientSessionId ?? existingSessionId ?? crypto.randomUUID()
+  const userAgent = request.headers.get("user-agent") ?? undefined
 
   try {
     const result = await handleChatbotMessage({
       requestId,
       sessionId,
+      userAgent,
       userId: session?.user?.id,
       message: parsed.data.message,
       conversationId: parsed.data.conversationId,

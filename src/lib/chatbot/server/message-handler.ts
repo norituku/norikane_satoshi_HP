@@ -104,6 +104,7 @@ export type ChatbotMessageApiResult = {
 export type HandleChatbotMessageInput = {
   requestId?: string
   sessionId: string
+  userAgent?: string
   userId?: string
   message: string
   conversationId?: string
@@ -311,6 +312,7 @@ export async function handleChatbotMessage(
       sessionId: conversation.context.sessionId,
       conversationId: conversation.id,
       latestUserMessage: input.message,
+      userAgent: input.userAgent,
     })
   const llmResponse = await orchestrator.generate({
     systemPrompt,
@@ -405,6 +407,7 @@ export async function handleChatbotMessage(
     uiKind: ui.kind,
     choiceSetId: routingDecision?.kind === "continue" ? routingDecision.presentChoices?.id : undefined,
     issueReasons,
+    userAgent: input.userAgent,
   })
   if (routingDecision) {
     try {
@@ -644,6 +647,7 @@ type ChatbotTierAttemptLogContext = {
   conversationId: string
   sessionId: string
   latestUserMessage: string
+  userAgent?: string
 }
 
 function buildChatbotSystemPrompt(
@@ -979,6 +983,7 @@ function logChatbotLlmTierAttempt(
       requestId: context.requestId,
       conversationId: context.conversationId,
       sessionId: context.sessionId,
+      userAgent: context.userAgent,
       latestUserMessagePreview: redactForChatbotLog(context.latestUserMessage),
       tier: event.tier,
       phase: event.phase,
@@ -998,6 +1003,7 @@ function logChatbotLlmFinalResponse(input: {
   uiKind: ChatbotMessageUi["kind"]
   choiceSetId?: string
   issueReasons: string[]
+  userAgent?: string
 }): void {
   if (process.env.NODE_ENV === "test") return
 
@@ -1007,6 +1013,7 @@ function logChatbotLlmFinalResponse(input: {
       requestId: input.requestId,
       conversationId: input.conversationId,
       sessionId: input.sessionId,
+      userAgent: input.userAgent,
       tier: input.tier,
       routingDecisionKind: input.routingDecisionKind ?? null,
       uiKind: input.uiKind,
