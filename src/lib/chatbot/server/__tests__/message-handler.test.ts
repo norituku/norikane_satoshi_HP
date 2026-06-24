@@ -1617,6 +1617,54 @@ describe("handleChatbotMessage user context", () => {
     expect(result.assistantMessage.content).not.toContain("4日程度")
   })
 
+  it("does not rewrite calendar dates as workflow duration ranges", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          jobContext: {
+            finalMedium: "web",
+            jobKind: "cm-30s",
+            projectLengthMinutes: 0.5,
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            additionalWork: [],
+          },
+          conversationState: {
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: true,
+            hasAdditionalWork: true,
+            hasDocumentaryAttachments: true,
+            hasWorkSite: true,
+            hasReferenceUrls: true,
+            hasContactEmail: false,
+            hasDesiredSchedule: true,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "希望開始日 2026-07-01、希望納期 2026-07-10で承知しました。基本工程ラインは0.5〜1日が目安です。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "日程も含めて整理してください。",
+      },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toContain("2026-07-01")
+    expect(result.assistantMessage.content).toContain("2026-07-10")
+    expect(result.assistantMessage.content).not.toContain("0.5〜1日-01")
+    expect(result.assistantMessage.content).not.toContain("0.5〜1日-10")
+  })
+
   it("recovers workflow estimate facts from prior user turns when stored job context is missing", async () => {
     const harness = setup({
       existingConversation: conversation({

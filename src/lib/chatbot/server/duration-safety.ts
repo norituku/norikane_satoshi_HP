@@ -54,6 +54,8 @@ export function evaluateWorkflowDurationSafety(
   const nonLiveAlignedText = alignNonLiveLiveMismatchText(rawText, estimate, report, jobContext)
   const expected = `${formatDays(estimate.totalMinDays)}〜${formatDays(estimate.totalMaxDays)}日`
   const alignedText = nonLiveAlignedText.replace(workflowRangePattern, (match, prefix: string, rawRange: string) => {
+    if (isLikelyCalendarDateRange(rawRange)) return match
+
     const stated = parseDayRange(rawRange)
     if (!stated || !isClearlyOutsideWorkflowEstimate(stated, estimate)) return match
 
@@ -84,6 +86,8 @@ const singleDurationDayMentionPattern =
   /(?<![\/\d月])\*{0,2}(\d+(?:\.\d+)?)\s*日\*{0,2}\s*(?:程度|ほど|くらい|前後|が|で|です|かか|必要|見込|目安|ライン|通常)/gu
 
 function parseDayRange(rawRange: string): { minDays: number; maxDays: number } | undefined {
+  if (isLikelyCalendarDateRange(rawRange)) return undefined
+
   const values = [...rawRange.matchAll(/\d+(?:\.\d+)?/gu)].map((match) => Number(match[0]))
   if (values.length < 2 || values.some((value) => !Number.isFinite(value))) return undefined
 
@@ -265,6 +269,7 @@ function buildNonLiveDurationSafeText(estimate: WorkflowEstimate, jobContext: Jo
 
 function parseDayMentions(sentence: string): Array<{ minDays: number; maxDays: number }> {
   const ranges = [...sentence.matchAll(dayRangeMentionPattern)]
+    .filter((match) => !isLikelyCalendarDateRange(match[0]))
     .map((match) => ({
       minDays: Math.min(Number(match[1]), Number(match[2])),
       maxDays: Math.max(Number(match[1]), Number(match[2])),
@@ -278,6 +283,10 @@ function parseDayMentions(sentence: string): Array<{ minDays: number; maxDays: n
     .map((value) => ({ minDays: value, maxDays: value }))
 
   return [...ranges, ...singles]
+}
+
+function isLikelyCalendarDateRange(value: string): boolean {
+  return /(?:19|20)\d{2}\s*[-/]\s*\d{1,2}/u.test(value) || /(?:19|20)\d{2}\s*年\s*\d{1,2}\s*月/u.test(value)
 }
 
 function isAllowedLiveReferenceSentence(
