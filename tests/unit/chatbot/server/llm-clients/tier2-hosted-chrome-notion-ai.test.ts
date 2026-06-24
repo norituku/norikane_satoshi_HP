@@ -227,7 +227,7 @@ describe("Tier2HostedChromeNotionAiClient", () => {
       ...baseConfig,
       requestTimeoutMs: 20,
       healthCheckTimeoutMs: 5,
-      totalGenerateBudgetMs: 30,
+      totalGenerateBudgetMs: 24,
       httpClient,
     })
 
