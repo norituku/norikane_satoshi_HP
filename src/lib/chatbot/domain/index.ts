@@ -14,6 +14,7 @@ export type { ConsultationSummaryInput } from "@/lib/chatbot/domain/consultation
 export type { BookingCardPrefill, RoutingDecision } from "@/lib/chatbot/domain/routing-decision"
 export {
   additionalWorkChoices,
+  bookingFinalConfirmationChoices,
   documentaryAttachmentChoices,
   finalMediumChoices,
   jobKindChoices,

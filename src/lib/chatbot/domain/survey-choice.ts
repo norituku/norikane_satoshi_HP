@@ -148,6 +148,15 @@ export const productionOptionChoices = {
   ],
 } as const satisfies SurveyChoiceSet
 
+export const bookingFinalConfirmationChoices = {
+  id: "booking-final-confirmation",
+  question: "ほかに確認したいこと、伝えておきたいこと、不安な点はありますか？",
+  choices: [
+    { id: "none", label: "なし、このまま進める" },
+    { id: "other", label: "伝えたいこと・不安な点がある" },
+  ],
+} as const satisfies SurveyChoiceSet
+
 export const surveyChoiceSets = [
   jobKindChoices,
   projectLengthChoices,
@@ -159,4 +168,5 @@ export const surveyChoiceSets = [
   lectureTrainingFormatChoices,
   lectureTrainingSoftwareChoices,
   productionOptionChoices,
+  bookingFinalConfirmationChoices,
 ] as const satisfies readonly SurveyChoiceSet[]

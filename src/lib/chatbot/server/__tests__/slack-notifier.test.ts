@@ -58,7 +58,8 @@ describe("sendChatbotSlackNotification", () => {
         sessionId: "session_1",
         tier: "tier-2-hosted-chrome-notion-ai",
         routingDecisionKind: "continue",
-        uiKind: "none",
+        uiKind: "choice-panel",
+        choiceSetId: "booking-final-confirmation",
         flowStep: "booking-final-confirmation",
         bookingProgress: true,
         userMessage: "email client@example.com phone 090-1234-5678 token=abc12345",
@@ -76,7 +77,8 @@ describe("sendChatbotSlackNotification", () => {
     expect(body.text).toContain("セッションID: session_1")
     expect(body.text).toContain("requestId: req_1")
     expect(body.text).toContain("tier: tier-2-hosted-chrome-notion-ai")
-    expect(body.text).toContain("ui: none")
+    expect(body.text).toContain("ui: choice-panel")
+    expect(body.text).toContain("choiceSetId: booking-final-confirmation")
     expect(body.text).toContain("flowStep: booking-final-confirmation")
     expect(body.text).toContain("bookingProgress: true")
     expect(body.text).toContain("ユーザー: email [email] phone [phone] token=[secret]")

@@ -224,6 +224,36 @@ export function applyActiveChoiceAnswer(input: {
         },
         jobContext: {},
       }
+    case "booking-final-confirmation":
+      if (choice.id === "none") {
+        return {
+          choiceSetId: activeChoices.id,
+          choiceId: choice.id,
+          choiceIds: [choice.id],
+          conversationState: {
+            bookingFinalConfirmation: {
+              status: "confirmed",
+            },
+            ...toIntakeClarityPatch(activeChoices, choices, "clear", "choice-confirmed"),
+          },
+          jobContext: {},
+        }
+      }
+
+      return {
+        choiceSetId: activeChoices.id,
+        choiceId: choice.id,
+        choiceIds: [choice.id],
+        conversationState: {
+          bookingFinalConfirmation: {
+            status: "supplemental-received",
+            supplementalNote: otherCommentPatch.otherChoiceComments?.[activeChoices.id] ?? labelChoice(activeChoices, choice.id),
+          },
+          ...otherCommentPatch,
+          ...toIntakeClarityPatch(activeChoices, choices, "clear", "choice-confirmed"),
+        },
+        jobContext: {},
+      }
     default:
       return null
   }
@@ -411,6 +441,8 @@ function toSlotSatisfiedPatch(choiceSetId: SurveyChoiceSet["id"]): Partial<Conve
       return { hasLectureTrainingSoftware: true }
     case "production-options":
       return { hasProductionOptions: true }
+    case "booking-final-confirmation":
+      return {}
     default:
       return {}
   }

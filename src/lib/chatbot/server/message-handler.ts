@@ -403,6 +403,7 @@ export async function handleChatbotMessage(
     tier: llmResponse.tier,
     routingDecisionKind: routingDecision?.kind,
     uiKind: ui.kind,
+    choiceSetId: routingDecision?.kind === "continue" ? routingDecision.presentChoices?.id : undefined,
     issueReasons,
   })
   if (routingDecision) {
@@ -435,6 +436,7 @@ export async function handleChatbotMessage(
     tier: llmResponse.tier,
     routingDecisionKind: routingDecision?.kind,
     uiKind: ui.kind,
+    choiceSetId: routingDecision?.kind === "continue" ? routingDecision.presentChoices?.id : undefined,
     bookingProgress: routingDecision?.kind === "to-booking-inline",
     flowStep: inferChatbotFlowStep({
       routingDecision,
@@ -481,7 +483,7 @@ function shouldUseFallbackRouting(input: {
 
   switch (input.fallbackRoutingDecision.presentChoices.id) {
     case "job-kind":
-      return hasConsultationStartIntent(input.latestUserMessage)
+      return hasConsultationStartIntent(input.latestUserMessage) || looksLikeChoiceListQuestion(input.rawAssistantText)
     case "project-length":
       return hasProjectLengthFollowupIntent(input.latestUserMessage)
     default:
@@ -491,9 +493,14 @@ function shouldUseFallbackRouting(input: {
 
 function hasConsultationStartIntent(message: string): boolean {
   const normalized = message.normalize("NFKC").toLowerCase()
-  return /(相談|依頼|案件|お願い|問い合わせ|見積|発注|予約|カラグレ|カラーグレーディング|カラーコレクション|講習|講演|研修|ライブ|cm|mv|映画|ドラマ|縦型)/u.test(
+  return /(相談|依頼|案件|お願い|頼み|頼む|問い合わせ|見積|発注|予約|カラグレ|カラーグレーディング|カラーコレクション|講習|講演|研修|ライブ|cm|mv|映画|ドラマ|縦型)/u.test(
     normalized,
   )
+}
+
+function looksLikeChoiceListQuestion(message: string): boolean {
+  const normalized = message.normalize("NFKC").toLowerCase()
+  return /(下の選択肢|選んで|選択して|どれに近い|種別)[\s\S]*(cm|mv|ライブ|講習|その他)/u.test(normalized)
 }
 
 function hasProjectLengthFollowupIntent(message: string): boolean {
@@ -515,6 +522,7 @@ async function notifySlackForChatbotResponse(input: {
   tier: ChatbotLlmResponse["tier"]
   routingDecisionKind?: RoutingDecision["kind"]
   uiKind: ChatbotMessageUi["kind"]
+  choiceSetId?: string
   bookingProgress: boolean
   flowStep: ChatbotFlowStep
   flowStepReason?: string
@@ -530,6 +538,7 @@ async function notifySlackForChatbotResponse(input: {
       tier: input.tier,
       routingDecisionKind: input.routingDecisionKind,
       uiKind: input.uiKind,
+      choiceSetId: input.choiceSetId,
       flowStep: input.flowStep,
       flowStepReason: input.flowStepReason,
       threadTs,
@@ -556,6 +565,7 @@ async function notifySlackForChatbotResponse(input: {
         sessionId: input.conversation.context.sessionId,
         tier: input.tier,
         routingDecisionKind: input.routingDecisionKind,
+        choiceSetId: input.choiceSetId,
         threadTs: savedThreadTs,
         issueReasons,
       })
@@ -986,6 +996,7 @@ function logChatbotLlmFinalResponse(input: {
   tier: ChatbotLlmTier
   routingDecisionKind?: RoutingDecision["kind"]
   uiKind: ChatbotMessageUi["kind"]
+  choiceSetId?: string
   issueReasons: string[]
 }): void {
   if (process.env.NODE_ENV === "test") return
@@ -999,6 +1010,7 @@ function logChatbotLlmFinalResponse(input: {
       tier: input.tier,
       routingDecisionKind: input.routingDecisionKind ?? null,
       uiKind: input.uiKind,
+      choiceSetId: input.choiceSetId,
       incident: input.issueReasons.length > 0,
       issueReasons: input.issueReasons,
     }),

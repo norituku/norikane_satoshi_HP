@@ -1,5 +1,5 @@
 import type { ConversationState, JobContext, RoutingDecision } from "@/lib/chatbot/domain"
-import { surveyChoiceSets } from "@/lib/chatbot/domain"
+import { bookingFinalConfirmationChoices, surveyChoiceSets } from "@/lib/chatbot/domain"
 import { isLectureTrainingInquiry } from "@/lib/chatbot/server/lecture-training"
 
 export type ChatbotFlowStep =
@@ -93,6 +93,7 @@ export function applyBookingFinalConfirmationPolicy(input: {
         routingDecision: input.routingDecision ?? {
           kind: "continue",
           nextQuestion: input.assistantText.trim(),
+          presentChoices: bookingFinalConfirmationChoices,
         },
         conversationState: {
           ...input.conversationState,
@@ -114,6 +115,7 @@ export function applyBookingFinalConfirmationPolicy(input: {
     routingDecision: {
       kind: "continue",
       nextQuestion: buildBookingFinalConfirmationQuestion(input.jobContext),
+      presentChoices: bookingFinalConfirmationChoices,
     },
     conversationState: {
       ...input.conversationState,

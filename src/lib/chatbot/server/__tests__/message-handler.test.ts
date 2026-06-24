@@ -5,6 +5,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 import type { CandidateWindow, ChatbotConversation, ChatbotMessage, ConversationState, JobContext } from "@/lib/chatbot/domain"
 import {
   additionalWorkChoices,
+  bookingFinalConfirmationChoices,
   documentaryAttachmentChoices,
   finalMediumChoices,
   jobKindChoices,
@@ -199,6 +200,26 @@ describe("handleChatbotMessage user context", () => {
         }),
       }),
     )
+  })
+
+  it("forces a choice panel when the user asks to request work in casual wording", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "ご相談ありがとうございます。まず案件の種別を教えてください。下の選択肢から選んでください。- ライブ - CM - MV - その他",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "お仕事頼みたいです。" },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toBe("まず案件種別を選んでください\n下の選択肢から選んでください。")
+    expect(result.ui).toMatchObject({
+      kind: "choice-panel",
+      choiceSet: { id: jobKindChoices.id },
+    })
   })
 
   it("uses client user message ids for optimistic cancelled messages", async () => {
@@ -596,16 +617,17 @@ describe("handleChatbotMessage user context", () => {
     expect(result.routingDecision).toMatchObject({
       kind: "continue",
       nextQuestion: expect.stringContaining("ほかに確認したいこと"),
+      presentChoices: { id: bookingFinalConfirmationChoices.id },
     })
     expect(result.assistantMessage.content).toContain("ほかに確認したいこと")
     expect(result.assistantMessage.content).toContain("なし")
-    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.ui).toMatchObject({ kind: "choice-panel", choiceSet: { id: bookingFinalConfirmationChoices.id } })
     expect(result.ui).not.toMatchObject({ kind: "booking-card" })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
         routingDecision: "continue",
         currentQuestion: expect.stringContaining("ほかに確認したいこと"),
-        activeChoices: null,
+        activeChoices: expect.objectContaining({ id: bookingFinalConfirmationChoices.id }),
         conversationState: expect.objectContaining({
           bookingFinalConfirmation: expect.objectContaining({
             status: "pending",
@@ -620,7 +642,8 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.slackNotifier).toHaveBeenCalledWith(
       expect.objectContaining({
         tier: "tier-2-hosted-chrome-notion-ai",
-        uiKind: "none",
+        uiKind: "choice-panel",
+        choiceSetId: bookingFinalConfirmationChoices.id,
         flowStep: "booking-final-confirmation",
         bookingProgress: false,
       }),
@@ -726,9 +749,10 @@ describe("handleChatbotMessage user context", () => {
     )
 
     expect(result.routingDecision).toMatchObject({ kind: "continue" })
-    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.ui).toMatchObject({ kind: "choice-panel", choiceSet: { id: bookingFinalConfirmationChoices.id } })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
+        activeChoices: expect.objectContaining({ id: bookingFinalConfirmationChoices.id }),
         conversationState: expect.objectContaining({
           bookingFinalConfirmation: expect.objectContaining({
             status: "pending",
