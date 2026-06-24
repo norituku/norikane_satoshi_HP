@@ -276,6 +276,7 @@ export async function handleChatbotMessage(
   const jobContext = durationContext.jobContext
   const conversationState = applyBookingFinalConfirmationAnswer({
     latestUserMessage: input.message,
+    previousAssistantMessage: findLastAssistantMessageContent(conversation.messages),
     conversationState: applyLectureTrainingConversationState({
       conversation,
       latestUserMessage: input.message,
@@ -345,6 +346,7 @@ export async function handleChatbotMessage(
     conversationState,
     jobContext,
     latestUserMessage: input.message,
+    assistantText: llmResponse.rawText,
   })
   const routingDecision = flowPolicy.routingDecision
   const persistedConversationState = flowPolicy.conversationState
@@ -527,6 +529,13 @@ function findLastUserMessageIndex(messages: ChatbotMessage[]): number {
     if (messages[index].role === "user") return index
   }
   return -1
+}
+
+function findLastAssistantMessageContent(messages: ChatbotMessage[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "assistant") return messages[index].content
+  }
+  return undefined
 }
 
 function resetEditedConversationContext(

@@ -680,6 +680,104 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
+  it("persists a natural-language final confirmation prompt even without a booking tool call", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "予約候補カードに進める前に、最後に一点だけ確認させてください。ほかに伝えておきたいことや不安な点はありますか。なければ「なし」とお返事ください。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "CM案件、山田太郎、client@example.com、7月10日納品です",
+        jobContext: {
+          jobKind: "cm-30s",
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+        },
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasAdditionalWork: true,
+          hasDocumentaryAttachments: true,
+          hasWorkSite: true,
+          hasReferenceUrls: true,
+          hasContactEmail: true,
+          hasDesiredSchedule: true,
+          contactEmail: "client@example.com",
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({ kind: "continue" })
+    expect(result.ui).toEqual({ kind: "none" })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationState: expect.objectContaining({
+          bookingFinalConfirmation: expect.objectContaining({
+            status: "pending",
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("treats no-additional-concern as confirmed when the previous assistant asked a natural final check", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          message("user", "CM案件、山田太郎、client@example.com、7月10日納品です"),
+          message(
+            "assistant",
+            "予約候補カードに進める前に、最後に一点だけ確認させてください。ほかに伝えておきたいことや不安な点はありますか。なければ「なし」とお返事ください。",
+          ),
+        ],
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+          },
+          jobContext: {
+            jobKind: "cm-30s",
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"show_booking_card","args":{"projectTitle":"CM案件","contactName":"山田太郎","contactEmail":"client@example.com","dueDate":"2026-07-10"}}',
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "なし" },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({ kind: "booking-card" })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routingDecision: "to-booking-inline",
+        conversationState: expect.objectContaining({
+          bookingFinalConfirmation: expect.objectContaining({
+            status: "confirmed",
+          }),
+        }),
+      }),
+    )
+  })
+
   it("records supplemental final-check answers and does not immediately show a booking card", async () => {
     const harness = setup({
       existingConversation: conversation({

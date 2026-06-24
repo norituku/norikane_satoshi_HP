@@ -13,9 +13,12 @@ export type ChatbotFlowStep =
 export function applyBookingFinalConfirmationAnswer(input: {
   conversationState: ConversationState
   latestUserMessage: string
+  previousAssistantMessage?: string
 }): ConversationState {
   const current = input.conversationState.bookingFinalConfirmation
-  if (current?.status !== "pending") return input.conversationState
+  if (current?.status !== "pending" && !isBookingFinalConfirmationPrompt(input.previousAssistantMessage)) {
+    return input.conversationState
+  }
 
   if (isNoAdditionalBookingConcern(input.latestUserMessage)) {
     return {
@@ -43,6 +46,7 @@ export function applyBookingFinalConfirmationPolicy(input: {
   conversationState: ConversationState
   jobContext: JobContext
   latestUserMessage: string
+  assistantText: string
 }): {
   routingDecision: RoutingDecision | undefined
   conversationState: ConversationState
@@ -72,6 +76,24 @@ export function applyBookingFinalConfirmationPolicy(input: {
   }
 
   if (input.routingDecision?.kind !== "to-booking-inline") {
+    if (
+      isBookingFinalConfirmationPrompt(input.assistantText) &&
+      input.conversationState.bookingFinalConfirmation?.status !== "confirmed"
+    ) {
+      return {
+        routingDecision: input.routingDecision ?? {
+          kind: "continue",
+          nextQuestion: input.assistantText.trim(),
+        },
+        conversationState: {
+          ...input.conversationState,
+          bookingFinalConfirmation: {
+            status: "pending",
+            requestedAtTurn: input.conversationState.turnCount,
+          },
+        },
+      }
+    }
     return { routingDecision: input.routingDecision, conversationState: input.conversationState }
   }
 
@@ -126,6 +148,16 @@ export function isNoAdditionalBookingConcern(message: string): boolean {
     .replace(/[\s　。、,.!！?？「」『』()[\]（）]/g, "")
   return /^(なし|無し|ない|ありません|大丈夫|だいじょうぶ|問題ありません|問題ない|ok|okay|okです|以上です|特にありません)$/.test(
     compact,
+  )
+}
+
+export function isBookingFinalConfirmationPrompt(message: string | undefined): boolean {
+  if (!message) return false
+  const normalized = message.normalize("NFKC").toLowerCase()
+  return (
+    /(ほか|他|最後|最終)[\s\S]{0,40}(確認したい|伝えておきたい|不安|気になる|ありますか)/u.test(normalized) &&
+    /なし/u.test(normalized) &&
+    /(予約|候補|カード|進め)/u.test(normalized)
   )
 }
 
