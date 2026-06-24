@@ -180,6 +180,32 @@ describe("Tier2HostedChromeNotionAiClient", () => {
     )
   })
 
+  it("retries a second repair pass for short hosted generate server errors", async () => {
+    const httpClient = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ rawText: "2回目で復旧しました", latencyMs: 31 }))
+    const client = hostedClient(httpClient)
+
+    await expect(client.generate(llmRequest())).resolves.toMatchObject({
+      rawText: "2回目で復旧しました",
+      tier: "tier-2-hosted-chrome-notion-ai",
+      diagnostics: {
+        repairAttempted: true,
+      },
+    })
+    expect(httpClient).toHaveBeenCalledTimes(6)
+    expect(httpClient).toHaveBeenNthCalledWith(
+      6,
+      "https://worker.example.test/generate",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
   it("loads worker URL, token, and enabled flag from tier-specific env", async () => {
     vi.stubEnv("CHATBOT_HOSTED_NOTION_AI_WORKER_URL", "https://env-worker.example.test/")
     vi.stubEnv("CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN", "env-token")
@@ -279,6 +305,19 @@ describe("Tier2HostedChromeNotionAiClient", () => {
           { ok: false, status: 502 },
         ),
       )
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "ready" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: "connection",
+              message: "Chrome CDP target still missing after second repair.",
+              retryable: true,
+            },
+          },
+          { ok: false, status: 502 },
+        ),
+      )
     const client = hostedClient(httpClient)
 
     await expect(client.generate(llmRequest())).rejects.toMatchObject({
@@ -289,7 +328,7 @@ describe("Tier2HostedChromeNotionAiClient", () => {
         httpStatus: 502,
         errorCode: "connection",
         retryable: true,
-        messagePreview: "Chrome CDP target still missing after repair.",
+        messagePreview: "Chrome CDP target still missing after second repair.",
       },
     })
   })

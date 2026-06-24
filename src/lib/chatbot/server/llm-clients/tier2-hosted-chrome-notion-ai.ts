@@ -48,7 +48,7 @@ class HostedWorkerHttpStatusError extends Error {
 }
 
 export const tier2HostedChromeNotionAiDefaults = {
-  requestTimeoutMs: 45000,
+  requestTimeoutMs: 55000,
   healthCheckTimeoutMs: 3000,
   enabled: true,
 } as const
@@ -69,6 +69,7 @@ const httpStatusUnauthorized = 401
 const httpStatusForbidden = 403
 const httpStatusTooManyRequests = 429
 const firstServerErrorStatus = 500
+const maxGenerateAttempts = 3
 
 export class Tier2HostedChromeNotionAiClient implements ChatbotLlmClient {
   readonly tier = tier
@@ -128,25 +129,27 @@ export class Tier2HostedChromeNotionAiClient implements ChatbotLlmClient {
       headers: this.headers({ contentType: true }),
       body: JSON.stringify(request),
     }
+    let repairAttempted = false
 
     await this.tryEnsureChrome()
 
-    try {
-      return await this.requestJson<HostedWorkerGenerateResponse>(
-        generateEndpointPath,
-        init,
-        this.config.requestTimeoutMs,
-      )
-    } catch (error) {
-      if (!shouldRepairAndRetry(error)) throw error
+    for (let attempt = 1; attempt <= maxGenerateAttempts; attempt += 1) {
+      try {
+        const response = await this.requestJson<HostedWorkerGenerateResponse>(
+          generateEndpointPath,
+          init,
+          this.config.requestTimeoutMs,
+        )
+        return repairAttempted ? { ...response, repairAttempted } : response
+      } catch (error) {
+        if (attempt >= maxGenerateAttempts || !shouldRepairAndRetry(error)) throw error
+      }
+
+      repairAttempted = true
       await this.tryEnsureChrome()
-      const response = await this.requestJson<HostedWorkerGenerateResponse>(
-        generateEndpointPath,
-        init,
-        this.config.requestTimeoutMs,
-      )
-      return { ...response, repairAttempted: true }
     }
+
+    throw new Error("Hosted Notion AI worker generate retry loop exhausted.")
   }
 
   private async tryEnsureChrome(): Promise<void> {
