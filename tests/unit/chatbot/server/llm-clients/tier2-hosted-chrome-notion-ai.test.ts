@@ -224,7 +224,7 @@ describe("Tier2HostedChromeNotionAiClient", () => {
     })
 
     const promise = client.generate(llmRequest())
-    await vi.advanceTimersByTimeAsync(20)
+    await vi.advanceTimersByTimeAsync(30)
 
     await expect(promise).rejects.toMatchObject({
       code: "timeout",
