@@ -37,6 +37,10 @@ function setScrollGeometry({ innerHeight, scrollHeight, scrollY }: {
   Object.defineProperty(document.documentElement, "scrollHeight", { configurable: true, value: scrollHeight })
 }
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width })
+}
+
 function installLocalStorage() {
   const values = new Map<string, string>()
   const storage: Storage = {
@@ -103,6 +107,7 @@ describe("chatbot widget shell", () => {
     window.location.hash = ""
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-05-26T00:00:00.000Z"))
+    setViewportWidth(1024)
     setScrollGeometry({ innerHeight: 800, scrollHeight: 4000, scrollY: 0 })
   })
 
@@ -230,6 +235,37 @@ describe("chatbot widget shell", () => {
     expect(screen.getByRole("complementary", { name: "AI 相談窓口" })).toBeInTheDocument()
   })
 
+  it("uses mobile full-screen instead of side-peek and restores normal floating display", async () => {
+    setViewportWidth(390)
+    render(<ChatbotWidget />)
+    await vi.runOnlyPendingTimersAsync()
+
+    await act(async () => {
+      window.dispatchEvent(new Event("hp-chatbot:open"))
+    })
+
+    expect(screen.getByRole("button", { name: "全画面表示に切り替え" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "サイドピーク表示に切り替え" })).not.toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole("button", { name: "全画面表示に切り替え" }).click()
+    })
+
+    expect(document.body).toHaveClass("chatbot-mobile-fullscreen-active")
+    expect(screen.getByRole("button", { name: "通常表示に戻す" })).toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem(CHATBOT_WIDGET_STORAGE_KEY) ?? "{}")).toMatchObject({
+      minimized: false,
+      displayMode: "full-screen",
+    })
+
+    await act(async () => {
+      screen.getByRole("button", { name: "通常表示に戻す" }).click()
+    })
+
+    expect(document.body).not.toHaveClass("chatbot-mobile-fullscreen-active")
+    expect(screen.getByRole("button", { name: "全画面表示に切り替え" })).toBeInTheDocument()
+  })
+
   it("restores a minimized widget from localStorage and reopens it from the minimized bar", async () => {
     persistWidgetState(window.localStorage, true, new Date("2026-05-26T00:00:00.000Z"))
     render(<ChatbotWidget />)
@@ -305,6 +341,19 @@ describe("chatbot widget shell", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "サイドピーク幅を変更" }), { key: "ArrowLeft" })
     expect(onSideResize).toHaveBeenCalledWith(16)
     expect(screen.getByRole("button", { name: "フローティング表示に切り替え" })).toBeInTheDocument()
+  })
+
+  it("renders mobile full-screen controls without side-peek controls", () => {
+    const onToggle = vi.fn()
+    const { rerender } = render(<WidgetShell onMinimize={vi.fn()} onToggleDisplayMode={onToggle} />)
+
+    screen.getByRole("button", { name: "全画面表示に切り替え" }).click()
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("button", { name: "サイドピーク表示に切り替え" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "サイドピーク幅を変更" })).not.toBeInTheDocument()
+
+    rerender(<WidgetShell displayMode="full-screen" onMinimize={vi.fn()} onToggleDisplayMode={onToggle} />)
+    expect(screen.getByRole("button", { name: "通常表示に戻す" })).toBeInTheDocument()
   })
 
   it("does not render the previous placeholder badges", () => {
@@ -497,6 +546,25 @@ describe("chatbot widget hooks", () => {
       floatingSize: { width: 1080, height: 400 },
       floatingPosition: { x: 120, y: 0 },
       sidePeekWidth: 384,
+    })
+  })
+
+  it("preserves a restored mobile full-screen layout mode", () => {
+    expect(
+      sanitizeWidgetLayout(
+        {
+          displayMode: "full-screen",
+          floatingSize: { width: 360, height: 520 },
+          floatingPosition: { x: 12, y: 24 },
+          sidePeekWidth: 384,
+        },
+        { width: 390, height: 844 },
+      ),
+    ).toMatchObject({
+      displayMode: "full-screen",
+      floatingSize: { width: 351, height: 520 },
+      floatingPosition: { x: 12, y: 24 },
+      sidePeekWidth: 351,
     })
   })
 

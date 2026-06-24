@@ -700,6 +700,11 @@
   }
 }
 
+body.chatbot-mobile-fullscreen-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .tweet-embed-reset > .react-tweet-theme {
   margin-block: 0;
 }

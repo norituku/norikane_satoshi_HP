@@ -1,7 +1,7 @@
 "use client"
 
 import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
-import { ChevronDown, GripHorizontal, Minus, PanelRightOpen, Sparkles } from "lucide-react"
+import { ChevronDown, GripHorizontal, Maximize2, Minimize2, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
 import type { JobContext } from "@/lib/chatbot/domain/workflow-estimate"
@@ -488,9 +488,12 @@ export function WidgetShell({
 
   const isSidePeek = isDesktopLayout && displayMode === "side-peek"
   const isFloating = isDesktopLayout && displayMode === "floating"
+  const isFullScreen = !isDesktopLayout && displayMode === "full-screen"
   const shellSizeClassName = isDesktopLayout
     ? "h-full w-full max-w-none rounded-[20px]"
-    : "h-[min(560px,calc(100dvh-2rem))] w-full max-w-[384px] rounded-t-[20px] md:rounded-[20px]"
+    : isFullScreen
+      ? "h-[100dvh] w-screen max-w-none rounded-none pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]"
+      : "h-[min(560px,calc(100dvh-2rem))] w-full max-w-[384px] rounded-t-[20px] md:rounded-[20px]"
 
   const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (!isFloating || isInteractiveTarget(event.target)) return
@@ -564,7 +567,20 @@ export function WidgetShell({
             >
               <PanelRightOpen className={`h-4 w-4 ${displayMode === "side-peek" ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={onToggleDisplayMode}
+              className="glass-btn flex h-9 w-9 shrink-0 items-center justify-center hover:shadow-[0_0_24px_rgba(139,127,255,0.3)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)]"
+              aria-label={isFullScreen ? "通常表示に戻す" : "全画面表示に切り替え"}
+            >
+              {isFullScreen ? (
+                <Minimize2 className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Maximize2 className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={onMinimize}

@@ -11,7 +11,7 @@ export const CHATBOT_WIDGET_DEFAULT_WIDTH = 384
 export const CHATBOT_WIDGET_DEFAULT_HEIGHT = 560
 export const CHATBOT_WIDGET_DEFAULT_OFFSET = 32
 
-export type WidgetDisplayMode = "floating" | "side-peek"
+export type WidgetDisplayMode = "floating" | "side-peek" | "full-screen"
 
 export type WidgetSize = {
   width: number
@@ -141,7 +141,10 @@ export function sanitizeWidgetLayout(
     CHATBOT_WIDGET_MIN_WIDTH,
     maxSize.width,
   )
-  const displayMode = inputLayout.displayMode === "side-peek" ? "side-peek" : "floating"
+  const displayMode =
+    inputLayout.displayMode === "side-peek" || inputLayout.displayMode === "full-screen"
+      ? inputLayout.displayMode
+      : "floating"
 
   return {
     displayMode,
@@ -295,7 +298,7 @@ export function useWidgetState(): WidgetState {
   }, [layout, updateLayout])
 
   const toggleDisplayMode = useCallback(() => {
-    setDisplayMode(layout.displayMode === "side-peek" ? "floating" : "side-peek")
+    setDisplayMode(layout.displayMode === "side-peek" || layout.displayMode === "full-screen" ? "floating" : "side-peek")
   }, [layout.displayMode, setDisplayMode])
 
   const setFloatingSize = useCallback((size: Partial<WidgetSize>) => {

@@ -51,13 +51,14 @@ export function ChatbotWidget() {
   useEffect(() => {
     if (!chatbotEnabled) return
     const openForContactHash = () => {
+      if (!widgetState.hasHydrated) return
       if (window.location.hash === CONTACT_HASH) open()
     }
 
     openForContactHash()
     window.addEventListener("hashchange", openForContactHash)
     return () => window.removeEventListener("hashchange", openForContactHash)
-  }, [chatbotEnabled, open])
+  }, [chatbotEnabled, open, widgetState.hasHydrated])
 
   useScrollTrigger({
     disabled: !chatbotEnabled || !widgetState.hasHydrated || widgetState.isVisible,
@@ -167,11 +168,30 @@ export function ChatbotWidget() {
   }, [isDesktopLayout, startDrag, widgetState.layout.displayMode, widgetState.layout.sidePeekWidth])
 
   const isReady = widgetState.hasHydrated && widgetState.isVisible
+  const effectiveDisplayMode =
+    isDesktopLayout && widgetState.layout.displayMode === "full-screen"
+      ? "floating"
+      : !isDesktopLayout && widgetState.layout.displayMode === "side-peek"
+        ? "floating"
+        : widgetState.layout.displayMode
   const isSidePeekActive =
     isReady &&
     isDesktopLayout &&
     !widgetState.isMinimized &&
-    widgetState.layout.displayMode === "side-peek"
+    effectiveDisplayMode === "side-peek"
+  const isMobileFullScreenActive =
+    isReady &&
+    !isDesktopLayout &&
+    !widgetState.isMinimized &&
+    effectiveDisplayMode === "full-screen"
+
+  const toggleResponsiveDisplayMode = useCallback(() => {
+    if (isDesktopLayout) {
+      widgetState.setDisplayMode(effectiveDisplayMode === "side-peek" ? "floating" : "side-peek")
+      return
+    }
+    widgetState.setDisplayMode(effectiveDisplayMode === "full-screen" ? "floating" : "full-screen")
+  }, [effectiveDisplayMode, isDesktopLayout, widgetState])
 
   useEffect(() => {
     if (!isSidePeekActive) {
@@ -188,16 +208,32 @@ export function ChatbotWidget() {
     }
   }, [isSidePeekActive, widgetState.layout.sidePeekWidth])
 
+  useEffect(() => {
+    if (!isMobileFullScreenActive) {
+      document.body.classList.remove("chatbot-mobile-fullscreen-active")
+      return undefined
+    }
+
+    document.body.classList.add("chatbot-mobile-fullscreen-active")
+    return () => {
+      document.body.classList.remove("chatbot-mobile-fullscreen-active")
+    }
+  }, [isMobileFullScreenActive])
+
   if (!chatbotEnabled) return null
 
   const asideClassName = isSidePeekActive
     ? "pointer-events-none fixed bottom-0 right-0 top-0 z-[2147483640] flex justify-end"
+    : isMobileFullScreenActive
+      ? "pointer-events-none fixed inset-0 z-[2147483640] flex"
     : isDesktopLayout && isReady && !widgetState.isMinimized
       ? "pointer-events-none fixed z-[2147483640] flex justify-end"
       : "pointer-events-none fixed inset-x-3 bottom-3 z-[2147483640] flex justify-end md:inset-x-auto md:bottom-8 md:right-8"
 
   const asideStyle: CSSProperties | undefined = isSidePeekActive
     ? { width: widgetState.layout.sidePeekWidth, height: "100dvh" }
+    : isMobileFullScreenActive
+      ? { width: "100vw", height: "100dvh" }
     : isDesktopLayout && isReady && !widgetState.isMinimized
       ? {
           left: widgetState.layout.floatingPosition.x,
@@ -219,7 +255,7 @@ export function ChatbotWidget() {
         <MinimizedBar onOpen={widgetState.open} shouldShowAttention={widgetState.shouldShowMinimizedAttention} />
       ) : (
         <WidgetShell
-          displayMode={widgetState.layout.displayMode}
+          displayMode={effectiveDisplayMode}
           isDesktopLayout={isDesktopLayout}
           onFloatingResizeBy={resizeFloatingBy}
           onFloatingResizePointerDown={beginFloatingResize}
@@ -227,7 +263,7 @@ export function ChatbotWidget() {
           onMinimize={widgetState.minimize}
           onSidePeekResizeBy={resizeSidePeekBy}
           onSidePeekResizePointerDown={beginSidePeekResize}
-          onToggleDisplayMode={widgetState.toggleDisplayMode}
+          onToggleDisplayMode={toggleResponsiveDisplayMode}
         />
       )}
     </aside>

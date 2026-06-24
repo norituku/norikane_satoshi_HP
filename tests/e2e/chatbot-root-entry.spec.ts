@@ -6,6 +6,14 @@ async function clearWidgetState(page: Page) {
   await page.addInitScript(() => window.localStorage.clear())
 }
 
+async function clearWidgetStateOnce(page: Page) {
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("chatbot-e2e-cleared") === "true") return
+    window.localStorage.clear()
+    window.sessionStorage.setItem("chatbot-e2e-cleared", "true")
+  })
+}
+
 async function expectChatbotOpen(page: Page) {
   await expect(page.getByRole("complementary", { name: assistantName })).toBeVisible()
   await expect(page.getByLabel("相談内容")).toBeVisible()
@@ -86,5 +94,78 @@ test.describe("root chatbot entry", () => {
     await expect(page.getByRole("region", { name: "最終媒体を教えてください" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Web" })).toBeVisible()
     expect(postedMessage).toBe("Web CM の相談です")
+  })
+
+  test("keeps desktop side peek available from the chatbot shell", async ({ page }) => {
+    await clearWidgetState(page)
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    const response = await page.goto("/#contact")
+    expect(response?.status()).toBe(200)
+    const chatbot = page.getByRole("complementary", { name: assistantName })
+    await expectChatbotOpen(page)
+
+    await chatbot.getByRole("button", { name: "サイドピーク表示に切り替え" }).click()
+    await expect(chatbot.getByRole("button", { name: "フローティング表示に切り替え" })).toBeVisible()
+    await expect(chatbot.getByRole("button", { name: "サイドピーク幅を変更" })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => document.body.classList.contains("chatbot-side-peek-active"))).toBe(true)
+  })
+
+  test("opens mobile full-screen, keeps choice panels usable, and restores after reload", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await clearWidgetStateOnce(page)
+    await page.route("**/api/chatbot/message", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversationId: "mobile-fullscreen-conversation",
+          assistantMessage: {
+            role: "assistant",
+            content: "追加作業を選んでください",
+            createdAt: new Date("2026-05-28T00:00:00.000Z").toISOString(),
+          },
+          tier: "tier-2-hosted-chrome-notion-ai",
+          ui: {
+            kind: "choice-panel",
+            choiceSet: {
+              id: "additional-work",
+              question: "追加作業を選んでください",
+              selectionMode: "multiple",
+              choices: [
+                { id: "retouch", label: "消し物/レタッチ" },
+                { id: "skin-retouch", label: "肌修正" },
+                { id: "other", label: "その他" },
+              ],
+            },
+          },
+        }),
+      })
+    })
+
+    const response = await page.goto("/#contact")
+    expect(response?.status()).toBe(200)
+    const chatbot = page.getByRole("complementary", { name: assistantName })
+    await expectChatbotOpen(page)
+    await expect(chatbot.getByRole("button", { name: "サイドピーク表示に切り替え" })).toHaveCount(0)
+
+    await chatbot.getByRole("button", { name: "全画面表示に切り替え" }).click()
+    await expect(chatbot.getByRole("button", { name: "通常表示に戻す" })).toBeVisible()
+    await expect.poll(async () => (await chatbot.boundingBox())?.width).toBeGreaterThanOrEqual(389)
+
+    await chatbot.getByLabel("相談内容").fill("Web CM の相談です")
+    await chatbot.getByRole("button", { name: "送信" }).click()
+    await expect(chatbot.getByRole("region", { name: "追加作業を選んでください" })).toBeVisible()
+    await chatbot.getByRole("button", { name: "その他" }).click()
+    await chatbot.getByLabel("その他の内容").fill("短尺版も相談したい")
+    await expect(chatbot.getByRole("button", { name: "選択を送信" })).toBeVisible()
+
+    await page.reload()
+    const restoredChatbot = page.getByRole("complementary", { name: assistantName })
+    await expect(restoredChatbot.getByRole("button", { name: "通常表示に戻す" })).toBeVisible()
+    await expect(restoredChatbot.getByRole("region", { name: "追加作業を選んでください" })).toBeVisible()
+
+    await restoredChatbot.getByRole("button", { name: "通常表示に戻す" }).click()
+    await expect(restoredChatbot.getByRole("button", { name: "全画面表示に切り替え" })).toBeVisible()
   })
 })
