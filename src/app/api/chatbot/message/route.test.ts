@@ -178,6 +178,7 @@ describe("POST /api/chatbot/message", () => {
     const clientSessionId = "11111111-1111-4111-8111-111111111111"
     const clientUserMessageId = "client_msg_11111111-1111-4111-8111-111111111111"
     const editTargetMessageId = "client_msg_22222222-2222-4222-8222-222222222222"
+    const recoverClientUserMessageId = "client_msg_33333333-3333-4333-8333-333333333333"
 
     const response = await route.POST(
       request({
@@ -185,6 +186,8 @@ describe("POST /api/chatbot/message", () => {
         clientSessionId,
         clientUserMessageId,
         editTargetMessageId,
+        recoverClientUserMessageId,
+        pendingRequestKind: "message",
       }),
     )
 

@@ -179,6 +179,83 @@ describe("WidgetShell API wiring", () => {
     expect(screen.getByLabelText("相談内容")).toBeEnabled()
   })
 
+  it("resends a pending mobile request after the widget remounts mid-response", async () => {
+    let firstSignal: AbortSignal | undefined
+    let resolveRecoveredFetch: (response: ReturnType<typeof mockJsonResponse>) => void = () => undefined
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) => {
+        firstSignal = init?.signal ?? undefined
+        return new Promise<ReturnType<typeof mockJsonResponse>>(() => undefined)
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<ReturnType<typeof mockJsonResponse>>((resolve) => {
+            resolveRecoveredFetch = resolve
+          }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const firstRender = render(<WidgetShell onMinimize={vi.fn()} displayMode="full-screen" />)
+    submitMessage("モバイル復元の相談です")
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const storedBeforeRemount = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+    expect(storedBeforeRemount.pendingRequest).toMatchObject({
+      kind: "message",
+      message: "モバイル復元の相談です",
+      clientUserMessageId: expect.stringMatching(/^client_msg_/),
+    })
+
+    firstRender.unmount()
+    expect(firstSignal?.aborted).toBe(true)
+
+    render(<WidgetShell onMinimize={vi.fn()} displayMode="full-screen" />)
+
+    expect(await screen.findByText("考え中")).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const recoveredBody = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(recoveredBody).toMatchObject({
+      message: "モバイル復元の相談です",
+      clientSessionId: expect.any(String),
+      recoverClientUserMessageId: storedBeforeRemount.pendingRequest.clientUserMessageId,
+      pendingRequestKind: "message",
+    })
+    expect(recoveredBody.clientUserMessageId).toMatch(/^client_msg_/)
+    expect(recoveredBody.clientUserMessageId).not.toBe(storedBeforeRemount.pendingRequest.clientUserMessageId)
+    resolveRecoveredFetch(
+      mockJsonResponse({
+        conversationId: "conv_recovered",
+        userMessage: {
+          id: "user_recovered",
+          role: "user",
+          content: "モバイル復元の相談です",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        assistantMessage: {
+          id: "assistant_recovered",
+          role: "assistant",
+          content: "復元後の回答です",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+        tier: "tier-3-ollama-deepseek",
+        ui: { kind: "choice-panel", choiceSet: finalMediumChoices },
+      }),
+    )
+    expect(await screen.findByText("復元後の回答です")).toBeInTheDocument()
+    expect(screen.getByText("最終媒体を教えてください")).toBeInTheDocument()
+    await waitFor(() => {
+      const storedAfterRecovery = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(storedAfterRecovery.pendingRequest).toBeUndefined()
+      expect(storedAfterRecovery.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "user_recovered", role: "user", content: "モバイル復元の相談です" }),
+          expect.objectContaining({ id: "assistant_recovered", role: "assistant", content: "復元後の回答です" }),
+        ]),
+      )
+    })
+  })
+
   it("auto-scrolls to the latest assistant response when the conversation is already at bottom", async () => {
     let resolveFetch: (response: ReturnType<typeof mockJsonResponse>) => void = () => undefined
     const fetchMock = vi.fn(

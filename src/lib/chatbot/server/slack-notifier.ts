@@ -44,6 +44,8 @@ export type ChatbotSlackNotificationInput = {
   bookingProgress?: boolean
   issueReasons?: string[]
   retryDiagnostics?: ChatbotRetryDiagnosticsSummary | Record<string, unknown>
+  pendingRecovery?: boolean
+  pendingRequestKind?: "message" | "edit"
   bookingGroupId?: string
   selectedSlotCount?: number
 }
@@ -162,6 +164,8 @@ function formatRequiredOperationLines(input: ChatbotSlackNotificationInput): str
     ...(input.flowStep ? [`flowStep: ${input.flowStep}`] : []),
     ...(input.flowStepReason ? [`flowStepReason: ${redactForChatbotLog(input.flowStepReason)}`] : []),
     ...(typeof input.bookingProgress === "boolean" ? [`bookingProgress: ${input.bookingProgress}`] : []),
+    ...(input.pendingRecovery ? ["pendingRecovery: true"] : []),
+    ...(input.pendingRequestKind ? [`pendingRequestKind: ${input.pendingRequestKind}`] : []),
     ...formatRetryDiagnosticLines(input.retryDiagnostics),
   ]
 }

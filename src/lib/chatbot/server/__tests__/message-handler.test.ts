@@ -248,6 +248,79 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("truncates a matching optimistic user message before recovering a remounted pending request", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          {
+            id: "client_msg_11111111-1111-4111-8111-111111111111",
+            role: "user",
+            content: "送信中に閉じた相談",
+            createdAt: "2026-05-26T00:00:00.000Z",
+          },
+          { id: "assistant_old", role: "assistant", content: "古い回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "送信中に閉じた相談",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+        pendingRequestKind: "message",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "client_msg_11111111-1111-4111-8111-111111111111",
+    })
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith({
+      id: "client_msg_33333333-3333-4333-8333-333333333333",
+      conversationId: "conv_1",
+      role: "user",
+      content: "送信中に閉じた相談",
+    })
+    expect(harness.slackNotifier).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "conversation",
+      pendingRecovery: true,
+      pendingRequestKind: "message",
+    }))
+  })
+
+  it("does not truncate the previous conversation when the pending optimistic id never reached the server", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "user_last", role: "user", content: "保存済み直近", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_last", role: "assistant", content: "保存済み回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "届かなかった pending の再送",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).not.toHaveBeenCalled()
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "保存済み直近" },
+      { role: "assistant", content: "保存済み回答" },
+      { role: "user", content: "届かなかった pending の再送" },
+    ])
+  })
+
   it.each(["あなたの名前は？", "AIアシスタントの名前は？", "このチャットの名前は？"])(
     "answers assistant name questions as Nochan without invoking the LLM: %s",
     async (prompt) => {
@@ -2895,6 +2968,37 @@ describe("handleChatbotMessage user context", () => {
     expect(notification.retryDiagnostics).not.toHaveProperty("rawRequest")
     expect(notification.retryDiagnostics).not.toHaveProperty("requestBody")
     expect(notification.retryDiagnostics).not.toHaveProperty("browser")
+  })
+
+  it("passes only safe pending recovery diagnostics to Slack conversation notifications", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: { sessionId: "session_1", userId: "user_a", slackThreadTs: "1700000000.000100" },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "復旧応答です。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+    harness.slackNotifier.mockResolvedValue({ status: "sent", ts: "1700000000.000200" })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "復旧対象です",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+        pendingRequestKind: "message",
+      },
+      harness.options,
+    )
+
+    expect(harness.slackNotifier).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "conversation",
+      pendingRecovery: true,
+      pendingRequestKind: "message",
+    }))
   })
 
   it("posts a problem notification when a response falls below hosted tier2", async () => {
