@@ -60,6 +60,7 @@ const communicationFallbackMessage =
 const inquirySentMessage = "送信しました。担当者からの返信をお待ちください。"
 const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const CHATBOT_PENDING_REQUEST_TTL_MS = 2 * 60 * 1000
 const thinkingDelayNoticeMs = 6000
 
 const additionalWorkMemoLabels: Record<NonNullable<JobContext["additionalWork"]>[number], string> = {
@@ -80,7 +81,17 @@ type StoredWidgetSession = {
   conversationId?: string
   activeUi: WidgetUi
   lastResponseTier?: ChatbotResponseTier
+  pendingRequest?: StoredPendingRequest
   expiresAt: string
+}
+
+type StoredPendingRequest = {
+  kind: "message" | "edit"
+  message: string
+  clientUserMessageId: string
+  submittedAt: string
+  conversationId?: string
+  editTargetMessageId?: string
 }
 
 function getInitialWidgetSession() {
@@ -96,6 +107,19 @@ function removeStoredWidgetSession() {
   } catch {
     // localStorage may be unavailable in private or restricted contexts.
   }
+}
+
+function isFreshStoredPendingRequest(input: unknown, now = Date.now()): input is StoredPendingRequest {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false
+  const pending = input as Partial<StoredPendingRequest>
+  if (pending.kind !== "message" && pending.kind !== "edit") return false
+  if (typeof pending.message !== "string" || pending.message.trim().length === 0) return false
+  if (typeof pending.clientUserMessageId !== "string" || !pending.clientUserMessageId.startsWith("client_msg_")) {
+    return false
+  }
+  if (pending.kind === "edit" && typeof pending.editTargetMessageId !== "string") return false
+  const submittedAt = typeof pending.submittedAt === "string" ? new Date(pending.submittedAt).getTime() : Number.NaN
+  return Number.isFinite(submittedAt) && now - submittedAt <= CHATBOT_PENDING_REQUEST_TTL_MS
 }
 
 function persistWidgetSession(input: Omit<StoredWidgetSession, "expiresAt">) {
@@ -125,6 +149,7 @@ function loadStoredWidgetSession(): {
   conversationId?: string
   activeUi: WidgetUi
   lastResponseTier?: ChatbotResponseTier
+  pendingRequest?: StoredPendingRequest
 } {
   if (typeof window === "undefined") return getInitialWidgetSession()
 
@@ -138,6 +163,8 @@ function loadStoredWidgetSession(): {
       return getInitialWidgetSession()
     }
 
+    const pendingRequest = isFreshStoredPendingRequest(parsed.pendingRequest) ? parsed.pendingRequest : undefined
+    const hasExpiredPendingRequest = Boolean(parsed.pendingRequest && !pendingRequest)
     const messages = Array.isArray(parsed.messages)
       ? parsed.messages
           .filter((message) => message.role && typeof message.content === "string" && message.createdAt)
@@ -148,13 +175,22 @@ function loadStoredWidgetSession(): {
             createdAt: new Date(message.createdAt),
           }))
       : []
+    const restoredMessages = messages.length > 0 ? messages : [initialMessage]
+    const messagesWithExpiredPendingFallback =
+      hasExpiredPendingRequest && restoredMessages[restoredMessages.length - 1]?.role !== "system"
+        ? [
+            ...restoredMessages,
+            { role: "system" as const, content: communicationFallbackMessage, createdAt: new Date() },
+          ]
+        : restoredMessages
 
     return {
-      messages: messages.length > 0 ? messages : [initialMessage],
+      messages: messagesWithExpiredPendingFallback,
       clientSessionId: parsed.clientSessionId,
       conversationId: parsed.conversationId,
-      activeUi: parsed.activeUi ?? noUi,
+      activeUi: hasExpiredPendingRequest ? { kind: "tier4-inquiry-form" } : parsed.activeUi ?? noUi,
       lastResponseTier: parsed.lastResponseTier,
+      pendingRequest,
     }
   } catch {
     removeStoredWidgetSession()
@@ -231,8 +267,11 @@ export function WidgetShell({
   const [submitting, setSubmitting] = useState(false)
   const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(undefined)
+  const [pendingRequest, setPendingRequest] = useState<StoredPendingRequest | undefined>(undefined)
   const [hasRestoredSession, setHasRestoredSession] = useState(false)
   const activeRequestControllerRef = useRef<AbortController | null>(null)
+  const pendingRecoveryStartedRef = useRef(false)
+  const restoredPendingRequestRef = useRef<StoredPendingRequest | undefined>(undefined)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugLocation(window.location.hostname, window.location.port)
   const conversationContentKey = [
@@ -275,6 +314,8 @@ export function WidgetShell({
     setConversationId(storedSession.conversationId)
     setActiveUi(storedSession.activeUi)
     setLastResponseTier(storedSession.lastResponseTier)
+    restoredPendingRequestRef.current = storedSession.pendingRequest
+    setPendingRequest(storedSession.pendingRequest)
     setHasRestoredSession(true)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
@@ -288,8 +329,117 @@ export function WidgetShell({
       conversationId,
       activeUi,
       lastResponseTier,
+      ...(pendingRequest ? { pendingRequest } : {}),
     })
-  }, [activeUi, clientSessionId, conversationId, hasRestoredSession, lastResponseTier, messages])
+  }, [activeUi, clientSessionId, conversationId, hasRestoredSession, lastResponseTier, messages, pendingRequest])
+
+  const recoverPendingRequest = async (pending: StoredPendingRequest, controller: AbortController) => {
+    const recoveryClientUserMessageId = createClientUserMessageId()
+    const restoreAgeMs = Date.now() - new Date(pending.submittedAt).getTime()
+    console.warn("[CHATBOT_WIDGET_PENDING_RECOVERY]", {
+      event: "chatbot_widget_pending_recovery",
+      kind: pending.kind,
+      restoreAgeMs,
+      hasConversationId: Boolean(pending.conversationId ?? conversationId),
+      activeUiKind: activeUi.kind,
+      displayMode,
+    })
+
+    try {
+      const payload = await submitChatbotMessage(
+        {
+          message: pending.message,
+          conversationId: pending.conversationId ?? conversationId,
+          clientUserMessageId: recoveryClientUserMessageId,
+          clientSessionId,
+          pendingRequestKind: pending.kind,
+          ...(pending.kind === "edit"
+            ? { editTargetMessageId: pending.editTargetMessageId }
+            : { recoverClientUserMessageId: pending.clientUserMessageId }),
+        },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
+      setConversationId(payload.conversationId)
+      setLastResponseTier(payload.tier)
+      setMessages((currentMessages) => {
+        const submittedUserMessage = payload.userMessage ?? {
+          id: recoveryClientUserMessageId,
+          role: "user" as const,
+          content: pending.message,
+          createdAt: new Date().toISOString(),
+        }
+        const targetIds = [pending.clientUserMessageId, pending.editTargetMessageId, submittedUserMessage.id]
+          .filter((id): id is string => Boolean(id))
+        const targetIndex = currentMessages.findIndex(
+          (message) => message.role === "user" && targetIds.includes(message.id ?? ""),
+        )
+        const userMessage: WidgetMessage = {
+          id: submittedUserMessage.id,
+          role: submittedUserMessage.role,
+          content: submittedUserMessage.content,
+          createdAt: new Date(submittedUserMessage.createdAt),
+        }
+        const assistantMessage: WidgetMessage = {
+          id: payload.assistantMessage.id,
+          role: payload.assistantMessage.role,
+          content: payload.assistantMessage.content,
+          createdAt: new Date(payload.assistantMessage.createdAt),
+        }
+        const nextMessages =
+          targetIndex >= 0
+            ? [...currentMessages.slice(0, targetIndex), userMessage, assistantMessage]
+            : [...currentMessages, userMessage, assistantMessage]
+        persistWidgetSession({
+          messages: serializeWidgetMessages(nextMessages),
+          clientSessionId,
+          conversationId: payload.conversationId,
+          activeUi: payload.ui,
+          lastResponseTier: payload.tier,
+        })
+        return nextMessages
+      })
+      setActiveUi(payload.ui)
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
+      if (isChatbotOperationError(error)) {
+        console.warn("[CHATBOT_WIDGET_FAILURE]", {
+          event: "chatbot_widget_failure",
+          operation: error.operation,
+          requestId: error.requestId,
+          stage: error.stage,
+          status: error.status,
+          retryable: error.retryable,
+          fallback: error.fallback,
+          hasConversationId: Boolean(pending.conversationId ?? conversationId),
+          activeUiKind: activeUi.kind,
+          recoveredPendingRequest: true,
+        })
+      }
+      appendMessage({
+        role: "system",
+        content: communicationFallbackMessage,
+        createdAt: new Date(),
+      })
+      setActiveUi({ kind: "tier4-inquiry-form" })
+    } finally {
+      finishRequest(controller)
+    }
+  }
+
+  useEffect(() => {
+    const restoredPendingRequest = restoredPendingRequestRef.current
+    if (!hasRestoredSession || !restoredPendingRequest || pendingRecoveryStartedRef.current) return
+    pendingRecoveryStartedRef.current = true
+    restoredPendingRequestRef.current = undefined
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
+    setShowThinkingDelayNotice(false)
+    setSubmitting(true)
+    void recoverPendingRequest(restoredPendingRequest, controller)
+    // recoverPendingRequest is intentionally guarded by restoredPendingRequestRef so it runs once per restored snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientSessionId, conversationId, displayMode, hasRestoredSession])
 
   useEffect(() => {
     return () => {
@@ -300,6 +450,7 @@ export function WidgetShell({
   const finishRequest = (controller: AbortController) => {
     if (activeRequestControllerRef.current !== controller) return
     activeRequestControllerRef.current = null
+    setPendingRequest(undefined)
     setShowThinkingDelayNotice(false)
     setSubmitting(false)
   }
@@ -309,6 +460,7 @@ export function WidgetShell({
     if (!controller) return
     controller.abort()
     activeRequestControllerRef.current = null
+    setPendingRequest(undefined)
     setShowThinkingDelayNotice(false)
     setSubmitting(false)
   }
@@ -319,10 +471,29 @@ export function WidgetShell({
     activeRequestControllerRef.current = controller
     const createdAt = new Date()
     const clientUserMessageId = createClientUserMessageId()
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      { id: clientUserMessageId, role: "user", content: text, createdAt },
-    ])
+    const nextPendingRequest: StoredPendingRequest = {
+      kind: "message",
+      message: text,
+      clientUserMessageId,
+      submittedAt: createdAt.toISOString(),
+      ...(conversationId ? { conversationId } : {}),
+    }
+    setPendingRequest(nextPendingRequest)
+    setMessages((currentMessages) => {
+      const nextMessages = [
+        ...currentMessages,
+        { id: clientUserMessageId, role: "user" as const, content: text, createdAt },
+      ]
+      persistWidgetSession({
+        messages: serializeWidgetMessages(nextMessages),
+        clientSessionId,
+        conversationId,
+        activeUi: noUi,
+        lastResponseTier,
+        pendingRequest: nextPendingRequest,
+      })
+      return nextMessages
+    })
     setActiveUi(noUi)
     setShowThinkingDelayNotice(false)
     setSubmitting(true)
@@ -403,16 +574,35 @@ export function WidgetShell({
     const controller = new AbortController()
     activeRequestControllerRef.current = controller
     const optimisticCreatedAt = new Date()
+    const clientUserMessageId = createClientUserMessageId()
+    const nextPendingRequest: StoredPendingRequest = {
+      kind: "edit",
+      message: trimmedText,
+      clientUserMessageId,
+      editTargetMessageId: messageId,
+      submittedAt: optimisticCreatedAt.toISOString(),
+      ...(conversationId ? { conversationId } : {}),
+    }
+    setPendingRequest(nextPendingRequest)
 
     setMessages((currentMessages) => {
       const currentTargetIndex = currentMessages.findIndex(
         (message) => message.id === messageId && message.role === "user",
       )
       const truncateIndex = currentTargetIndex === -1 ? Math.min(targetIndex, currentMessages.length) : currentTargetIndex
-      return [
+      const nextMessages = [
         ...currentMessages.slice(0, truncateIndex),
-        { id: messageId, role: "user", content: trimmedText, createdAt: optimisticCreatedAt },
+        { id: messageId, role: "user" as const, content: trimmedText, createdAt: optimisticCreatedAt },
       ]
+      persistWidgetSession({
+        messages: serializeWidgetMessages(nextMessages),
+        clientSessionId,
+        conversationId,
+        activeUi: noUi,
+        lastResponseTier,
+        pendingRequest: nextPendingRequest,
+      })
+      return nextMessages
     })
     setActiveUi(noUi)
     setShowThinkingDelayNotice(false)
@@ -420,7 +610,7 @@ export function WidgetShell({
 
     try {
       const payload = await submitChatbotMessage(
-        { message: trimmedText, conversationId, editTargetMessageId: messageId, clientSessionId },
+        { message: trimmedText, conversationId, editTargetMessageId: messageId, clientUserMessageId, clientSessionId },
         { signal: controller.signal },
       )
       if (controller.signal.aborted) return

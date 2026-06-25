@@ -111,6 +111,8 @@ export type HandleChatbotMessageInput = {
   conversationId?: string
   editTargetMessageId?: string
   clientUserMessageId?: string
+  recoverClientUserMessageId?: string
+  pendingRequestKind?: "message" | "edit"
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
 }
@@ -222,6 +224,25 @@ export async function handleChatbotMessage(
     }
   }
 
+  if (input.recoverClientUserMessageId && !input.editTargetMessageId) {
+    const recoverTargetIndex = conversation.messages.findIndex(
+      (message) => message.id === input.recoverClientUserMessageId && message.role === "user",
+    )
+    if (recoverTargetIndex >= 0) {
+      await repository.truncateConversationFromMessage({
+        conversationId: conversation.id,
+        messageId: input.recoverClientUserMessageId,
+      })
+      conversation = resetEditedConversationContext(conversation, conversation.messages.slice(0, recoverTargetIndex))
+      console.info("[chatbot pending request recovered]", {
+        conversationId: conversation.id,
+        sessionId: conversation.context.sessionId,
+        recoveredMessageIdKind: "client",
+        truncated: true,
+      })
+    }
+  }
+
   const userMessage = await repository.appendMessage({
     ...(input.clientUserMessageId ? { id: input.clientUserMessageId } : {}),
     conversationId: conversation.id,
@@ -323,6 +344,7 @@ export async function handleChatbotMessage(
     maxOutputTokens: 900,
   })
   const retryDiagnostics = summarizeChatbotRetryDiagnostics(llmResponse.diagnostics)
+  const isPendingRequestRecovery = input.pendingRequestKind === "message" || input.pendingRequestKind === "edit"
   const fallbackRoutingDecision = decideRoutingFallback({
     jobContext,
     conversationState,
@@ -406,6 +428,8 @@ export async function handleChatbotMessage(
     issueReasons,
     userAgent: input.userAgent,
     retryDiagnostics,
+    pendingRecovery: isPendingRequestRecovery,
+    pendingRequestKind: input.pendingRequestKind,
   })
   if (routingDecision) {
     try {
@@ -447,6 +471,8 @@ export async function handleChatbotMessage(
     flowStepReason: persistedConversationState.activeIntakeClarification?.reason,
     issueReasons,
     retryDiagnostics,
+    pendingRecovery: isPendingRequestRecovery,
+    pendingRequestKind: input.pendingRequestKind,
   })
 
   return {
@@ -530,6 +556,8 @@ async function notifySlackForChatbotResponse(input: {
   flowStepReason?: string
   issueReasons?: string[]
   retryDiagnostics?: ChatbotRetryDiagnosticsSummary
+  pendingRecovery?: boolean
+  pendingRequestKind?: "message" | "edit"
 }): Promise<void> {
   try {
     const threadTs = input.conversation.context.slackThreadTs
@@ -549,6 +577,8 @@ async function notifySlackForChatbotResponse(input: {
       assistantResponse: input.assistantText,
       bookingProgress: input.bookingProgress,
       retryDiagnostics: input.retryDiagnostics,
+      pendingRecovery: input.pendingRecovery,
+      pendingRequestKind: input.pendingRequestKind,
     }
     const result = await input.notifier(baseNotification)
     const savedThreadTs = threadTs ?? (result.status === "sent" ? result.ts : null)
@@ -573,6 +603,8 @@ async function notifySlackForChatbotResponse(input: {
         threadTs: savedThreadTs,
         issueReasons,
         retryDiagnostics: input.retryDiagnostics,
+        pendingRecovery: input.pendingRecovery,
+        pendingRequestKind: input.pendingRequestKind,
       })
     }
   } catch (error) {
@@ -1008,6 +1040,8 @@ function logChatbotLlmFinalResponse(input: {
   issueReasons: string[]
   userAgent?: string
   retryDiagnostics?: ChatbotRetryDiagnosticsSummary
+  pendingRecovery?: boolean
+  pendingRequestKind?: "message" | "edit"
 }): void {
   if (process.env.NODE_ENV === "test") return
 
@@ -1025,6 +1059,8 @@ function logChatbotLlmFinalResponse(input: {
       incident: input.issueReasons.length > 0,
       issueReasons: input.issueReasons,
       retryDiagnostics: input.retryDiagnostics,
+      pendingRecovery: Boolean(input.pendingRecovery),
+      pendingRequestKind: input.pendingRequestKind,
     }),
   )
 }

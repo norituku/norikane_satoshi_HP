@@ -68,6 +68,8 @@ export type SubmitChatbotMessageInput = {
   conversationId?: string
   editTargetMessageId?: string
   clientUserMessageId?: string
+  recoverClientUserMessageId?: string
+  pendingRequestKind?: "message" | "edit"
   clientSessionId?: string
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
