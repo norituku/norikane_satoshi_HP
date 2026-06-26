@@ -178,9 +178,9 @@ const defaultRepository: ChatbotMessageRepository = {
 }
 
 const assistantNameAnswer = "のーちゃんです。"
-const llmHistoryMaxMessages = 24
-const llmHistoryMaxCharacters = 16_000
-const llmHistoryMaxCharactersPerMessage = 4_000
+const llmHistoryMaxMessages = 8
+const llmHistoryMaxCharacters = 4_000
+const llmHistoryMaxCharactersPerMessage = 1_500
 
 export async function handleChatbotMessage(
   input: HandleChatbotMessageInput,
