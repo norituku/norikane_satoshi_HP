@@ -926,6 +926,11 @@ function mergeRecoveredConversationState(
   stored: Partial<ConversationState>,
   recovered: Partial<ConversationState>,
 ): Partial<ConversationState> {
+  const bookingSubmission = {
+    ...(stored.bookingSubmission ?? {}),
+    ...(recovered.bookingSubmission ?? {}),
+  }
+  const hasSubmittedBooking = bookingSubmission.status === "submitted" && bookingSubmission.reservationNumber
   const bookingFinalConfirmation = {
     ...(stored.bookingFinalConfirmation ?? {}),
     ...(recovered.bookingFinalConfirmation ?? {}),
@@ -945,7 +950,10 @@ function mergeRecoveredConversationState(
       ...(stored.intakeClarifications ?? {}),
       ...(recovered.intakeClarifications ?? {}),
     },
-    ...(bookingFinalConfirmation.status
+    ...(hasSubmittedBooking
+      ? { bookingSubmission: bookingSubmission as NonNullable<ConversationState["bookingSubmission"]> }
+      : {}),
+    ...(!hasSubmittedBooking && bookingFinalConfirmation.status
       ? { bookingFinalConfirmation: bookingFinalConfirmation as NonNullable<ConversationState["bookingFinalConfirmation"]> }
       : {}),
   }
@@ -955,6 +963,7 @@ function mergeRecoveredConversationState(
       merged[key] = true
     }
   }
+  if (hasSubmittedBooking) delete merged.bookingFinalConfirmation
 
   if (!Object.keys(merged.otherChoiceComments ?? {}).length) delete merged.otherChoiceComments
   if (!Object.keys(merged.lectureTrainingInquiry ?? {}).length) delete merged.lectureTrainingInquiry
@@ -1565,8 +1574,17 @@ async function resolveRoutingDecision(input: {
   knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
 }): Promise<RoutingDecision | undefined> {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
+  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
+  const submittedBooking = getSubmittedBooking(input.conversationState)
+  if (submittedBooking && (toolCall || input.fallbackRoutingDecision.kind !== "continue")) {
+    return {
+      kind: "continue",
+      nextQuestion: buildSubmittedBookingFollowup(submittedBooking),
+    }
+  }
   if (input.fallbackRoutingDecision.kind === "to-direct-contact") {
     if (
+      !submittedBooking &&
       input.fallbackRoutingDecision.reason === "complex" &&
       input.conversationState.bookingFinalConfirmation?.status === "confirmed" &&
       input.jobContext.jobKind
@@ -1581,12 +1599,34 @@ async function resolveRoutingDecision(input: {
     }
     return input.fallbackRoutingDecision
   }
-  if (input.fallbackRoutingDecision.kind === "to-email") return input.fallbackRoutingDecision
+  if (input.fallbackRoutingDecision.kind === "to-email") {
+    if (input.jobContext.jobKind && !isLectureTrainingInquiry(input.conversationState)) {
+      if (toolCall) {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: toolCall.args,
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+      if (!submittedBooking && input.conversationState.bookingFinalConfirmation?.status === "confirmed") {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: input.conversationState.bookingFinalConfirmation.bookingPrefill ?? {},
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+    }
+    return input.fallbackRoutingDecision
+  }
   if (isLectureTrainingInquiry(input.conversationState)) return input.fallbackRoutingDecision
 
-  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   if (!input.jobContext.jobKind) return undefined
   if (!toolCall) {
+    if (submittedBooking) return undefined
     if (input.conversationState.bookingFinalConfirmation?.status !== "confirmed") return undefined
     return buildBookingInlineRoutingDecision({
       jobContext: input.jobContext,
@@ -1604,6 +1644,18 @@ async function resolveRoutingDecision(input: {
     candidateWindowFinder: input.candidateWindowFinder,
     knowledgeSnapshot: input.knowledgeSnapshot,
   })
+}
+
+function getSubmittedBooking(
+  conversationState: ConversationState,
+): NonNullable<ConversationState["bookingSubmission"]> | undefined {
+  const submission = conversationState.bookingSubmission
+  if (submission?.status !== "submitted") return undefined
+  return submission.reservationNumber.trim() ? submission : undefined
+}
+
+function buildSubmittedBookingFollowup(submission: NonNullable<ConversationState["bookingSubmission"]>): string {
+  return `予約番号 ${submission.reservationNumber} は送信完了済みです。内容は受け付け済みなので、同じ予約カードは再表示しません。則兼が内容を確認してご連絡します。`
 }
 
 async function buildBookingInlineRoutingDecision(input: {

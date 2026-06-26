@@ -978,6 +978,7 @@ function ActiveWidgetUi({
   if (ui.kind === "booking-card") {
     return (
       <ChatbotBookingCard
+        key={bookingCardInstanceKey(conversationId, ui)}
         conversationId={conversationId}
         candidates={ui.suggestedSlots}
         busyDateKeys={ui.busyDateKeys}
@@ -1036,6 +1037,17 @@ function ActiveWidgetUi({
   }
 
   return null
+}
+
+function bookingCardInstanceKey(conversationId: string | undefined, ui: Extract<WidgetUi, { kind: "booking-card" }>) {
+  return [
+    conversationId ?? "new",
+    ui.completedBooking?.bookingGroupId ?? "draft",
+    ui.bookingPrefill?.projectTitle ?? "",
+    ui.bookingPrefill?.contactEmail ?? "",
+    ui.bookingPrefill?.dueDate ?? "",
+    ui.suggestedSlots.map((slot) => `${slot.start}/${slot.end}`).join(","),
+  ].join("|")
 }
 
 function formatChoicePanelSubmission(selection: {
