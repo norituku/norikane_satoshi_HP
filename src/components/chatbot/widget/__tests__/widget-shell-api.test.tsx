@@ -910,6 +910,114 @@ describe("WidgetShell API wiring", () => {
     expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
   })
 
+  it("drops restored booking completion state when an earlier message is edited into a new booking card", async () => {
+    process.env.NEXT_PUBLIC_ENABLE_BOOKING = "true"
+    const slot = {
+      start: "2026-07-10T01:00:00.000Z",
+      end: "2026-07-10T02:00:00.000Z",
+      label: "7月10日 午前",
+    }
+    writeStoredWidgetSession({
+      clientSessionId: "11111111-1111-4111-8111-111111111111",
+      conversationId: "conv_1",
+      messages: [
+        {
+          id: "user_original",
+          role: "user",
+          content: "良いです！",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_original",
+          role: "assistant",
+          content: "候補日を確認しました。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+      activeUi: {
+        kind: "booking-card",
+        suggestedSlots: [slot],
+        jobContext: {
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+          workflowEstimate: { stages: [], totalMinDays: 1, totalMaxDays: 1, riskFlags: [] },
+        },
+        bookingPrefill: {
+          projectTitle: "旧ライブ案件",
+          contactName: "田中",
+          contactEmail: "client@example.jp",
+        },
+        completedBooking: {
+          bookingGroupId: "group_old",
+          bookingIds: ["slot_old"],
+          scheduleLabel: "7月10日",
+          projectTitle: "旧ライブ案件",
+          contactName: "田中",
+          contactEmail: "client@example.jp",
+        },
+      },
+    })
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === "/api/chatbot/message") {
+        return Promise.resolve(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            userMessage: {
+              id: "user_edited",
+              role: "user",
+              content: "了解です",
+              createdAt: "2026-05-26T00:00:02.000Z",
+            },
+            assistantMessage: {
+              ...assistantMessage,
+              id: "assistant_edited",
+              content: "候補日を確認しました。\n下の予約カードから選択してください。",
+              createdAt: "2026-05-26T00:00:03.000Z",
+            },
+            tier: "tier-2-hosted-chrome-notion-ai",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [slot],
+              jobContext: {
+                finalMedium: "web",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                workflowEstimate: { stages: [], totalMinDays: 1, totalMaxDays: 1, riskFlags: [] },
+              },
+              bookingPrefill: {
+                projectTitle: "新ライブ案件",
+                contactName: "田中",
+                contactEmail: "client@example.jp",
+              },
+            },
+          }),
+        )
+      }
+      if (url === "/api/chatbot/booking-candidates") {
+        return Promise.resolve(mockJsonResponse({ candidates: [slot], busyDateKeys: [] }))
+      }
+      return Promise.resolve(mockJsonResponse({}))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(await screen.findByLabelText("予約送信完了")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_old")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "了解です" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
+    fireEvent.click(screen.getByRole("button", { name: "OK" }))
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("案件名")).toHaveValue("新ライブ案件")
+    expect(screen.queryByLabelText("予約送信完了")).not.toBeInTheDocument()
+    expect(screen.queryByText("予約番号: group_old")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "予約内容を送信" })).toBeInTheDocument()
+  })
+
   it("renders InquiryForm for tier4 responses and posts submit-inquiry", async () => {
     const fetchMock = vi
       .fn()

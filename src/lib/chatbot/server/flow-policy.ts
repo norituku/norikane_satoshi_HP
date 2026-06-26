@@ -18,6 +18,16 @@ export function applyBookingFinalConfirmationAnswer(input: {
   previousAssistantMessage?: string
 }): ConversationState {
   const current = input.conversationState.bookingFinalConfirmation
+  if (current?.status === "supplemental-received" && isNoAdditionalBookingConcern(input.latestUserMessage)) {
+    return {
+      ...input.conversationState,
+      bookingFinalConfirmation: {
+        ...current,
+        status: "confirmed",
+        confirmedAtTurn: input.conversationState.turnCount,
+      },
+    }
+  }
   if (current?.status !== "pending" && !isBookingFinalConfirmationPrompt(input.previousAssistantMessage)) {
     return input.conversationState
   }
@@ -70,16 +80,10 @@ export function applyBookingFinalConfirmationPolicy(input: {
     input.conversationState.bookingFinalConfirmation?.status === "supplemental-received"
   ) {
     return {
-      routingDecision:
-        input.routingDecision?.kind === "to-booking-inline"
-          ? {
-              kind: "continue",
-              nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
-            }
-          : input.routingDecision ?? {
-              kind: "continue",
-              nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
-            },
+      routingDecision: {
+        kind: "continue",
+        nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
+      },
       conversationState: input.conversationState,
     }
   }
@@ -191,7 +195,7 @@ export function isNoAdditionalBookingConcern(message: string): boolean {
     .toLowerCase()
     .replace(/^\s*選択\s*[:：]\s*/u, "")
     .replace(/[\s　。、,.!！?？「」『』()[\]（）]/g, "")
-  return /^(なし|無し|ない|ありません|大丈夫|だいじょうぶ|問題ありません|問題ない|ok|okay|okです|以上です|特にありません)(このまま進める|このまますすめる)?$/.test(
+  return /^(なし|無し|ない|ありません|大丈夫|だいじょうぶ|了解|了解です|良い|良いです|いい|いいです|ok|okay|okです|問題ありません|問題ない|以上です|特にありません)(このまま進める|このまますすめる)?$/.test(
     compact,
   )
 }

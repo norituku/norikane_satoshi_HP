@@ -1565,6 +1565,7 @@ async function resolveRoutingDecision(input: {
   knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
 }): Promise<RoutingDecision | undefined> {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
+  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   if (input.fallbackRoutingDecision.kind === "to-direct-contact") {
     if (
       input.fallbackRoutingDecision.reason === "complex" &&
@@ -1581,10 +1582,31 @@ async function resolveRoutingDecision(input: {
     }
     return input.fallbackRoutingDecision
   }
-  if (input.fallbackRoutingDecision.kind === "to-email") return input.fallbackRoutingDecision
+  if (input.fallbackRoutingDecision.kind === "to-email") {
+    if (input.jobContext.jobKind && !isLectureTrainingInquiry(input.conversationState)) {
+      if (toolCall) {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: toolCall.args,
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+      if (input.conversationState.bookingFinalConfirmation?.status === "confirmed") {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: input.conversationState.bookingFinalConfirmation.bookingPrefill ?? {},
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+    }
+    return input.fallbackRoutingDecision
+  }
   if (isLectureTrainingInquiry(input.conversationState)) return input.fallbackRoutingDecision
 
-  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   if (!input.jobContext.jobKind) return undefined
   if (!toolCall) {
     if (input.conversationState.bookingFinalConfirmation?.status !== "confirmed") return undefined
