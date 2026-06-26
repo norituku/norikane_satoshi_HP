@@ -1263,6 +1263,54 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
+  it("keeps submitted booking follow-up as conversation instead of showing another handoff card", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingSubmission: {
+              status: "submitted",
+              reservationNumber: "booking_1",
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "予約候補カードは作成済みです。則兼からご登録のメールアドレス宛にご連絡いたします。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "再確認です。受付済みなら追加の予約カードは不要です。" },
+      harness.options,
+    )
+
+    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.routingDecision?.kind).not.toBe("to-booking-inline")
+    expect(result.routingDecision?.kind).not.toBe("to-direct-contact")
+    expect(result.routingDecision?.kind).not.toBe("to-email")
+    expect(harness.slackNotifier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uiKind: "none",
+        flowStep: "conversation",
+        bookingProgress: false,
+      }),
+    )
+  })
+
   it("caps persisted history before sending the LLM request", async () => {
     const longHistory = Array.from({ length: 40 }, (_, index): ChatbotMessage => {
       return message(index % 2 === 0 ? "user" : "assistant", `履歴 ${index + 1} ${"x".repeat(1000)}`)

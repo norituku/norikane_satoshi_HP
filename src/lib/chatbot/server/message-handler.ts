@@ -1576,7 +1576,7 @@ async function resolveRoutingDecision(input: {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
   const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
   const submittedBooking = getSubmittedBooking(input.conversationState)
-  if (submittedBooking && (toolCall || input.fallbackRoutingDecision.kind === "to-booking-inline")) {
+  if (submittedBooking && (toolCall || input.fallbackRoutingDecision.kind !== "continue")) {
     return {
       kind: "continue",
       nextQuestion: buildSubmittedBookingFollowup(submittedBooking),
