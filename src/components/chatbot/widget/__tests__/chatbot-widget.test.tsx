@@ -389,8 +389,12 @@ describe("chatbot widget shell", () => {
     expect(screen.getByRole("button", { name: "安全に扱います" })).toBeInTheDocument()
   })
 
-  it("hides only the booking card when booking is disabled while preserving conversation controls", async () => {
+  it("renders chatbot booking cards even when the public booking entrypoint is disabled", async () => {
     delete process.env.NEXT_PUBLIC_ENABLE_BOOKING
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ candidates: [], busyDateKeys: [] }),
+    }))
     storeWidgetShellUi(bookingCardUi)
 
     render(<WidgetShell onMinimize={vi.fn()} />)
@@ -400,8 +404,8 @@ describe("chatbot widget shell", () => {
 
     expect(screen.getByText("既存の相談応答です。")).toBeInTheDocument()
     expect(screen.getByLabelText("相談内容")).toBeEnabled()
-    expect(screen.queryByLabelText("チャット内予約")).not.toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "候補日時から予約する" })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("チャット内予約")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "候補日時から予約する" })).toBeInTheDocument()
   })
 
   it("renders the booking card from the same stored UI when booking is enabled", async () => {
