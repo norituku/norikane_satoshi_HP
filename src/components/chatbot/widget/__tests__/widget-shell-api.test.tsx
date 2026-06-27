@@ -57,6 +57,7 @@ function writeStoredWidgetSession(session: {
   clientSessionId?: string
   conversationId?: string
   activeUi?: unknown
+  customerDisplayName?: string
   lastResponseTier?: string
   pendingRequest?: unknown
   recoverableRequest?: unknown
@@ -68,6 +69,7 @@ function writeStoredWidgetSession(session: {
       clientSessionId: session.clientSessionId,
       conversationId: session.conversationId,
       activeUi: session.activeUi ?? { kind: "none" },
+      customerDisplayName: session.customerDisplayName,
       lastResponseTier: session.lastResponseTier,
       pendingRequest: session.pendingRequest,
       recoverableRequest: session.recoverableRequest,
@@ -150,6 +152,134 @@ describe("WidgetShell API wiring", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       message: "相談したいです",
     })
+  })
+
+  it("does not show the default customer label for user messages", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage,
+        tier: "tier-3-ollama-deepseek",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("劇場公開作品です。")
+
+    expect(await screen.findByText("劇場公開作品です。")).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("お客さま")
+    expect(document.body).not.toHaveTextContent("お客様")
+  })
+
+  it("uses and persists a known booking contact name for user message labels", async () => {
+    const slot = {
+      start: "2026-07-10T01:00:00.000Z",
+      end: "2026-07-10T02:00:00.000Z",
+      label: "7月10日 午前",
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            assistantMessage,
+            tier: "tier-3-ollama-deepseek",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [slot],
+              jobContext: {
+                finalMedium: "web",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                workflowEstimate: { stages: [], totalMinDays: 2, totalMaxDays: 3, riskFlags: [] },
+              },
+              bookingPrefill: {
+                projectTitle: "ライブ案件",
+                contactName: "田中",
+                contactEmail: "client@example.jp",
+              },
+            },
+          }),
+        )
+        .mockResolvedValue(mockJsonResponse({ candidates: [slot], busyDateKeys: [] })),
+    )
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("予約したいです")
+
+    expect(await screen.findByText("田中")).toBeInTheDocument()
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(stored.customerDisplayName).toBe("田中")
+    })
+  })
+
+  it("switches the assistant display name only after a nearby user name question", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage: {
+          ...assistantMessage,
+          content: "私はのーちゃんです。",
+        },
+        tier: "tier-2-hosted-chrome-notion-ai",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("AI アシスタント").length).toBeGreaterThan(0)
+    submitMessage("あなたの名前は？")
+
+    expect(await screen.findByText("私はのーちゃんです。")).toBeInTheDocument()
+    expect(screen.getAllByText("のーちゃん").length).toBeGreaterThan(0)
+  })
+
+  it("keeps the assistant display name unchanged for unrelated mentions and restores valid name switches", async () => {
+    writeStoredWidgetSession({
+      messages: [
+        {
+          id: "user_1",
+          role: "user",
+          content: "雑談です",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_1",
+          role: "assistant",
+          content: "のーちゃんという呼び方があります。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+    })
+    const firstRender = render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("AI アシスタント").length).toBeGreaterThan(0)
+    expect(screen.queryByText("のーちゃん")).not.toBeInTheDocument()
+
+    firstRender.unmount()
+    writeStoredWidgetSession({
+      messages: [
+        {
+          id: "user_2",
+          role: "user",
+          content: "なんて呼べばいい？",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_2",
+          role: "assistant",
+          content: "のーちゃんと呼んでください。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+    })
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("のーちゃん").length).toBeGreaterThan(0)
   })
 
   it("shows the thinking indicator while waiting for a chatbot response", async () => {

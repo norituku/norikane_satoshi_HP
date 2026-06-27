@@ -14,19 +14,19 @@ type ChatMessageProps = {
   role: ChatbotMessageRole
   content: string
   createdAt?: Date
+  displayName?: string | null
   editingDisabled?: boolean
   onEdit?: (messageId: string, content: string) => void
 }
 
 const roleLabel: Record<ChatbotMessageRole, string> = {
-  user: "お客さま",
+  user: "",
   assistant: "AI アシスタント",
   system: "システム",
 }
 
 const LONG_PRESS_EDIT_MS = 600
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10
-const EDIT_HINT_VISIBLE_MS = 2200
 const LONG_PRESS_VIBRATION_MS = 10
 
 function isMobileLikePointer(pointerType: string) {
@@ -64,6 +64,7 @@ export function ChatMessage({
   role,
   content,
   createdAt,
+  displayName,
   editingDisabled = false,
   onEdit,
 }: ChatMessageProps) {
@@ -72,7 +73,7 @@ export function ChatMessage({
   const canEdit = isUser && Boolean(id) && Boolean(onEdit) && !editingDisabled
   const [isEditing, setIsEditing] = useState(false)
   const [editConfirmPending, setEditConfirmPending] = useState(false)
-  const [showMobileEditHint, setShowMobileEditHint] = useState(false)
+  const [showTouchEditAffordance, setShowTouchEditAffordance] = useState(false)
   const [draft, setDraft] = useState(content)
   const longPressStateRef = useRef<{
     pointerId: number
@@ -80,27 +81,12 @@ export function ChatMessage({
     startY: number
     timerId: number
   } | null>(null)
-  const editHintTimerRef = useRef<number | null>(null)
   const trimmedDraft = draft.trim()
-
-  const clearEditHintTimer = () => {
-    if (editHintTimerRef.current === null) return
-    window.clearTimeout(editHintTimerRef.current)
-    editHintTimerRef.current = null
-  }
+  const normalizedDisplayName = displayName?.trim()
+  const resolvedRoleLabel = normalizedDisplayName || roleLabel[role]
 
   const hideMobileEditHint = () => {
-    clearEditHintTimer()
-    setShowMobileEditHint(false)
-  }
-
-  const showTemporaryMobileEditHint = () => {
-    clearEditHintTimer()
-    setShowMobileEditHint(true)
-    editHintTimerRef.current = window.setTimeout(() => {
-      editHintTimerRef.current = null
-      setShowMobileEditHint(false)
-    }, EDIT_HINT_VISIBLE_MS)
+    setShowTouchEditAffordance(false)
   }
 
   const vibrateOnLongPress = () => {
@@ -137,6 +123,7 @@ export function ChatMessage({
 
     hideMobileEditHint()
     clearLongPressTimer()
+    setShowTouchEditAffordance(true)
     const { pointerId, clientX, clientY } = event
     longPressStateRef.current = {
       pointerId,
@@ -163,11 +150,12 @@ export function ChatMessage({
 
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
     const longPressState = longPressStateRef.current
-    if (!longPressState || longPressState.pointerId !== event.pointerId) return
+    if (longPressState && longPressState.pointerId === event.pointerId) {
+      clearLongPressTimer()
+    }
 
-    clearLongPressTimer()
-    if (canEdit && !isEditing && isMobileLikePointer(event.pointerType)) {
-      showTemporaryMobileEditHint()
+    if (canEdit && isMobileLikePointer(event.pointerType)) {
+      hideMobileEditHint()
     }
   }
 
@@ -192,7 +180,6 @@ export function ChatMessage({
   useEffect(() => {
     return () => {
       clearLongPressTimer()
-      clearEditHintTimer()
     }
   }, [])
 
@@ -201,18 +188,25 @@ export function ChatMessage({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={clearLongPressTimer}
-      onPointerLeave={clearLongPressTimer}
+      onPointerCancel={() => {
+        clearLongPressTimer()
+        hideMobileEditHint()
+      }}
+      onPointerLeave={() => {
+        clearLongPressTimer()
+        hideMobileEditHint()
+      }}
+      data-chatbot-user-message={isUser ? "true" : undefined}
       className={[
         "group max-w-[88%] px-4 py-3 text-sm leading-relaxed",
         isUser
-          ? "glass-flat ml-auto border border-[var(--accent-primary)]/40 text-hp"
+          ? "chatbot-message-liquid glass-flat ml-auto border border-[var(--accent-primary)]/40 text-hp"
           : "glass-inset mr-auto text-hp",
         isSystem ? "mx-auto max-w-full text-xs text-hp-muted" : "",
       ].join(" ")}
     >
       <div className="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold text-hp-muted">
-        <span>{roleLabel[role]}</span>
+        {resolvedRoleLabel ? <span>{resolvedRoleLabel}</span> : <span aria-hidden="true" />}
         <span className="flex items-center gap-2">
           {canEdit && !isEditing ? (
             <button
@@ -306,7 +300,7 @@ export function ChatMessage({
           {role === "assistant" ? renderAssistantMarkdown(content) : content}
         </p>
       )}
-      {!isEditing && showMobileEditHint ? (
+      {!isEditing && showTouchEditAffordance ? (
         <p className="mt-2 text-right text-[11px] font-medium text-hp-muted" role="status">
           長押しで編集できます
         </p>

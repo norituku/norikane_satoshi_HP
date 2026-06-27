@@ -33,10 +33,18 @@ describe("ChatMessage", () => {
     expect(screen.getByText("12:34")).toBeInTheDocument()
   })
 
-  it("renders user content with the customer label", () => {
+  it("renders user content without the default customer label", () => {
     render(<ChatMessage role="user" content="劇場公開作品です。" />)
 
-    expect(screen.getByText("お客さま")).toBeInTheDocument()
+    expect(screen.queryByText("お客さま")).not.toBeInTheDocument()
+    expect(screen.queryByText("お客様")).not.toBeInTheDocument()
+    expect(screen.getByText("劇場公開作品です。")).toBeInTheDocument()
+  })
+
+  it("renders a user display name only when it is known", () => {
+    render(<ChatMessage role="user" content="劇場公開作品です。" displayName="田中" />)
+
+    expect(screen.getByText("田中")).toBeInTheDocument()
     expect(screen.getByText("劇場公開作品です。")).toBeInTheDocument()
   })
 
@@ -95,7 +103,7 @@ describe("ChatMessage", () => {
     expect(okButton).toHaveClass("text-red-700")
   })
 
-  it("shows a mobile tap hint without entering edit mode", () => {
+  it("does not leave a mobile hint or enter edit mode after a short tap", () => {
     vi.useFakeTimers()
     render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
 
@@ -114,8 +122,50 @@ describe("ChatMessage", () => {
       vi.advanceTimersByTime(600)
     })
 
-    expect(screen.getByText("長押しで編集できます")).toBeInTheDocument()
+    expect(screen.queryByText("長押しで編集できます")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
+  })
+
+  it("shows the long press affordance only while a mobile touch is active", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+
+    expect(screen.getByText("長押しで編集できます")).toBeInTheDocument()
+
+    fireEvent.pointerMove(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 124,
+      clientY: 84,
+    })
+    expect(screen.getByText("長押しで編集できます")).toBeInTheDocument()
+
+    fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
+    expect(screen.queryByText("長押しで編集できます")).not.toBeInTheDocument()
+  })
+
+  it("marks only user messages with liquid animation affordance attributes", () => {
+    const userRender = render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+    const userMessage = screen.getByText("初稿です。").closest("article")
+    expect(userMessage).toHaveClass("chatbot-message-liquid")
+    expect(userMessage).toHaveAttribute("data-chatbot-user-message", "true")
+
+    userRender.unmount()
+    render(<ChatMessage id="msg_2" role="assistant" content="回答です。" onEdit={vi.fn()} />)
+    const assistantMessage = screen.getByText("回答です。").closest("article")
+    expect(assistantMessage).not.toHaveClass("chatbot-message-liquid")
+    expect(assistantMessage).not.toHaveAttribute("data-chatbot-user-message")
   })
 
   it("enters edit mode from a mobile long press on user messages", () => {

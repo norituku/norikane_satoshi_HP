@@ -81,6 +81,7 @@ type StoredWidgetSession = {
   clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
+  customerDisplayName?: string
   lastResponseTier?: ChatbotResponseTier
   pendingRequest?: StoredPendingRequest
   recoverableRequest?: StoredPendingRequest
@@ -142,6 +143,27 @@ function persistWidgetSession(input: Omit<StoredWidgetSession, "expiresAt">) {
   }
 }
 
+function normalizeDisplayName(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function getCustomerDisplayNameFromUi(ui: WidgetUi): string | undefined {
+  if (ui.kind !== "booking-card") return undefined
+  return normalizeDisplayName(ui.completedBooking?.contactName) ?? normalizeDisplayName(ui.bookingPrefill?.contactName)
+}
+
+const assistantNameQuestionPattern = /(名前|なんて呼|どう呼|呼べば|あなた.*誰|誰.*あなた|何者)/u
+
+function isAssistantNameIntroduced(messages: WidgetMessage[]): boolean {
+  return messages.some((message, index) => {
+    if (message.role !== "assistant" || !message.content.includes("のーちゃん")) return false
+    return messages.slice(Math.max(0, index - 2), index).some((nearbyMessage) => {
+      return nearbyMessage.role === "user" && assistantNameQuestionPattern.test(nearbyMessage.content)
+    })
+  })
+}
+
 function serializeWidgetMessages(messages: WidgetMessage[]): StoredWidgetSession["messages"] {
   return messages.map((message) => ({
     ...(message.id ? { id: message.id } : {}),
@@ -156,6 +178,7 @@ function loadStoredWidgetSession(): {
   clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
+  customerDisplayName?: string
   lastResponseTier?: ChatbotResponseTier
   pendingRequest?: StoredPendingRequest
   recoverableRequest?: StoredPendingRequest
@@ -199,6 +222,9 @@ function loadStoredWidgetSession(): {
       clientSessionId: parsed.clientSessionId,
       conversationId: parsed.conversationId,
       activeUi: pendingRequest || recoverableRequest ? noUi : parsed.activeUi ?? noUi,
+      customerDisplayName:
+        normalizeDisplayName(parsed.customerDisplayName) ??
+        getCustomerDisplayNameFromUi(pendingRequest || recoverableRequest ? noUi : parsed.activeUi ?? noUi),
       lastResponseTier: parsed.lastResponseTier,
       pendingRequest,
       recoverableRequest: pendingRequest ? undefined : recoverableRequest,
@@ -275,6 +301,7 @@ export function WidgetShell({
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
   const [clientSessionId, setClientSessionId] = useState<string>(() => createClientSessionId())
   const [activeUi, setActiveUi] = useState<WidgetUi>(noUi)
+  const [customerDisplayName, setCustomerDisplayName] = useState<string | undefined>(undefined)
   const [submitting, setSubmitting] = useState(false)
   const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(undefined)
@@ -306,6 +333,13 @@ export function WidgetShell({
     setMessages((currentMessages) => [...currentMessages, message])
   }
 
+  const rememberCustomerDisplayNameFromUi = (ui: WidgetUi) => {
+    const nextCustomerDisplayName = getCustomerDisplayNameFromUi(ui)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
+  }
+
   useEffect(() => {
     if (!submitting) return
 
@@ -325,6 +359,7 @@ export function WidgetShell({
     }
     setConversationId(storedSession.conversationId)
     setActiveUi(storedSession.activeUi)
+    setCustomerDisplayName(storedSession.customerDisplayName)
     setLastResponseTier(storedSession.lastResponseTier)
     restoredPendingRequestRef.current = storedSession.pendingRequest
     setPendingRequest(storedSession.pendingRequest)
@@ -341,11 +376,12 @@ export function WidgetShell({
       clientSessionId,
       conversationId,
       activeUi,
+      ...(customerDisplayName ? { customerDisplayName } : {}),
       lastResponseTier,
       ...(pendingRequest ? { pendingRequest } : {}),
       ...(recoverableRequest ? { recoverableRequest } : {}),
     })
-  }, [activeUi, clientSessionId, conversationId, hasRestoredSession, lastResponseTier, messages, pendingRequest, recoverableRequest])
+  }, [activeUi, clientSessionId, conversationId, customerDisplayName, hasRestoredSession, lastResponseTier, messages, pendingRequest, recoverableRequest])
 
   const recoverPendingRequest = async (pending: StoredPendingRequest, controller: AbortController) => {
     const recoveryClientUserMessageId = createClientUserMessageId()
@@ -414,6 +450,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
@@ -558,6 +595,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
@@ -674,6 +712,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
@@ -722,6 +761,10 @@ export function WidgetShell({
   }
 
   const handleInquirySubmit = async (input: Omit<SubmitInquiryInput, "conversationId">) => {
+    const nextCustomerDisplayName = normalizeDisplayName(input.name)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
     try {
       await submitChatbotInquiry({ ...input, conversationId })
       appendMessage({
@@ -741,6 +784,10 @@ export function WidgetShell({
   }
 
   const handleBookingCompleted = (booking: BookingCompletionSummary) => {
+    const nextCustomerDisplayName = normalizeDisplayName(booking.contactName)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
     setActiveUi((currentUi) => {
       if (currentUi.kind !== "booking-card") return currentUi
       return {
@@ -753,6 +800,7 @@ export function WidgetShell({
   const isSidePeek = isDesktopLayout && displayMode === "side-peek"
   const isFloating = isDesktopLayout && displayMode === "floating"
   const isFullScreen = !isDesktopLayout && displayMode === "full-screen"
+  const assistantDisplayName = isAssistantNameIntroduced(messages) ? "のーちゃん" : "AI アシスタント"
   const shellSizeClassName = isDesktopLayout
     ? "h-full w-full max-w-none rounded-[20px]"
     : isFullScreen
@@ -815,7 +863,7 @@ export function WidgetShell({
             <Sparkles className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-hp">AI アシスタント</p>
+            <p className="text-sm font-semibold text-hp">{assistantDisplayName}</p>
             <p className="mt-0.5 truncate text-xs text-hp-muted">
               のりかね映像設計室のご相談窓口
             </p>
@@ -879,6 +927,13 @@ export function WidgetShell({
                 role={message.role}
                 content={message.content}
                 createdAt={message.createdAt}
+                displayName={
+                  message.role === "user"
+                    ? customerDisplayName
+                    : message.role === "assistant"
+                      ? assistantDisplayName
+                      : undefined
+                }
                 editingDisabled={submitting}
                 onEdit={handleEditMessage}
               />
