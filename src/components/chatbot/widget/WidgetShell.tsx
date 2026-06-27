@@ -1,6 +1,12 @@
 "use client"
 
-import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
+import {
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { ChevronDown, GripHorizontal, Maximize2, Minimize2, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
@@ -63,6 +69,8 @@ const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const CHATBOT_PENDING_REQUEST_TTL_MS = 15 * 60 * 1000
 const thinkingDelayNoticeMs = 6000
+const SCROLL_BOUNDARY_EPSILON_PX = 1
+const PANEL_INTERACTION_BODY_LOCK_MS = 520
 
 const additionalWorkMemoLabels: Record<NonNullable<JobContext["additionalWork"]>[number], string> = {
   retouch: "消し物/レタッチ",
@@ -146,6 +154,58 @@ function persistWidgetSession(input: Omit<StoredWidgetSession, "expiresAt">) {
 function normalizeDisplayName(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
+}
+
+function findScrollableElementInsideShell(target: EventTarget, shell: HTMLElement) {
+  if (!(target instanceof Element)) return null
+  let element: Element | null = target
+
+  while (element && element !== shell) {
+    if (element instanceof HTMLElement) {
+      const style = window.getComputedStyle(element)
+      const hasScrollableOverflowY =
+        /(auto|scroll)/.test(style.overflowY) ||
+        element.classList.contains("overflow-y-auto") ||
+        element.classList.contains("overflow-y-scroll")
+      const canScrollY =
+        hasScrollableOverflowY && element.scrollHeight > element.clientHeight + SCROLL_BOUNDARY_EPSILON_PX
+
+      if (canScrollY) {
+        return element
+      }
+    }
+    element = element.parentElement
+  }
+
+  return null
+}
+
+function scrollInsideShell(target: EventTarget, shell: HTMLElement, deltaY: number) {
+  const scrollableElement = findScrollableElementInsideShell(target, shell)
+  if (!scrollableElement || deltaY === 0) return false
+  const previousScrollTop = scrollableElement.scrollTop
+  scrollableElement.scrollTop += deltaY
+  return Math.abs(scrollableElement.scrollTop - previousScrollTop) > SCROLL_BOUNDARY_EPSILON_PX
+}
+
+function restoreWindowScroll(scrollX: number, scrollY: number) {
+  const restore = () => {
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+      window.scrollTo(scrollX, scrollY)
+    }
+  }
+  window.requestAnimationFrame(() => {
+    restore()
+    window.setTimeout(restore, 0)
+    window.setTimeout(restore, 50)
+    window.setTimeout(restore, 120)
+    window.setTimeout(restore, 240)
+    window.setTimeout(restore, 400)
+  })
+}
+
+function getFirstTouch(touches: TouchList) {
+  return typeof touches.item === "function" ? touches.item(0) : (touches[0] ?? null)
 }
 
 function getCustomerDisplayNameFromUi(ui: WidgetUi): string | undefined {
@@ -311,6 +371,10 @@ export function WidgetShell({
   const activeRequestControllerRef = useRef<AbortController | null>(null)
   const pendingRecoveryStartedRef = useRef(false)
   const restoredPendingRequestRef = useRef<StoredPendingRequest | undefined>(undefined)
+  const shellRef = useRef<HTMLElement | null>(null)
+  const shellTouchYRef = useRef<number | null>(null)
+  const bodyInteractionUnlockTimerRef = useRef<number | null>(null)
+  const lockedWindowScrollRef = useRef<{ x: number; y: number } | null>(null)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugLocation(window.location.hostname, window.location.port)
   const conversationContentKey = [
@@ -833,9 +897,102 @@ export function WidgetShell({
     onSidePeekResizeBy?.(event.key === "ArrowLeft" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP)
   }
 
+  const stopShellEventPropagation = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation()
+  }
+
+  useEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return undefined
+
+    const lockBodyInteraction = () => {
+      if (bodyInteractionUnlockTimerRef.current !== null) {
+        window.clearTimeout(bodyInteractionUnlockTimerRef.current)
+        bodyInteractionUnlockTimerRef.current = null
+      }
+      lockedWindowScrollRef.current ??= { x: window.scrollX, y: window.scrollY }
+      document.body.classList.add("chatbot-panel-interaction-active")
+      document.documentElement.classList.add("chatbot-panel-interaction-active")
+    }
+    const scheduleBodyInteractionUnlock = () => {
+      if (bodyInteractionUnlockTimerRef.current !== null) {
+        window.clearTimeout(bodyInteractionUnlockTimerRef.current)
+      }
+      bodyInteractionUnlockTimerRef.current = window.setTimeout(() => {
+        bodyInteractionUnlockTimerRef.current = null
+        lockedWindowScrollRef.current = null
+        document.body.classList.remove("chatbot-panel-interaction-active")
+        document.documentElement.classList.remove("chatbot-panel-interaction-active")
+      }, PANEL_INTERACTION_BODY_LOCK_MS)
+    }
+    const handleWheel = (event: WheelEvent) => {
+      lockBodyInteraction()
+      const lockedScroll = lockedWindowScrollRef.current ?? { x: window.scrollX, y: window.scrollY }
+      event.stopPropagation()
+      event.preventDefault()
+      scrollInsideShell(event.target ?? shell, shell, event.deltaY)
+      restoreWindowScroll(lockedScroll.x, lockedScroll.y)
+      scheduleBodyInteractionUnlock()
+    }
+    const handlePointerEnter = () => lockBodyInteraction()
+    const handlePointerLeave = () => scheduleBodyInteractionUnlock()
+    const handleTouchStart = (event: TouchEvent) => {
+      lockBodyInteraction()
+      event.stopPropagation()
+      shellTouchYRef.current = getFirstTouch(event.touches)?.clientY ?? null
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      event.stopPropagation()
+      const currentY = getFirstTouch(event.touches)?.clientY ?? null
+      const previousY = shellTouchYRef.current
+      shellTouchYRef.current = currentY
+      if (currentY === null || previousY === null) return
+
+      const deltaY = previousY - currentY
+      const lockedScroll = lockedWindowScrollRef.current ?? { x: window.scrollX, y: window.scrollY }
+      event.preventDefault()
+      scrollInsideShell(event.target ?? shell, shell, deltaY)
+      restoreWindowScroll(lockedScroll.x, lockedScroll.y)
+    }
+    const handleTouchEnd = (event: TouchEvent) => {
+      event.stopPropagation()
+      shellTouchYRef.current = null
+      scheduleBodyInteractionUnlock()
+    }
+
+    shell.addEventListener("pointerenter", handlePointerEnter)
+    shell.addEventListener("pointerleave", handlePointerLeave)
+    shell.addEventListener("wheel", handleWheel, { passive: false })
+    shell.addEventListener("touchstart", handleTouchStart, { passive: true })
+    shell.addEventListener("touchmove", handleTouchMove, { passive: false })
+    shell.addEventListener("touchend", handleTouchEnd, { passive: true })
+    shell.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+    return () => {
+      if (bodyInteractionUnlockTimerRef.current !== null) {
+        window.clearTimeout(bodyInteractionUnlockTimerRef.current)
+        bodyInteractionUnlockTimerRef.current = null
+      }
+      lockedWindowScrollRef.current = null
+      document.body.classList.remove("chatbot-panel-interaction-active")
+      document.documentElement.classList.remove("chatbot-panel-interaction-active")
+      shell.removeEventListener("pointerenter", handlePointerEnter)
+      shell.removeEventListener("pointerleave", handlePointerLeave)
+      shell.removeEventListener("wheel", handleWheel)
+      shell.removeEventListener("touchstart", handleTouchStart)
+      shell.removeEventListener("touchmove", handleTouchMove)
+      shell.removeEventListener("touchend", handleTouchEnd)
+      shell.removeEventListener("touchcancel", handleTouchEnd)
+    }
+  }, [])
+
   return (
     <section
+      ref={shellRef}
       className={`chatbot-widget-shell glass-card glass-card--chat-frost pointer-events-auto relative flex animate-in fade-in slide-in-from-bottom-2 flex-col overflow-hidden duration-300 ${shellSizeClassName}`}
+      onPointerDown={stopShellEventPropagation}
+      onPointerMove={stopShellEventPropagation}
+      onPointerUp={stopShellEventPropagation}
+      onPointerCancel={stopShellEventPropagation}
       style={{
         background: "rgba(255, 255, 255, 0.72)",
         backdropFilter: "blur(32px) saturate(130%)",

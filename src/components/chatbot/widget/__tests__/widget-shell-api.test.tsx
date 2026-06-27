@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -28,6 +28,10 @@ const assistantMessage = {
   createdAt: "2026-05-26T00:00:00.000Z",
 }
 const chatbotSessionStorageKey = "hp-chatbot-session-v1"
+
+function touchPoint(identifier: number, clientX: number, clientY: number) {
+  return { identifier, clientX, clientY, target: window } as unknown as Touch
+}
 
 function installLocalStorage() {
   const values = new Map<string, string>()
@@ -122,6 +126,58 @@ describe("WidgetShell API wiring", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent(/Local debug|Notion AI|DeepSeek|Ollama|local deterministic|Tier|\bmodel\b/i)
+  })
+
+  it("keeps panel wheel, touch, and pointer operations inside the chatbot shell", () => {
+    const onPointerDown = vi.fn()
+    const onPointerMove = vi.fn()
+    const onTouchMove = vi.fn()
+    const onWheel = vi.fn()
+
+    render(
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onTouchMove={onTouchMove}
+        onWheel={onWheel}
+      >
+        <WidgetShell onMinimize={vi.fn()} />
+      </div>,
+    )
+
+    const shell = screen.getByLabelText("AI 相談窓口")
+    const conversation = screen.getByLabelText("チャット本文")
+
+    fireEvent.pointerDown(shell, { pointerId: 1, pointerType: "mouse", button: 0 })
+    fireEvent.pointerMove(shell, { pointerId: 1, pointerType: "mouse", clientX: 20, clientY: 20 })
+    fireEvent.touchMove(conversation, {
+      touches: [touchPoint(1, 120, 160)],
+      changedTouches: [touchPoint(1, 120, 160)],
+    })
+    const boundaryWheel = createEvent.wheel(conversation, { deltaY: 120, cancelable: true })
+    const preventBoundaryWheelDefault = vi.spyOn(boundaryWheel, "preventDefault")
+    fireEvent(conversation, boundaryWheel)
+    expect(preventBoundaryWheelDefault).toHaveBeenCalled()
+
+    expect(onPointerDown).not.toHaveBeenCalled()
+    expect(onPointerMove).not.toHaveBeenCalled()
+    expect(onTouchMove).not.toHaveBeenCalled()
+    expect(onWheel).not.toHaveBeenCalled()
+  })
+
+  it("keeps chatbot conversation wheel scrolling available inside the shell", () => {
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = screen.getByLabelText("チャット本文")
+    Object.defineProperty(conversation, "clientHeight", { configurable: true, value: 300 })
+    Object.defineProperty(conversation, "scrollHeight", { configurable: true, value: 900 })
+    conversation.scrollTop = 100
+
+    const innerWheel = createEvent.wheel(conversation, { deltaY: 120, cancelable: true })
+    const preventInnerWheelDefault = vi.spyOn(innerWheel, "preventDefault")
+    fireEvent(conversation, innerWheel)
+    expect(preventInnerWheelDefault).toHaveBeenCalled()
+    expect(conversation.scrollTop).toBe(220)
   })
 
   it("posts submitted chat text to /api/chatbot/message", async () => {

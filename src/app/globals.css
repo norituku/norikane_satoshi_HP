@@ -598,6 +598,27 @@
   .chatbot-widget-shell :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
     font-size: max(16px, 1rem);
   }
+  .chatbot-widget-shell {
+    overscroll-behavior: contain;
+    touch-action: manipulation;
+  }
+  .chatbot-widget-shell :is([aria-label="チャット本文"], form, textarea, input, select) {
+    overscroll-behavior: contain;
+  }
+  .chatbot-message-no-select,
+  .chatbot-message-no-select *:not(textarea):not(input):not(select) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .chatbot-message-no-select {
+    touch-action: pan-y;
+  }
+  .chatbot-message-no-select :is(textarea, input, select) {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
   .glass-inset {
     background: rgba(54, 111, 204, 0.07);
     border: 1px solid rgba(54, 111, 204, 0.18);
@@ -813,6 +834,12 @@
 }
 
 body.chatbot-mobile-fullscreen-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.chatbot-panel-interaction-active,
+body.chatbot-panel-interaction-active {
   overflow: hidden;
   overscroll-behavior: none;
 }

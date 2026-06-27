@@ -391,6 +391,109 @@ describe("ChatMessage", () => {
     expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
   })
 
+  it("limits mobile long press editing to the touched user message", () => {
+    vi.useFakeTimers()
+    render(
+      <>
+        <ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />
+        <ChatMessage id="msg_2" role="user" content="別稿です。" onEdit={vi.fn()} />
+      </>,
+    )
+
+    const firstMessage = screen.getByText("初稿です。").closest("article")
+    const secondMessage = screen.getByText("別稿です。").closest("article")
+    expect(firstMessage).not.toBeNull()
+    expect(secondMessage).not.toBeNull()
+
+    fireEvent.pointerDown(firstMessage!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerDown(secondMessage!, {
+      pointerId: 2,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 180,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getAllByLabelText("編集内容")).toHaveLength(1)
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+    expect(screen.getByText("別稿です。")).toBeInTheDocument()
+  })
+
+  it("keeps pointercancel touch tracking owned by the started message only", () => {
+    vi.useFakeTimers()
+    render(
+      <>
+        <ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />
+        <ChatMessage id="msg_2" role="user" content="別稿です。" onEdit={vi.fn()} />
+      </>,
+    )
+
+    const firstMessage = screen.getByText("初稿です。").closest("article")
+    expect(firstMessage).not.toBeNull()
+
+    fireEvent.pointerDown(firstMessage!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(firstMessage!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 120,
+      clientY: 124,
+    })
+    fireEvent.pointerCancel(firstMessage!, { pointerId: 1, pointerType: "touch" })
+
+    fireEvent.touchMove(window, {
+      touches: [touchPoint(7, 120, 150)],
+      changedTouches: [touchPoint(7, 120, 150)],
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getAllByLabelText("編集内容")).toHaveLength(1)
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+    expect(screen.getByText("別稿です。")).toBeInTheDocument()
+  })
+
+  it("clears text selection before mobile long press enters edit mode", () => {
+    vi.useFakeTimers()
+    const removeAllRanges = vi.fn()
+    vi.spyOn(window, "getSelection").mockReturnValue({ removeAllRanges } as unknown as Selection)
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+    expect(message).toHaveClass("chatbot-message-no-select")
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(removeAllRanges).toHaveBeenCalledTimes(1)
+    expect(message).not.toHaveClass("chatbot-message-no-select")
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
   it("does not edit while touch movement continues after pointer cancel, then returns to idle on touch end", () => {
     vi.useFakeTimers()
     render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
