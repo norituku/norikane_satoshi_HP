@@ -15,6 +15,7 @@ const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split
 describe("ChatMessage", () => {
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
     cleanup()
   })
 
@@ -77,8 +78,94 @@ describe("ChatMessage", () => {
     expect(onEdit).toHaveBeenCalledWith("msg_1", "修正版です。")
   })
 
+  it("marks the edit truncation confirmation as destructive on the desktop edit path", () => {
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "修正版です。" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
+
+    const warning = screen.getByText("保存すると、これより後のやり取りは削除されます。")
+    const confirmRegion = warning.closest("[data-edit-confirm-pending='true']")
+    const okButton = screen.getByRole("button", { name: "OK" })
+
+    expect(confirmRegion).toHaveClass("border-red-300")
+    expect(warning).toHaveClass("text-red-600")
+    expect(okButton).toHaveClass("border-red-300")
+    expect(okButton).toHaveClass("text-red-700")
+  })
+
+  it("shows a mobile tap hint without entering edit mode", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getByText("長押しで編集できます")).toBeInTheDocument()
+    expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
+  })
+
   it("enters edit mode from a mobile long press on user messages", () => {
     vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("vibrates briefly when mobile long press enters edit mode", () => {
+    vi.useFakeTimers()
+    const vibrate = vi.fn()
+    vi.stubGlobal("navigator", { ...navigator, vibrate })
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(vibrate).toHaveBeenCalledWith([10])
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("enters edit mode from mobile long press without vibration support", () => {
+    vi.useFakeTimers()
+    vi.stubGlobal("navigator", { ...navigator, vibrate: undefined })
     render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
 
     const message = screen.getByText("初稿です。").closest("article")

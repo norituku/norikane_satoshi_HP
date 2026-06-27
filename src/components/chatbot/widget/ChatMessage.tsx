@@ -1,7 +1,7 @@
 "use client"
 
 import { Check, Pencil, X } from "lucide-react"
-import { Fragment, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { Fragment, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
 import {
@@ -26,6 +26,8 @@ const roleLabel: Record<ChatbotMessageRole, string> = {
 
 const LONG_PRESS_EDIT_MS = 600
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10
+const EDIT_HINT_VISIBLE_MS = 2200
+const LONG_PRESS_VIBRATION_MS = 10
 
 function isMobileLikePointer(pointerType: string) {
   if (pointerType !== "mouse") return true
@@ -70,6 +72,7 @@ export function ChatMessage({
   const canEdit = isUser && Boolean(id) && Boolean(onEdit) && !editingDisabled
   const [isEditing, setIsEditing] = useState(false)
   const [editConfirmPending, setEditConfirmPending] = useState(false)
+  const [showMobileEditHint, setShowMobileEditHint] = useState(false)
   const [draft, setDraft] = useState(content)
   const longPressStateRef = useRef<{
     pointerId: number
@@ -77,9 +80,39 @@ export function ChatMessage({
     startY: number
     timerId: number
   } | null>(null)
+  const editHintTimerRef = useRef<number | null>(null)
   const trimmedDraft = draft.trim()
 
+  const clearEditHintTimer = () => {
+    if (editHintTimerRef.current === null) return
+    window.clearTimeout(editHintTimerRef.current)
+    editHintTimerRef.current = null
+  }
+
+  const hideMobileEditHint = () => {
+    clearEditHintTimer()
+    setShowMobileEditHint(false)
+  }
+
+  const showTemporaryMobileEditHint = () => {
+    clearEditHintTimer()
+    setShowMobileEditHint(true)
+    editHintTimerRef.current = window.setTimeout(() => {
+      editHintTimerRef.current = null
+      setShowMobileEditHint(false)
+    }, EDIT_HINT_VISIBLE_MS)
+  }
+
+  const vibrateOnLongPress = () => {
+    if (typeof navigator === "undefined") return
+    const vibrate = navigator.vibrate
+    if (typeof vibrate === "function") {
+      vibrate.call(navigator, [LONG_PRESS_VIBRATION_MS])
+    }
+  }
+
   const startEditing = () => {
+    hideMobileEditHint()
     setEditConfirmPending(false)
     setDraft(content)
     setIsEditing(true)
@@ -102,6 +135,7 @@ export function ChatMessage({
     if (!canEdit || isEditing || !isMobileLikePointer(event.pointerType)) return
     if (event.button !== 0) return
 
+    hideMobileEditHint()
     clearLongPressTimer()
     const { pointerId, clientX, clientY } = event
     longPressStateRef.current = {
@@ -110,6 +144,7 @@ export function ChatMessage({
       startY: clientY,
       timerId: window.setTimeout(() => {
         longPressStateRef.current = null
+        vibrateOnLongPress()
         startEditing()
       }, LONG_PRESS_EDIT_MS),
     }
@@ -123,6 +158,16 @@ export function ChatMessage({
     const movedY = Math.abs(event.clientY - longPressState.startY)
     if (movedX > LONG_PRESS_MOVE_TOLERANCE_PX || movedY > LONG_PRESS_MOVE_TOLERANCE_PX) {
       clearLongPressTimer()
+    }
+  }
+
+  const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
+    const longPressState = longPressStateRef.current
+    if (!longPressState || longPressState.pointerId !== event.pointerId) return
+
+    clearLongPressTimer()
+    if (canEdit && !isEditing && isMobileLikePointer(event.pointerType)) {
+      showTemporaryMobileEditHint()
     }
   }
 
@@ -144,11 +189,18 @@ export function ChatMessage({
     setIsEditing(false)
   }
 
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer()
+      clearEditHintTimer()
+    }
+  }, [])
+
   return (
     <article
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={clearLongPressTimer}
+      onPointerUp={handlePointerUp}
       onPointerCancel={clearLongPressTimer}
       onPointerLeave={clearLongPressTimer}
       className={[
@@ -197,8 +249,11 @@ export function ChatMessage({
             disabled={editingDisabled}
           />
           {editConfirmPending ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <p className="mr-auto text-xs font-medium text-hp-muted">
+            <div
+              className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-red-300 bg-red-50/70 px-3 py-2"
+              data-edit-confirm-pending="true"
+            >
+              <p className="mr-auto text-xs font-semibold text-red-600">
                 保存すると、これより後のやり取りは削除されます。
               </p>
               <button
@@ -212,7 +267,7 @@ export function ChatMessage({
               </button>
               <button
                 type="button"
-                className="glass-btn inline-flex h-8 items-center gap-1 px-3 text-xs"
+                className="glass-btn inline-flex h-8 items-center gap-1 border-red-300 px-3 text-xs font-semibold text-red-700 hover:shadow-[0_0_24px_rgba(239,68,68,0.24)] focus-visible:outline-red-400"
                 onClick={confirmSaveEdit}
                 disabled={editingDisabled || !trimmedDraft || trimmedDraft === content.trim()}
               >
@@ -251,6 +306,11 @@ export function ChatMessage({
           {role === "assistant" ? renderAssistantMarkdown(content) : content}
         </p>
       )}
+      {!isEditing && showMobileEditHint ? (
+        <p className="mt-2 text-right text-[11px] font-medium text-hp-muted" role="status">
+          長押しで編集できます
+        </p>
+      ) : null}
     </article>
   )
 }
