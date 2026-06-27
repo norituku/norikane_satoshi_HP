@@ -1330,7 +1330,8 @@ describe("WidgetShell API wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
     fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "編集後の相談です" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
-    expect(screen.getByText("保存すると、これより後のやり取りは削除されます。")).toBeInTheDocument()
+    expect(screen.getByText("この後の会話を削除します")).toBeInTheDocument()
+    expect(screen.queryByText("保存すると、これより後のやり取りは削除されます。")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "OK" }))
 
     expect(await screen.findByText("編集後の回答です")).toBeInTheDocument()

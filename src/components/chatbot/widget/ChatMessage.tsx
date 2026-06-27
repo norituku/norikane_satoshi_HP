@@ -38,6 +38,8 @@ const LONG_PRESS_MOVE_TOLERANCE_PX = 10
 const LONG_PRESS_VIBRATION_MS = 10
 const TOUCH_RELEASE_RIPPLE_MS = 420
 const TOUCH_CANCEL_FALLBACK_MS = 900
+const TOUCH_EDIT_HINT_LABEL = "長押しして編集"
+const EDIT_TRUNCATION_WARNING = "この後の会話を削除します"
 
 type TouchFeedbackState = "idle" | "active" | "release"
 
@@ -329,6 +331,11 @@ export function ChatMessage({
               <Pencil className="h-3 w-3" aria-hidden="true" />
             </button>
           ) : null}
+          {!isEditing && showTouchEditAffordance ? (
+            <span className="whitespace-nowrap text-[11px] font-medium text-hp-muted" role="status">
+              {TOUCH_EDIT_HINT_LABEL}
+            </span>
+          ) : null}
           {createdAt ? (
             <time dateTime={createdAt.toISOString()}>
               {createdAt.toLocaleTimeString("ja-JP", {
@@ -359,7 +366,7 @@ export function ChatMessage({
               data-edit-confirm-pending="true"
             >
               <p className="mr-auto text-xs font-semibold text-red-600">
-                保存すると、これより後のやり取りは削除されます。
+                {EDIT_TRUNCATION_WARNING}
               </p>
               <button
                 type="button"
@@ -411,11 +418,6 @@ export function ChatMessage({
           {role === "assistant" ? renderAssistantMarkdown(content) : content}
         </p>
       )}
-      {!isEditing && showTouchEditAffordance ? (
-        <p className="mt-2 text-right text-[11px] font-medium text-hp-muted" role="status">
-          長押しで編集
-        </p>
-      ) : null}
     </article>
   )
 }

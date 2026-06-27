@@ -79,7 +79,8 @@ describe("ChatMessage", () => {
     fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "修正版です。" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
 
-    expect(screen.getByText("保存すると、これより後のやり取りは削除されます。")).toBeInTheDocument()
+    expect(screen.getByText("この後の会話を削除します")).toBeInTheDocument()
+    expect(screen.queryByText("保存すると、これより後のやり取りは削除されます。")).not.toBeInTheDocument()
     expect(onEdit).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole("button", { name: "OK" }))
@@ -94,7 +95,7 @@ describe("ChatMessage", () => {
     fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "修正版です。" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
 
-    const warning = screen.getByText("保存すると、これより後のやり取りは削除されます。")
+    const warning = screen.getByText("この後の会話を削除します")
     const confirmRegion = warning.closest("[data-edit-confirm-pending='true']")
     const okButton = screen.getByRole("button", { name: "OK" })
 
@@ -123,6 +124,7 @@ describe("ChatMessage", () => {
       vi.advanceTimersByTime(600)
     })
 
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
     expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
     expect(screen.queryByText("長押しで編集できます")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
@@ -143,7 +145,8 @@ describe("ChatMessage", () => {
       clientY: 80,
     })
 
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
+    expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
     expect(screen.queryByText("長押しで編集できます")).not.toBeInTheDocument()
 
     fireEvent.pointerMove(message!, {
@@ -152,10 +155,39 @@ describe("ChatMessage", () => {
       clientX: 124,
       clientY: 84,
     })
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
 
     fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
-    expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
+  })
+
+  it("places the mobile touch affordance directly before the timestamp in the metadata row", () => {
+    vi.useFakeTimers()
+    render(
+      <ChatMessage
+        id="msg_1"
+        role="user"
+        content="初稿です。"
+        createdAt={new Date("2026-05-26T12:34:00.000+09:00")}
+        onEdit={vi.fn()}
+      />,
+    )
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+
+    const hint = screen.getByText("長押しして編集")
+    const timestamp = screen.getByText("12:34")
+    expect(hint.parentElement).toBe(timestamp.parentElement)
+    expect(hint.compareDocumentPosition(timestamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it("keeps the touch affordance visible while swipe movement cancels only the long press timer", () => {
@@ -182,13 +214,13 @@ describe("ChatMessage", () => {
       vi.advanceTimersByTime(600)
     })
 
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
     expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
     expect(message).toHaveClass("chatbot-message-liquid")
     expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
 
     fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
-    expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
   })
 
   it("keeps the touch affordance and active liquid state after browser pointer cancel during swipe", () => {
@@ -207,20 +239,20 @@ describe("ChatMessage", () => {
     })
     fireEvent.pointerCancel(message!, { pointerId: 1, pointerType: "touch" })
 
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
     expect(message).toHaveClass("chatbot-message-liquid")
     expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
 
     act(() => {
       vi.advanceTimersByTime(899)
     })
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
     expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
 
     act(() => {
       vi.advanceTimersByTime(1)
     })
-    expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
     expect(message).toHaveAttribute("data-chatbot-touch-state", "release")
 
     act(() => {
@@ -246,12 +278,12 @@ describe("ChatMessage", () => {
     })
     fireEvent.pointerLeave(message!, { pointerId: 1, pointerType: "touch" })
 
-    expect(screen.getByText("長押しで編集")).toBeInTheDocument()
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
     expect(message).toHaveClass("chatbot-message-liquid")
     expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
 
     fireEvent.touchEnd(window)
-    expect(screen.queryByText("長押しで編集")).not.toBeInTheDocument()
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
     expect(message).toHaveAttribute("data-chatbot-touch-state", "release")
 
     act(() => {
