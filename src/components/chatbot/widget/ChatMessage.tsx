@@ -35,6 +35,7 @@ const roleLabel: Record<ChatbotMessageRole, string> = {
 
 const LONG_PRESS_EDIT_MS = 600
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10
+const LONG_PRESS_STATIONARY_TOLERANCE_PX = 3
 const LONG_PRESS_VIBRATION_MS = 10
 const TOUCH_RELEASE_RIPPLE_MS = 420
 const TOUCH_CANCEL_FALLBACK_MS = 900
@@ -42,6 +43,15 @@ const TOUCH_EDIT_HINT_LABEL = "長押しして編集"
 const EDIT_TRUNCATION_WARNING = "この後の会話を削除します"
 
 type TouchFeedbackState = "idle" | "active" | "release"
+
+type LongPressState = {
+  pointerId: number
+  startX: number
+  startY: number
+  lastX: number
+  lastY: number
+  timerId: number
+}
 
 function isMobileLikePointer(pointerType: string) {
   if (pointerType !== "mouse") return true
@@ -90,12 +100,7 @@ export function ChatMessage({
   const [showTouchEditAffordance, setShowTouchEditAffordance] = useState(false)
   const [touchFeedbackState, setTouchFeedbackState] = useState<TouchFeedbackState>("idle")
   const [draft, setDraft] = useState(content)
-  const longPressStateRef = useRef<{
-    pointerId: number
-    startX: number
-    startY: number
-    timerId: number
-  } | null>(null)
+  const longPressStateRef = useRef<LongPressState | null>(null)
   const activeTouchFeedbackRef = useRef(false)
   const touchReleaseTimerRef = useRef<number | null>(null)
   const touchCancelFallbackTimerRef = useRef<number | null>(null)
@@ -170,6 +175,18 @@ export function ChatMessage({
     setIsEditing(true)
   }
 
+  const armLongPressTimer = (longPressState: LongPressState, startX: number, startY: number) => {
+    window.clearTimeout(longPressState.timerId)
+    longPressState.startX = startX
+    longPressState.startY = startY
+    longPressState.timerId = window.setTimeout(() => {
+      if (longPressStateRef.current !== longPressState) return
+      longPressStateRef.current = null
+      vibrateOnLongPress()
+      startEditing()
+    }, LONG_PRESS_EDIT_MS)
+  }
+
   const clearLongPressTimer = () => {
     const longPressState = longPressStateRef.current
     if (!longPressState) return
@@ -191,26 +208,37 @@ export function ChatMessage({
     clearLongPressTimer()
     showActiveTouchFeedback()
     const { pointerId, clientX, clientY } = event
-    longPressStateRef.current = {
+    const longPressState: LongPressState = {
       pointerId,
       startX: clientX,
       startY: clientY,
-      timerId: window.setTimeout(() => {
-        longPressStateRef.current = null
-        vibrateOnLongPress()
-        startEditing()
-      }, LONG_PRESS_EDIT_MS),
+      lastX: clientX,
+      lastY: clientY,
+      timerId: 0,
     }
+    longPressStateRef.current = longPressState
+    armLongPressTimer(longPressState, clientX, clientY)
   }
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const longPressState = longPressStateRef.current
     if (!longPressState || longPressState.pointerId !== event.pointerId) return
 
-    const movedX = Math.abs(event.clientX - longPressState.startX)
-    const movedY = Math.abs(event.clientY - longPressState.startY)
-    if (movedX > LONG_PRESS_MOVE_TOLERANCE_PX || movedY > LONG_PRESS_MOVE_TOLERANCE_PX) {
-      clearLongPressTimer()
+    const movedSinceLastX = Math.abs(event.clientX - longPressState.lastX)
+    const movedSinceLastY = Math.abs(event.clientY - longPressState.lastY)
+    const movedFromHoldStartX = Math.abs(event.clientX - longPressState.startX)
+    const movedFromHoldStartY = Math.abs(event.clientY - longPressState.startY)
+    longPressState.lastX = event.clientX
+    longPressState.lastY = event.clientY
+
+    const isActivelyMoving =
+      movedSinceLastX > LONG_PRESS_STATIONARY_TOLERANCE_PX ||
+      movedSinceLastY > LONG_PRESS_STATIONARY_TOLERANCE_PX ||
+      movedFromHoldStartX > LONG_PRESS_MOVE_TOLERANCE_PX ||
+      movedFromHoldStartY > LONG_PRESS_MOVE_TOLERANCE_PX
+
+    if (isActivelyMoving) {
+      armLongPressTimer(longPressState, event.clientX, event.clientY)
     }
   }
 

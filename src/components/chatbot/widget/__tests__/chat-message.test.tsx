@@ -190,8 +190,10 @@ describe("ChatMessage", () => {
     expect(hint.compareDocumentPosition(timestamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it("keeps the touch affordance visible while swipe movement cancels only the long press timer", () => {
+  it("restarts mobile long press editing after swipe movement stops on the same message", () => {
     vi.useFakeTimers()
+    const vibrate = vi.fn()
+    vi.stubGlobal("navigator", { ...navigator, vibrate })
     render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
 
     const message = screen.getByText("初稿です。").closest("article")
@@ -211,7 +213,7 @@ describe("ChatMessage", () => {
       clientY: 120,
     })
     act(() => {
-      vi.advanceTimersByTime(600)
+      vi.advanceTimersByTime(599)
     })
 
     expect(screen.getByText("長押しして編集")).toBeInTheDocument()
@@ -219,8 +221,122 @@ describe("ChatMessage", () => {
     expect(message).toHaveClass("chatbot-message-liquid")
     expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
 
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+
+    expect(vibrate).toHaveBeenCalledWith([10])
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("does not enter edit mode while swipe movement keeps changing position", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+
+    for (const clientY of [100, 120, 140]) {
+      fireEvent.pointerMove(message!, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 120,
+        clientY,
+      })
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+      expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
+    }
+
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
+    expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
+
     fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
     expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
+  })
+
+  it("enters edit mode from a fresh long press immediately after swipe release", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 120,
+      clientY: 124,
+    })
+    fireEvent.pointerUp(message!, { pointerId: 1, pointerType: "touch" })
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 2,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 124,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("keeps active swipe feedback after pointer cancel and allows a new long press", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 120,
+      clientY: 124,
+    })
+    fireEvent.pointerCancel(message!, { pointerId: 1, pointerType: "touch" })
+
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
+    expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 2,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 124,
+    })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
   })
 
   it("keeps the touch affordance and active liquid state after browser pointer cancel during swipe", () => {
