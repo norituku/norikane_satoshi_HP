@@ -13,6 +13,10 @@ import {
 
 const conversationContentClasses = CHATBOT_CONVERSATION_CONTENT_CLASS_NAME.split(" ")
 
+function touchPoint(identifier: number, clientX: number, clientY: number) {
+  return { identifier, clientX, clientY, target: window } as unknown as Touch
+}
+
 describe("ChatMessage", () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -337,6 +341,104 @@ describe("ChatMessage", () => {
     })
 
     expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("restarts long press editing from touch movement after browser pointer cancel", () => {
+    vi.useFakeTimers()
+    const vibrate = vi.fn()
+    vi.stubGlobal("navigator", { ...navigator, vibrate })
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 120,
+      clientY: 124,
+    })
+    fireEvent.pointerCancel(message!, { pointerId: 1, pointerType: "touch" })
+
+    fireEvent.touchMove(window, {
+      touches: [touchPoint(7, 120, 150)],
+      changedTouches: [touchPoint(7, 120, 150)],
+    })
+
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
+    expect(message).toHaveClass("chatbot-message-liquid")
+    expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
+
+    act(() => {
+      vi.advanceTimersByTime(599)
+    })
+    expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
+    expect(vibrate).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+
+    expect(vibrate).toHaveBeenCalledTimes(1)
+    expect(vibrate).toHaveBeenCalledWith([10])
+    expect(screen.getByLabelText("編集内容")).toHaveValue("初稿です。")
+  })
+
+  it("does not edit while touch movement continues after pointer cancel, then returns to idle on touch end", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage id="msg_1" role="user" content="初稿です。" onEdit={vi.fn()} />)
+
+    const message = screen.getByText("初稿です。").closest("article")
+    expect(message).not.toBeNull()
+
+    fireEvent.pointerDown(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      clientX: 120,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(message!, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 120,
+      clientY: 124,
+    })
+    fireEvent.pointerCancel(message!, { pointerId: 1, pointerType: "touch" })
+
+    for (const clientY of [150, 176, 202]) {
+      fireEvent.touchMove(window, {
+        touches: [touchPoint(7, 120, clientY)],
+        changedTouches: [touchPoint(7, 120, clientY)],
+      })
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+      expect(screen.queryByLabelText("編集内容")).not.toBeInTheDocument()
+    }
+
+    expect(screen.getByText("長押しして編集")).toBeInTheDocument()
+    expect(message).toHaveAttribute("data-chatbot-touch-state", "active")
+
+    fireEvent.touchEnd(window, {
+      touches: [],
+      changedTouches: [touchPoint(7, 120, 202)],
+    })
+    expect(screen.queryByText("長押しして編集")).not.toBeInTheDocument()
+    expect(message).toHaveAttribute("data-chatbot-touch-state", "release")
+
+    act(() => {
+      vi.advanceTimersByTime(420)
+    })
+    expect(message).not.toHaveAttribute("data-chatbot-touch-state")
+    expect(message).not.toHaveClass("chatbot-message-liquid")
   })
 
   it("keeps the touch affordance and active liquid state after browser pointer cancel during swipe", () => {
