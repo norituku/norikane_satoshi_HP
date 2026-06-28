@@ -1640,7 +1640,7 @@ describe("handleChatbotMessage user context", () => {
         hasDocumentaryAttachments: true,
         hasWorkSite: true,
       },
-      "尺・分量の大枠を選んでください",
+      "ライブ / 舞台収録の尺を選んでください",
       projectLengthChoices.id,
     ],
     [

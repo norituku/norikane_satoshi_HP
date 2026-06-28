@@ -1,5 +1,5 @@
 import type { ConversationState, JobContext, RoutingDecision } from "@/lib/chatbot/domain"
-import { bookingFinalConfirmationChoices, surveyChoiceSets } from "@/lib/chatbot/domain"
+import { bookingFinalConfirmationChoices, projectLengthChoices, surveyChoiceSets } from "@/lib/chatbot/domain"
 import { isLectureTrainingInquiry } from "@/lib/chatbot/server/lecture-training"
 
 export type ChatbotFlowStep =
@@ -211,6 +211,7 @@ function clarificationChoiceSet(
   choiceSetId: string | undefined,
 ): Pick<Extract<RoutingDecision, { kind: "continue" }>, "presentChoices"> | Record<string, never> {
   if (!choiceSetId) return {}
+  if (choiceSetId === "project-length") return { presentChoices: projectLengthChoices }
   const choiceSet = surveyChoiceSets.find((item) => item.id === choiceSetId)
   return choiceSet ? { presentChoices: choiceSet } : {}
 }

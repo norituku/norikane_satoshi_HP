@@ -5,7 +5,7 @@ import {
   documentaryAttachmentChoices,
   finalMediumChoices,
   jobKindChoices,
-  projectLengthChoices,
+  projectLengthChoicesForJobKind,
 } from "@/lib/chatbot/domain"
 import {
   complexConversationTurnThreshold,
@@ -92,7 +92,7 @@ export function decideRoutingFallback(input: RoutingDecisionInput): RoutingDecis
     }
   }
 
-  return continueDecision(conversationState, input.now)
+  return continueDecision({ conversationState, jobContext, now: input.now })
 }
 
 function directContact(
@@ -136,7 +136,12 @@ function formatDays(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/u, "")
 }
 
-function continueDecision(conversationState: ConversationState, now?: Date): RoutingDecision {
+function continueDecision(input: {
+  conversationState: ConversationState
+  jobContext: JobContext
+  now?: Date
+}): RoutingDecision {
+  const { conversationState, jobContext, now } = input
   if (!conversationState.hasJobKind) {
     return {
       kind: "continue",
@@ -146,10 +151,11 @@ function continueDecision(conversationState: ConversationState, now?: Date): Rou
   }
 
   if (!conversationState.hasProjectLength) {
+    const presentChoices = projectLengthChoicesForJobKind(jobContext.jobKind)
     return {
       kind: "continue",
-      nextQuestion: "尺・分量の大枠を選んでください",
-      presentChoices: projectLengthChoices,
+      nextQuestion: presentChoices.question,
+      presentChoices,
     }
   }
 

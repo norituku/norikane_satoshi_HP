@@ -593,6 +593,44 @@ function toProjectLengthJobContext(choiceId: string): Partial<JobContext> {
       return { projectLengthMinutes: 60 }
     case "live-150m":
       return { projectLengthMinutes: 150 }
+    case "cm-length-15s":
+      return { projectLengthMinutes: 0.25 }
+    case "cm-length-30s":
+      return { projectLengthMinutes: 0.5 }
+    case "cm-length-60s":
+      return { projectLengthMinutes: 1 }
+    case "mv-length-3-5m":
+      return { projectLengthMinutes: 5 }
+    case "mv-length-5-10m":
+      return { projectLengthMinutes: 10 }
+    case "mv-length-over-10m":
+      return { projectLengthMinutes: 10 }
+    case "drama-episode-under-15m":
+      return { projectLengthMinutes: 15 }
+    case "drama-episode-30m":
+      return { projectLengthMinutes: 30 }
+    case "drama-episode-45-60m":
+      return { projectLengthMinutes: 60 }
+    case "live-length-30m":
+      return { projectLengthMinutes: 30 }
+    case "live-length-60m":
+      return { projectLengthMinutes: 60 }
+    case "live-length-90m":
+      return { projectLengthMinutes: 90 }
+    case "live-length-over-120m":
+      return { projectLengthMinutes: 120 }
+    case "feature-length-under-60m":
+      return { projectLengthMinutes: 60 }
+    case "feature-length-90m":
+      return { projectLengthMinutes: 90 }
+    case "feature-length-over-120m":
+      return { projectLengthMinutes: 120 }
+    case "vertical-length-15s":
+      return { projectLengthMinutes: 0.25 }
+    case "vertical-length-30s":
+      return { projectLengthMinutes: 0.5 }
+    case "vertical-length-60s":
+      return { projectLengthMinutes: 1 }
     default:
       return {}
   }

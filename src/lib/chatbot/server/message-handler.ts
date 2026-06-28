@@ -1,4 +1,4 @@
-import { hasRequiredEmailConsultationSlots, surveyChoiceSets } from "@/lib/chatbot/domain"
+import { hasRequiredEmailConsultationSlots, projectLengthChoices, surveyChoiceSets } from "@/lib/chatbot/domain"
 import type {
   BookingCardPrefill,
   ChatbotConversation,
@@ -865,25 +865,21 @@ function findContactEmailInText(value: string): string | undefined {
 
 function findChoiceSetFromAssistantContent(content: string): SurveyChoiceSet | undefined {
   const normalized = content.normalize("NFKC")
-  return surveyChoiceSets.find((choiceSet) => {
-    if (normalized.includes(choiceSet.question.normalize("NFKC"))) return true
-    switch (choiceSet.id) {
-      case "job-kind":
-        return normalized.includes("案件種別")
-      case "project-length":
-        return normalized.includes("尺・分量")
-      case "final-medium":
-        return normalized.includes("最終媒体")
-      case "additional-work":
-        return normalized.includes("カラグレ以外の追加作業")
-      case "documentary-attachment":
-        return normalized.includes("付随する映像")
-      case "work-site":
-        return normalized.includes("作業場所")
-      default:
-        return false
-    }
-  })
+  const exactQuestionMatch = surveyChoiceSets.find((choiceSet) =>
+    normalized.includes(choiceSet.question.normalize("NFKC")),
+  )
+  if (exactQuestionMatch) return exactQuestionMatch
+  if (normalized.includes("案件種別")) return surveyChoiceSets.find((choiceSet) => choiceSet.id === "job-kind")
+  if (normalized.includes("尺・分量")) return projectLengthChoices
+  if (normalized.includes("最終媒体")) return surveyChoiceSets.find((choiceSet) => choiceSet.id === "final-medium")
+  if (normalized.includes("カラグレ以外の追加作業")) {
+    return surveyChoiceSets.find((choiceSet) => choiceSet.id === "additional-work")
+  }
+  if (normalized.includes("付随する映像")) {
+    return surveyChoiceSets.find((choiceSet) => choiceSet.id === "documentary-attachment")
+  }
+  if (normalized.includes("作業場所")) return surveyChoiceSets.find((choiceSet) => choiceSet.id === "work-site")
+  return undefined
 }
 
 function selectRecoveredActiveChoices(input: {
