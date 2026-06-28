@@ -625,6 +625,9 @@
   .chatbot-scroll-indicator[data-scrolling="true"] {
     opacity: 1;
   }
+  .chatbot-scroll-indicator[data-dragging="true"] {
+    opacity: 1;
+  }
   .chatbot-scroll-indicator__thumb {
     position: absolute;
     left: 0;
@@ -632,6 +635,8 @@
     border-radius: 100px;
     background: color-mix(in srgb, var(--accent-primary) 68%, transparent);
     box-shadow: var(--glass-shadow);
+    cursor: ns-resize;
+    touch-action: none;
   }
   .chatbot-widget-shell :is([aria-label="チャット本文"], form, textarea, input, select) {
     overscroll-behavior: contain;

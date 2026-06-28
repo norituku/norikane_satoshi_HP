@@ -232,9 +232,10 @@ describe("WidgetShell API wiring", () => {
     expect(conversation).toHaveClass("overflow-y-auto")
     expect(css).toMatch(/\.chatbot-conversation-scroll\s*{[\s\S]*?scrollbar-width:\s*none;/)
     expect(css).toMatch(/\.chatbot-conversation-scroll::-webkit-scrollbar\s*{[\s\S]*?display:\s*none;/)
+    expect(css).toMatch(/\.chatbot-scroll-indicator__thumb\s*{[\s\S]*?touch-action:\s*none;/)
   })
 
-  it("shows a passive right-side scroll indicator while the mobile conversation scrolls", async () => {
+  it("shows a right-side scroll indicator while the mobile conversation scrolls", async () => {
     vi.useFakeTimers()
     render(<WidgetShell onMinimize={vi.fn()} />)
 
@@ -246,7 +247,7 @@ describe("WidgetShell API wiring", () => {
     const thumb = screen.getByTestId("chatbot-scroll-indicator-thumb")
     expect(indicator).toHaveAttribute("data-scrolling", "true")
     expect(indicator).toHaveStyle({
-      pointerEvents: "none",
+      pointerEvents: "auto",
       top: "12px",
       height: "376px",
     })
@@ -262,6 +263,60 @@ describe("WidgetShell API wiring", () => {
     fireEvent.scroll(conversation)
     await flushScrollIndicatorFrame()
     expect(Number.parseFloat(thumb.style.height)).toBeLessThan(125)
+  })
+
+  it("drags the custom conversation scrollbar thumb with mouse input and stops after release", async () => {
+    vi.useFakeTimers()
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = setConversationScrollGeometry({ scrollTop: 0, clientHeight: 400, scrollHeight: 1200 })
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+
+    const indicator = screen.getByTestId("chatbot-scroll-indicator")
+    const thumb = screen.getByTestId("chatbot-scroll-indicator-thumb")
+    expect(indicator).toHaveStyle({ pointerEvents: "auto" })
+
+    fireEvent.pointerDown(thumb, { pointerId: 41, pointerType: "mouse", button: 0, clientX: 10, clientY: 20 })
+    fireEvent.pointerMove(window, { pointerId: 41, pointerType: "mouse", clientX: 10, clientY: 114 })
+    await flushScrollIndicatorFrame()
+    expect(conversation.scrollTop).toBeGreaterThan(250)
+    expect(indicator).toHaveAttribute("data-dragging", "true")
+
+    fireEvent.pointerUp(window, { pointerId: 41, pointerType: "mouse", clientX: 10, clientY: 114 })
+    const releasedScrollTop = conversation.scrollTop
+    fireEvent.pointerMove(window, { pointerId: 41, pointerType: "mouse", clientX: 10, clientY: 260 })
+    await flushScrollIndicatorFrame()
+    expect(conversation.scrollTop).toBe(releasedScrollTop)
+    expect(indicator).toHaveAttribute("data-dragging", "false")
+  })
+
+  it("drags the custom conversation scrollbar thumb with touch pointer input and cleans up on cancel and blur", async () => {
+    vi.useFakeTimers()
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = setConversationScrollGeometry({ scrollTop: 120, clientHeight: 400, scrollHeight: 1200 })
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+
+    const thumb = screen.getByTestId("chatbot-scroll-indicator-thumb")
+    fireEvent.pointerDown(thumb, { pointerId: 42, pointerType: "touch", button: 0, clientX: 10, clientY: 80 })
+    fireEvent.pointerMove(window, { pointerId: 42, pointerType: "touch", clientX: 10, clientY: 150 })
+    await flushScrollIndicatorFrame()
+    expect(conversation.scrollTop).toBeGreaterThan(120)
+
+    fireEvent.pointerCancel(window, { pointerId: 42, pointerType: "touch", clientX: 10, clientY: 150 })
+    const canceledScrollTop = conversation.scrollTop
+    fireEvent.pointerMove(window, { pointerId: 42, pointerType: "touch", clientX: 10, clientY: 260 })
+    await flushScrollIndicatorFrame()
+    expect(conversation.scrollTop).toBe(canceledScrollTop)
+
+    fireEvent.pointerDown(thumb, { pointerId: 43, pointerType: "touch", button: 0, clientX: 10, clientY: 90 })
+    window.dispatchEvent(new Event("blur"))
+    const blurredScrollTop = conversation.scrollTop
+    fireEvent.pointerMove(window, { pointerId: 43, pointerType: "touch", clientX: 10, clientY: 240 })
+    await flushScrollIndicatorFrame()
+    expect(conversation.scrollTop).toBe(blurredScrollTop)
   })
 
   it("fades the mobile scroll indicator after scrolling stops", async () => {
