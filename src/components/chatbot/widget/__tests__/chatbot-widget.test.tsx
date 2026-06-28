@@ -100,6 +100,34 @@ const bookingCardUi = {
   },
 } satisfies WidgetUi
 
+async function openVisibleWidget() {
+  render(<ChatbotWidget />)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0)
+  })
+  await act(async () => {
+    window.dispatchEvent(new Event("hp-chatbot:open"))
+  })
+}
+
+function getWidgetAside() {
+  return screen.getByRole("complementary", { name: "AI 相談窓口" })
+}
+
+function getWidgetShell() {
+  const shell = document.querySelector<HTMLElement>(".chatbot-widget-shell")
+  expect(shell).not.toBeNull()
+  return shell!
+}
+
+function getStoredWidgetLayout() {
+  return JSON.parse(window.localStorage.getItem(CHATBOT_WIDGET_STORAGE_KEY) ?? "{}")
+}
+
+function getWidgetHeaderText() {
+  return screen.getAllByText("AI アシスタント")[0]
+}
+
 describe("chatbot widget shell", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_ENABLE_CHATBOT = "true"
@@ -297,6 +325,127 @@ describe("chatbot widget shell", () => {
       minimized: false,
       displayMode: "floating",
     })
+  })
+
+  it("ends floating drag even when shell pointer events stop bubbling", async () => {
+    setViewportWidth(1024)
+    await openVisibleWidget()
+
+    const aside = getWidgetAside()
+    const shell = getWidgetShell()
+    const headerText = getWidgetHeaderText()
+    const startLeft = Number.parseFloat(aside.style.left)
+    const startTop = Number.parseFloat(aside.style.top)
+
+    await act(async () => {
+      fireEvent.pointerDown(headerText, { pointerId: 11, pointerType: "mouse", button: 0, clientX: 300, clientY: 240 })
+      fireEvent.pointerMove(shell, { pointerId: 11, pointerType: "mouse", clientX: 220, clientY: 190 })
+    })
+
+    expect(Number.parseFloat(aside.style.left)).toBe(startLeft - 80)
+    expect(Number.parseFloat(aside.style.top)).toBe(startTop - 50)
+
+    await act(async () => {
+      fireEvent.pointerUp(shell, { pointerId: 11, pointerType: "mouse", clientX: 220, clientY: 190 })
+      fireEvent.pointerMove(shell, { pointerId: 11, pointerType: "mouse", clientX: 100, clientY: 100 })
+    })
+
+    expect(Number.parseFloat(aside.style.left)).toBe(startLeft - 80)
+    expect(Number.parseFloat(aside.style.top)).toBe(startTop - 50)
+    expect(getStoredWidgetLayout()).toMatchObject({
+      displayMode: "floating",
+      floatingPosition: { x: startLeft - 80, y: startTop - 50 },
+    })
+  })
+
+  it("cleans up floating drag on pointercancel and window blur", async () => {
+    setViewportWidth(1024)
+    await openVisibleWidget()
+
+    const aside = getWidgetAside()
+    const shell = getWidgetShell()
+    const headerText = getWidgetHeaderText()
+    const startLeft = Number.parseFloat(aside.style.left)
+
+    await act(async () => {
+      fireEvent.pointerDown(headerText, { pointerId: 12, pointerType: "mouse", button: 0, clientX: 300, clientY: 240 })
+      fireEvent.pointerMove(shell, { pointerId: 12, pointerType: "mouse", clientX: 250, clientY: 240 })
+      fireEvent.pointerCancel(shell, { pointerId: 12, pointerType: "mouse" })
+      fireEvent.pointerMove(shell, { pointerId: 12, pointerType: "mouse", clientX: 150, clientY: 240 })
+    })
+
+    expect(Number.parseFloat(aside.style.left)).toBe(startLeft - 50)
+
+    await act(async () => {
+      fireEvent.pointerDown(headerText, { pointerId: 13, pointerType: "mouse", button: 0, clientX: 250, clientY: 240 })
+      fireEvent.pointerMove(shell, { pointerId: 13, pointerType: "mouse", clientX: 230, clientY: 240 })
+      window.dispatchEvent(new Event("blur"))
+      fireEvent.pointerMove(shell, { pointerId: 13, pointerType: "mouse", clientX: 130, clientY: 240 })
+    })
+
+    expect(Number.parseFloat(aside.style.left)).toBe(startLeft - 70)
+  })
+
+  it("uses mouseup as a drag cleanup fallback", async () => {
+    setViewportWidth(1024)
+    await openVisibleWidget()
+
+    const aside = getWidgetAside()
+    const shell = getWidgetShell()
+    const headerText = getWidgetHeaderText()
+    const startLeft = Number.parseFloat(aside.style.left)
+
+    await act(async () => {
+      fireEvent.pointerDown(headerText, { pointerId: 14, pointerType: "mouse", button: 0, clientX: 300, clientY: 240 })
+      fireEvent.pointerMove(shell, { pointerId: 14, pointerType: "mouse", clientX: 260, clientY: 240 })
+      fireEvent.mouseUp(window)
+      fireEvent.pointerMove(shell, { pointerId: 14, pointerType: "mouse", clientX: 120, clientY: 240 })
+    })
+
+    expect(Number.parseFloat(aside.style.left)).toBe(startLeft - 40)
+  })
+
+  it("tracks side-peek resize continuously and stops after release inside the shell", async () => {
+    setViewportWidth(1024)
+    await openVisibleWidget()
+
+    await act(async () => {
+      screen.getByRole("button", { name: "サイドピーク表示に切り替え" }).click()
+    })
+
+    const aside = getWidgetAside()
+    const shell = getWidgetShell()
+    const resizeHandle = screen.getByRole("button", { name: "サイドピーク幅を変更" })
+
+    await act(async () => {
+      fireEvent.pointerDown(resizeHandle, { pointerId: 21, pointerType: "mouse", button: 0, clientX: 700, clientY: 300 })
+      fireEvent.pointerMove(shell, { pointerId: 21, pointerType: "mouse", clientX: 660, clientY: 300 })
+    })
+    expect(Number.parseFloat(aside.style.width)).toBe(424)
+
+    await act(async () => {
+      fireEvent.pointerMove(shell, { pointerId: 21, pointerType: "mouse", clientX: 620, clientY: 300 })
+    })
+    expect(Number.parseFloat(aside.style.width)).toBe(464)
+
+    await act(async () => {
+      fireEvent.pointerUp(shell, { pointerId: 21, pointerType: "mouse", clientX: 620, clientY: 300 })
+      fireEvent.pointerMove(shell, { pointerId: 21, pointerType: "mouse", clientX: 500, clientY: 300 })
+    })
+
+    expect(Number.parseFloat(aside.style.width)).toBe(464)
+    expect(document.body).toHaveClass("chatbot-side-peek-active")
+    expect(getStoredWidgetLayout()).toMatchObject({
+      displayMode: "side-peek",
+      sidePeekWidth: 464,
+    })
+
+    await act(async () => {
+      screen.getByRole("button", { name: "フローティング表示に切り替え" }).click()
+    })
+
+    expect(document.body).not.toHaveClass("chatbot-side-peek-active")
+    expect(screen.getByRole("button", { name: "サイドピーク表示に切り替え" })).toBeInTheDocument()
   })
 
   it("restores a minimized widget from localStorage and reopens it from the minimized bar", async () => {
