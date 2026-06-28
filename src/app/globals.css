@@ -314,10 +314,31 @@
     container-name: hp-note-page;
     container-type: inline-size;
   }
+  article.glass-card--hp-note-page > div :where(p, li, blockquote) {
+    font-family: var(--font-mincho), serif;
+    font-weight: 400;
+    font-size: 1.0625rem;
+    line-height: 1.76;
+  }
+  article.glass-card--hp-note-page :where(.hp-note-title, h2, h3, h4) {
+    font-family: var(--font-gothic), sans-serif;
+    line-height: 1.28;
+  }
   article.glass-card--hp-note-page .hp-note-title {
+    font-size: 2rem;
+    line-height: 1.22;
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: normal;
+  }
+  article.glass-card--hp-note-page > div h2 {
+    font-size: 1.75rem;
+  }
+  article.glass-card--hp-note-page > div h3 {
+    font-size: 1.5rem;
+  }
+  article.glass-card--hp-note-page > div h4 {
+    font-size: 1.25rem;
   }
   @media (max-width: 767px) {
     article.glass-card--hp-note-page {
@@ -341,6 +362,39 @@
       border-left: 0;
       border-right: 0;
       border-radius: 0;
+    }
+  }
+  @media (min-width: 768px) {
+    article.glass-card--hp-note-page > div :where(p, li, blockquote) {
+      font-size: 1.125rem;
+      line-height: 1.72;
+    }
+    article.glass-card--hp-note-page .hp-note-title {
+      font-size: 2.25rem;
+    }
+    article.glass-card--hp-note-page > div h2 {
+      font-size: 2rem;
+    }
+    article.glass-card--hp-note-page > div h3 {
+      font-size: 1.625rem;
+    }
+    article.glass-card--hp-note-page > div h4 {
+      font-size: 1.375rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    article.glass-card--hp-note-page > div :where(p, li, blockquote) {
+      font-size: 1.1875rem;
+      line-height: 1.68;
+    }
+    article.glass-card--hp-note-page .hp-note-title {
+      font-size: 2.625rem;
+    }
+    article.glass-card--hp-note-page > div h2 {
+      font-size: 2.125rem;
+    }
+    article.glass-card--hp-note-page > div h3 {
+      font-size: 1.75rem;
     }
   }
   .glass-card--chat-frost {
@@ -541,6 +595,54 @@
     color: var(--text-muted);
     opacity: 0.70;
   }
+  .chatbot-widget-shell :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+    font-size: max(16px, 1rem);
+  }
+  .chatbot-widget-shell {
+    overscroll-behavior: contain;
+    touch-action: manipulation;
+  }
+  .chatbot-conversation-scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+  }
+  .chatbot-scroll-indicator {
+    pointer-events: none;
+    border-radius: 100px;
+    background: color-mix(in srgb, var(--glass-border) 56%, transparent);
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .chatbot-scroll-indicator[data-scrolling="true"] {
+    opacity: 1;
+  }
+  .chatbot-scroll-indicator__thumb {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    border-radius: 100px;
+    background: color-mix(in srgb, var(--accent-primary) 68%, transparent);
+    box-shadow: var(--glass-shadow);
+  }
+  .chatbot-widget-shell :is([aria-label="チャット本文"], form, textarea, input, select) {
+    overscroll-behavior: contain;
+  }
+  .chatbot-message-no-select,
+  .chatbot-message-no-select *:not(textarea):not(input):not(select) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .chatbot-message-no-select {
+    touch-action: pan-y;
+  }
+  .chatbot-message-no-select :is(textarea, input, select) {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
   .glass-inset {
     background: rgba(54, 111, 204, 0.07);
     border: 1px solid rgba(54, 111, 204, 0.18);
@@ -561,6 +663,52 @@
     background: rgba(255, 255, 255, 0.85);
     border: 1px solid rgba(54, 111, 204, 0.18);
     border-radius: var(--hp-radius-sm);
+  }
+  .chatbot-message-liquid {
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
+  }
+  .chatbot-message-liquid::before,
+  .chatbot-message-liquid::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+  }
+  .chatbot-message-liquid::before {
+    background:
+      radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.72), transparent 30%),
+      radial-gradient(circle at 82% 18%, rgba(107, 181, 255, 0.22), transparent 34%),
+      linear-gradient(115deg, transparent 12%, rgba(139, 127, 255, 0.15) 42%, rgba(232, 121, 168, 0.13) 56%, transparent 78%);
+    inset: -34% -22%;
+    opacity: 0;
+    transform: translate3d(-8%, 0, 0) rotate(0.001deg);
+    transition: opacity 180ms ease, transform 240ms ease;
+  }
+  .chatbot-message-liquid::after {
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.42), transparent 28%),
+      radial-gradient(circle at 50% 50%, rgba(139, 127, 255, 0.24), transparent 54%),
+      radial-gradient(circle at 50% 50%, rgba(121, 199, 199, 0.20), transparent 68%);
+    inset: -18%;
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  .chatbot-message-liquid[data-chatbot-touch-state="active"]::before {
+    animation:
+      chatbot-message-liquid-enter 240ms ease-out both,
+      chatbot-message-liquid-flow 7.2s ease-in-out 240ms infinite;
+    opacity: 0.62;
+    will-change: transform;
+  }
+  .chatbot-message-liquid[data-chatbot-touch-state="release"]::before {
+    animation: chatbot-message-liquid-release 420ms ease-out both;
+    opacity: 0;
+  }
+  .chatbot-message-liquid[data-chatbot-touch-state="release"]::after {
+    animation: chatbot-message-liquid-ripple 420ms ease-out both;
+    will-change: transform, opacity;
   }
   .glass-flat {
     background: transparent;
@@ -621,6 +769,9 @@
     .glass-input,
     .glass-badge,
     .chatbot-minimized-attention,
+    .chatbot-message-liquid::before,
+    .chatbot-message-liquid::after,
+    .chatbot-scroll-indicator,
     .glass-btn--profile-social,
     .hp-nav-link,
     .hp-nav-dot {
@@ -629,10 +780,17 @@
     }
     .glass-btn:active,
     .chatbot-minimized-attention,
+    .chatbot-message-liquid::before,
+    .chatbot-message-liquid::after,
     .glass-btn--profile-social:hover,
     .glass-btn--profile-social:active {
       transform: none;
       will-change: auto;
+    }
+    .chatbot-message-liquid[data-chatbot-touch-state="active"]::before,
+    .chatbot-message-liquid[data-chatbot-touch-state="release"]::before,
+    .chatbot-message-liquid[data-chatbot-touch-state="release"]::after {
+      opacity: 0.18;
     }
     .featured-work-transparent-card:hover {
       animation: none;
@@ -684,12 +842,12 @@
   }
 }
 
-@container profile (min-width: 680px) {
+@container profile (min-width: 760px) {
   .hp-profile-sidebar {
-    grid-column: 1 / span 3;
+    grid-column: 1 / span 4;
   }
   .hp-profile-main {
-    grid-column: 4 / -1;
+    grid-column: 5 / -1;
   }
 }
 
@@ -719,6 +877,52 @@ body.chatbot-mobile-fullscreen-active {
   40% {
     opacity: 1;
     transform: translateY(-3px);
+  }
+}
+
+@keyframes chatbot-message-liquid-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(-12%, 2%, 0) scale(0.98) rotate(0.001deg);
+  }
+  100% {
+    opacity: 0.62;
+    transform: translate3d(-8%, 0, 0) scale(1) rotate(0.001deg);
+  }
+}
+
+@keyframes chatbot-message-liquid-flow {
+  0%,
+  100% {
+    transform: translate3d(-8%, 0, 0) scale(1) rotate(0.001deg);
+  }
+  50% {
+    transform: translate3d(8%, 4%, 0) scale(1.04) rotate(0.001deg);
+  }
+}
+
+@keyframes chatbot-message-liquid-release {
+  0% {
+    opacity: 0.52;
+    transform: translate3d(3%, 2%, 0) scale(1.02) rotate(0.001deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(1.08) rotate(0.001deg);
+  }
+}
+
+@keyframes chatbot-message-liquid-ripple {
+  0% {
+    opacity: 0.28;
+    transform: scale(0.78);
+  }
+  65% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.16);
   }
 }
 

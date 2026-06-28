@@ -37,6 +37,15 @@ function message(role: ChatbotMessage["role"], content: string): ChatbotMessage 
   }
 }
 
+function userMessages(count: number): ChatbotMessage[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `user_${index + 1}`,
+    role: "user" as const,
+    content: `相談 ${index + 1}`,
+    createdAt: `2026-05-26T00:00:${String(index).padStart(2, "0")}.000Z`,
+  }))
+}
+
 function userContext(overrides: Partial<UserChatbotContext> = {}): UserChatbotContext {
   return {
     userId: "user_a",
@@ -248,6 +257,79 @@ describe("handleChatbotMessage user context", () => {
     })
   })
 
+  it("truncates a matching optimistic user message before recovering a remounted pending request", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          {
+            id: "client_msg_11111111-1111-4111-8111-111111111111",
+            role: "user",
+            content: "送信中に閉じた相談",
+            createdAt: "2026-05-26T00:00:00.000Z",
+          },
+          { id: "assistant_old", role: "assistant", content: "古い回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "送信中に閉じた相談",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+        pendingRequestKind: "message",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
+      conversationId: "conv_1",
+      messageId: "client_msg_11111111-1111-4111-8111-111111111111",
+    })
+    expect(harness.repository.appendMessage).toHaveBeenCalledWith({
+      id: "client_msg_33333333-3333-4333-8333-333333333333",
+      conversationId: "conv_1",
+      role: "user",
+      content: "送信中に閉じた相談",
+    })
+    expect(harness.slackNotifier).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "conversation",
+      pendingRecovery: true,
+      pendingRequestKind: "message",
+    }))
+  })
+
+  it("does not truncate the previous conversation when the pending optimistic id never reached the server", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "user_last", role: "user", content: "保存済み直近", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_last", role: "assistant", content: "保存済み回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "届かなかった pending の再送",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.truncateConversationFromMessage).not.toHaveBeenCalled()
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "保存済み直近" },
+      { role: "assistant", content: "保存済み回答" },
+      { role: "user", content: "届かなかった pending の再送" },
+    ])
+  })
+
   it.each(["あなたの名前は？", "AIアシスタントの名前は？", "このチャットの名前は？"])(
     "answers assistant name questions as Nochan without invoking the LLM: %s",
     async (prompt) => {
@@ -309,7 +391,7 @@ describe("handleChatbotMessage user context", () => {
     ])
   })
 
-  it("falls back to truncating the last stored user message when a client edit id was never persisted", async () => {
+  it("keeps the current conversation when a client edit id was never persisted", async () => {
     const harness = setup({
       existingConversation: conversation({
         messages: [
@@ -329,12 +411,40 @@ describe("handleChatbotMessage user context", () => {
       harness.options,
     )
 
+    expect(harness.repository.truncateConversationFromMessage).not.toHaveBeenCalled()
+    expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
+      { role: "user", content: "保存済み直近" },
+      { role: "assistant", content: "保存済み回答" },
+      { role: "user", content: "キャンセル後の再送" },
+    ])
+  })
+
+  it("falls back to truncating the last stored user message when a stale server edit id is missing", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          { id: "user_last", role: "user", content: "保存済み直近", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_last", role: "assistant", content: "保存済み回答", createdAt: "2026-05-26T00:00:01.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "モバイルの古い編集再送",
+        editTargetMessageId: "user_missing_from_stale_local_storage",
+      },
+      harness.options,
+    )
+
     expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
       conversationId: "conv_1",
       messageId: "user_last",
     })
     expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
-      { role: "user", content: "キャンセル後の再送" },
+      { role: "user", content: "モバイルの古い編集再送" },
     ])
   })
 
@@ -418,25 +528,39 @@ describe("handleChatbotMessage user context", () => {
     expect(harness.generate.mock.calls[0]?.[0].jobContext.additionalWork).toBeUndefined()
   })
 
-  it("drops stale routing state when a client-only edit id falls back to the last stored user message", async () => {
+  it("preserves current routing state when a client-only edit id never reached the server", async () => {
     const harness = setup({
       existingConversation: conversation({
         context: {
           sessionId: "session_1",
           userId: "user_a",
-          activeChoices: additionalWorkChoices,
-          currentQuestion: "カラグレ以外の追加作業はありますか？",
-          conversationState: { hasFinalMedium: true, hasJobKind: true, hasAdditionalWork: false, turnCount: 3 },
+          activeChoices: documentaryAttachmentChoices,
+          currentQuestion: "付随する映像はありますか？",
+          conversationState: {
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: true,
+            hasAdditionalWork: true,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 5,
+          },
           jobContext: {
             jobKind: "live-60m",
             finalMedium: "live",
             workSite: "remote-grading",
             projectLengthMinutes: 150,
+            additionalWork: ["retouch", "skin-retouch"],
           },
         },
         messages: [
-          { id: "user_last", role: "user", content: "ライブ2.5hの相談です", createdAt: "2026-05-26T00:00:00.000Z" },
-          { id: "assistant_last", role: "assistant", content: "カラグレ以外の追加作業はありますか？", createdAt: "2026-05-26T00:00:01.000Z" },
+          { id: "user_kind", role: "user", content: "ライブ2.5hの相談です", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_additional", role: "assistant", content: "カラグレ以外の追加作業はありますか？", createdAt: "2026-05-26T00:00:01.000Z" },
+          { id: "user_additional", role: "user", content: "選択: 消し物、肌修正", createdAt: "2026-05-26T00:00:02.000Z" },
+          { id: "assistant_attachment", role: "assistant", content: "付随する映像はありますか？", createdAt: "2026-05-26T00:00:03.000Z" },
         ],
       }),
     })
@@ -445,27 +569,41 @@ describe("handleChatbotMessage user context", () => {
       {
         sessionId: "session_1",
         userId: "user_a",
-        message: "グレーディングについて教えてください",
+        message: "選択: 特典映像だよ",
         editTargetMessageId: "client_msg_22222222-2222-4222-8222-222222222222",
-        conversationState: { hasFinalMedium: true, hasJobKind: true, hasAdditionalWork: false, turnCount: 3 },
       },
       harness.options,
     )
 
-    expect(harness.repository.truncateConversationFromMessage).toHaveBeenCalledWith({
-      conversationId: "conv_1",
-      messageId: "user_last",
-    })
+    expect(harness.repository.truncateConversationFromMessage).not.toHaveBeenCalled()
     expect(harness.generate.mock.calls[0]?.[0].messages).toEqual([
-      { role: "user", content: "グレーディングについて教えてください" },
+      { role: "user", content: "ライブ2.5hの相談です" },
+      { role: "assistant", content: "カラグレ以外の追加作業はありますか？" },
+      { role: "user", content: "選択: 消し物、肌修正" },
+      { role: "assistant", content: "付随する映像はありますか？" },
+      { role: "user", content: "選択: 特典映像だよ" },
     ])
     expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
-      hasFinalMedium: false,
-      hasJobKind: false,
-      hasAdditionalWork: false,
-      turnCount: 1,
+      hasFinalMedium: true,
+      hasJobKind: true,
+      hasAdditionalWork: true,
+      hasDocumentaryAttachments: true,
+      otherChoiceComments: { "documentary-attachment": "特典映像だよ" },
+      turnCount: 3,
     })
-    expect(harness.generate.mock.calls[0]?.[0].jobContext.jobKind).toBeUndefined()
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      jobKind: "live-60m",
+      finalMedium: "live",
+      workSite: "remote-grading",
+      projectLengthMinutes: 150,
+      additionalWork: ["retouch", "skin-retouch"],
+      documentaryAttachment: { kind: "other", count: 1, note: "特典映像だよ" },
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: expect.objectContaining({ id: "work-site" }),
+      }),
+    )
   })
 
   it("isolates a previous user's conversation when the authenticated user changes", async () => {
@@ -711,6 +849,530 @@ describe("handleChatbotMessage user context", () => {
         bookingProgress: true,
       }),
     )
+  })
+
+  it("keeps a confirmed booking card ahead of settled to-email fallback", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: userMessages(7),
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState({ hasDesiredSchedule: false }),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 7,
+              bookingPrefill: { projectTitle: "ライブ案件", contactEmail: "client@example.com" },
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"show_booking_card","args":{"projectTitle":"ライブ案件","contactName":"山田太郎","contactEmail":"client@example.com"}}',
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "良いです！" },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: expect.objectContaining({
+        projectTitle: "ライブ案件",
+        contactEmail: "client@example.com",
+      }),
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routingDecision: "to-booking-inline",
+        conversationState: expect.objectContaining({
+          bookingFinalConfirmation: expect.objectContaining({ status: "confirmed" }),
+        }),
+      }),
+    )
+  })
+
+  it("recovers a supplemental final-check branch to a fresh booking card on a proceed answer", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: userMessages(7),
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState({ hasDesiredSchedule: false }),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "supplemental-received",
+              requestedAtTurn: 7,
+              supplementalNote: "LINE希望",
+              bookingPrefill: {
+                projectTitle: "ライブ案件",
+                contactName: "山田太郎",
+                contactEmail: "client@example.com",
+              },
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "ご連絡ありがとうございます。則兼からメールでご連絡します。",
+      tier: "tier-3-gemini-flash",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "了解です" },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toBe("候補日を確認しました。\n下の予約カードから選択してください。")
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: expect.objectContaining({
+        projectTitle: "ライブ案件",
+        contactName: "山田太郎",
+        contactEmail: "client@example.com",
+        memo: expect.stringContaining("LINE希望"),
+      }),
+    })
+  })
+
+  it("moves to the booking card when the final confirmation choice label is submitted", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 4,
+              bookingPrefill: { projectTitle: "ライブ案件", contactEmail: "client@example.com" },
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            projectLengthMinutes: 150,
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "other", count: 1, note: "特典映像" },
+            additionalWork: ["retouch", "skin-retouch"],
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "承知いたしました。これまでのご相談内容をもとに、則兼との相談・確認に進むための予約候補カードを作成します。",
+      tier: "tier-3-gemini-flash",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "選択: なし、このまま進める！" },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      suggestedSlots: expect.any(Array),
+      bookingPrefill: {
+        projectTitle: "ライブ案件",
+        contactEmail: "client@example.com",
+      },
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routingDecision: "to-booking-inline",
+        conversationState: expect.objectContaining({
+          bookingFinalConfirmation: expect.objectContaining({
+            status: "confirmed",
+          }),
+        }),
+      }),
+    )
+    expect(harness.candidateWindowFinder).toHaveBeenCalled()
+  })
+
+  it("recovers customer-facing booking prefill from the same session history", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        messages: [
+          message("assistant", "次に案件名を教えてください。決まっていなければ仮の呼び名でも構いません。"),
+          message("user", "案件Tで"),
+          message("assistant", "案件名「案件T」として承知しました。次にご担当者のお名前を教えてください。"),
+          message("user", "テスト。ユーザーです。"),
+          message("assistant", "ご担当者「テスト ユーザー」様として承知しました。次にご連絡先メールアドレスを教えてください。"),
+          message("user", "qj9n9not6bov@yahoo.co.j"),
+          message("assistant", "メールアドレスの末尾は「.jp」でお間違いないでしょうか？"),
+          message("user", ".jpでした"),
+          message("assistant", "ご連絡先メールアドレス「qj9n9not6bov@yahoo.co.jp」として承知いたしました。"),
+          message("assistant", "ほかに確認したいこと、伝えておきたいこと、不安な点はありますか？なければ「なし」で進めます。"),
+        ],
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: false,
+            contactEmail: undefined,
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 14,
+            },
+            otherChoiceComments: {
+              "documentary-attachment": "付随素材その他特典映像です",
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            projectLengthMinutes: 150,
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "other", count: 1, note: "付随素材その他特典映像です" },
+            additionalWork: ["retouch", "skin-retouch"],
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "候補を確認します。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "選択: なし、このまま進める！" },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: {
+        projectTitle: "案件T",
+        contactName: "テスト ユーザー",
+        contactEmail: "qj9n9not6bov@yahoo.co.jp",
+        memo: expect.stringContaining("依頼内容: ライブ"),
+      },
+    })
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: {
+        memo: expect.stringContaining("納品・使用先: ライブ / イベント"),
+      },
+    })
+    expect(JSON.stringify(result.ui)).toContain("付随素材として、特典映像が含まれる可能性があります。")
+    expect(JSON.stringify(result.ui)).not.toContain("なし、このまま進める")
+    const memo = result.ui.kind === "booking-card" ? result.ui.bookingPrefill?.memo ?? "" : ""
+    expect(memo).not.toContain("案件種別:")
+    expect(memo).not.toContain("最終媒体:")
+    expect(memo).not.toContain("live-60m")
+  })
+
+  it("does not let stale hosted tool args override confirmed session identity", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            hasCustomerIdentity: true,
+            customerName: "Smoke User",
+            contactEmail: "smoke-booking-prefill@example.invalid",
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 4,
+              bookingPrefill: { projectTitle: "Smoke案件" },
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            projectLengthMinutes: 150,
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "other", count: 1, note: "付随素材その他特典映像です" },
+            additionalWork: ["retouch", "skin-retouch"],
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"show_booking_card","args":{"projectTitle":"案件T","contactName":"Old User","contactEmail":"old@example.com","memo":"案件種別: ライブ / 最終媒体: ライブ"}}',
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "選択: なし、このまま進める！" },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      bookingPrefill: {
+        projectTitle: "Smoke案件",
+        contactName: "Smoke User",
+        contactEmail: "smoke-booking-prefill@example.invalid",
+      },
+    })
+    expect(JSON.stringify(result.ui)).not.toContain("old@example.com")
+    expect(JSON.stringify(result.ui)).not.toContain("案件種別:")
+    expect(JSON.stringify(result.ui)).not.toContain("最終媒体:")
+  })
+
+  it("keeps confirmed final confirmation on booking-card even when the thread is otherwise complex", async () => {
+    const longHistory = Array.from({ length: 18 }, (_, index): ChatbotMessage => {
+      return message(index % 2 === 0 ? "user" : "assistant", `過去の相談 ${index + 1}`)
+    })
+    const harness = setup({
+      existingConversation: conversation({
+        messages: longHistory,
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 4,
+              bookingPrefill: { projectTitle: "CM案件", contactEmail: "client@example.com" },
+            },
+          },
+          jobContext: {
+            jobKind: "cm-30s",
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "承知いたしました。これまでのご相談内容をもとに、予約候補カードを作成します。",
+      tier: "tier-3-gemini-flash",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "選択: なし、このまま進める！" },
+      harness.options,
+    )
+
+    expect(result.routingDecision).toMatchObject({ kind: "to-booking-inline" })
+    expect(result.ui).toMatchObject({ kind: "booking-card" })
+    expect(harness.slackNotifier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uiKind: "booking-card",
+        flowStep: "booking-card",
+        bookingProgress: true,
+      }),
+    )
+  })
+
+  it("does not reissue a booking card after the booking submission terminal state is persisted", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "confirmed",
+              confirmedAtTurn: 8,
+              bookingPrefill: { projectTitle: "案件T", contactEmail: "client@example.com" },
+            },
+            bookingSubmission: {
+              status: "submitted",
+              reservationNumber: "booking_1",
+              submittedAt: "2026-06-26T07:37:23.000Z",
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"show_booking_card","args":{"projectTitle":"案件T","contactName":"山田太郎","contactEmail":"client@example.com"}}',
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "ありがとう" },
+      harness.options,
+    )
+
+    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.routingDecision).toMatchObject({
+      kind: "continue",
+      nextQuestion: expect.stringContaining("booking_1"),
+    })
+    expect(harness.candidateWindowFinder).not.toHaveBeenCalled()
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationState: expect.not.objectContaining({
+          bookingFinalConfirmation: expect.anything(),
+        }),
+      }),
+    )
+    expect(harness.slackNotifier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uiKind: "none",
+        flowStep: "conversation",
+        bookingProgress: false,
+      }),
+    )
+  })
+
+  it("keeps submitted booking follow-up as conversation instead of showing another handoff card", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingSubmission: {
+              status: "submitted",
+              reservationNumber: "booking_1",
+            },
+          },
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 150,
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "予約候補カードは作成済みです。則兼からご登録のメールアドレス宛にご連絡いたします。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "再確認です。受付済みなら追加の予約カードは不要です。" },
+      harness.options,
+    )
+
+    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.routingDecision?.kind).not.toBe("to-booking-inline")
+    expect(result.routingDecision?.kind).not.toBe("to-direct-contact")
+    expect(result.routingDecision?.kind).not.toBe("to-email")
+    expect(harness.slackNotifier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uiKind: "none",
+        flowStep: "conversation",
+        bookingProgress: false,
+      }),
+    )
+  })
+
+  it("caps persisted history before sending the LLM request", async () => {
+    const longHistory = Array.from({ length: 40 }, (_, index): ChatbotMessage => {
+      return message(index % 2 === 0 ? "user" : "assistant", `履歴 ${index + 1} ${"x".repeat(1000)}`)
+    })
+    const harness = setup({
+      existingConversation: conversation({ messages: longHistory }),
+    })
+
+    await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "相談です" },
+      harness.options,
+    )
+
+    const request = harness.generate.mock.calls[0]?.[0]
+    expect(request?.messages.length).toBeLessThanOrEqual(25)
+    expect(request?.messages.some((item: { content: string }) => item.content.includes("履歴 1"))).toBe(false)
+    expect(request?.messages.some((item: { content: string }) => item.content.includes("履歴 40"))).toBe(true)
+    expect(request?.messages.at(-1)).toMatchObject({ role: "user", content: "相談です" })
+    expect(JSON.stringify(request?.messages).length).toBeLessThan(17_500)
+  })
+
+  it("keeps the booking card when no candidate slots are available", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasContactEmail: true,
+            contactEmail: "client@example.com",
+            bookingFinalConfirmation: {
+              status: "pending",
+              requestedAtTurn: 4,
+              bookingPrefill: { projectTitle: "CM案件", contactEmail: "client@example.com" },
+            },
+          },
+          jobContext: {
+            jobKind: "cm-30s",
+            finalMedium: "web",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
+    })
+    harness.candidateWindowFinder.mockResolvedValueOnce([])
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        '{"tool":"show_booking_card","args":{"projectTitle":"CM案件","contactName":"山田太郎","contactEmail":"client@example.com","companyName":"Example","dueDate":"2026-07-10"}}',
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      { sessionId: "session_1", userId: "user_a", message: "なし" },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({
+      kind: "booking-card",
+      suggestedSlots: [],
+    })
   })
 
   it("persists a natural-language final confirmation prompt even without a booking tool call", async () => {
@@ -1045,6 +1707,51 @@ describe("handleChatbotMessage user context", () => {
       )
     },
   )
+
+  it("keeps the studio premise internal before 2026-09-15 while hiding it from work-site choices", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-25T10:00:00+09:00"))
+    try {
+      const harness = setup()
+      harness.generate.mockResolvedValueOnce({
+        rawText: "スタジオ利用も含めて整理できます。",
+        tier: "tier-3-ollama-deepseek",
+      })
+
+      const result = await handleChatbotMessage(
+        {
+          sessionId: "session_1",
+          userId: "user_a",
+          message: "ライブ2時間半ぐらいあります。",
+          jobContext: {
+            jobKind: "live-60m",
+            finalMedium: "live",
+            documentaryAttachment: { kind: "none" },
+          },
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: true,
+            hasAdditionalWork: true,
+            hasDocumentaryAttachments: true,
+            hasWorkSite: false,
+          },
+        },
+        harness.options,
+      )
+
+      const prompt = harness.generate.mock.calls[0]?.[0].systemPrompt
+      expect(prompt).toContain("2026年9月中旬から稼働し始める予定")
+      expect(result.ui).toMatchObject({ kind: "choice-panel", choiceSet: { id: workSiteChoices.id } })
+      expect(result.assistantMessage.content).not.toContain("スタジオ利用")
+      expect(result.ui.kind === "choice-panel" ? result.ui.choiceSet.choices.map((choice) => choice.id) : []).not.toContain(
+        "satoshi-studio",
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   it("ignores non-tier4 proposed routing decisions and keeps talking when there is no tool call", async () => {
     const harness = setup()
@@ -2322,6 +3029,82 @@ describe("handleChatbotMessage user context", () => {
     )
   })
 
+  it("recovers stale same-thread edit state from stored choice-panel history", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: additionalWorkChoices,
+          currentQuestion: "カラグレ以外の追加作業はありますか？",
+          conversationState: {
+            hasFinalMedium: true,
+            hasJobKind: true,
+            hasProjectLength: true,
+            hasAdditionalWork: false,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 5,
+          },
+          jobContext: { jobKind: "live-60m", finalMedium: "live", projectLengthMinutes: 150 },
+        },
+        messages: [
+          { id: "user_start", role: "user", content: "お仕事頼みたいです", createdAt: "2026-05-26T00:00:00.000Z" },
+          { id: "assistant_job", role: "assistant", content: "まず案件種別を選んでください\n下の選択肢から選んでください。", createdAt: "2026-05-26T00:00:01.000Z" },
+          { id: "user_job", role: "user", content: "選択: ライブ / コンサート / 舞台収録", createdAt: "2026-05-26T00:00:02.000Z" },
+          { id: "assistant_length", role: "assistant", content: "尺・分量の大枠を選んでください\n下の選択肢から選んでください。", createdAt: "2026-05-26T00:00:03.000Z" },
+          { id: "user_length", role: "user", content: "選択: ライブ 150分前後", createdAt: "2026-05-26T00:00:04.000Z" },
+          { id: "assistant_additional", role: "assistant", content: "カラグレ以外の追加作業はありますか？\n下の選択肢から選んでください。", createdAt: "2026-05-26T00:00:05.000Z" },
+          { id: "user_additional", role: "user", content: "選択: 消し物、肌修正", createdAt: "2026-05-26T00:00:06.000Z" },
+          { id: "assistant_documentary", role: "assistant", content: "付随する映像はありますか？\n下の選択肢から選んでください。", createdAt: "2026-05-26T00:00:07.000Z" },
+          { id: "user_documentary", role: "user", content: "選択: 特典映像", createdAt: "2026-05-26T00:00:08.000Z" },
+          { id: "assistant_stale", role: "assistant", content: "カラグレ以外の追加作業はありますか？\n下の選択肢から選んでください。", createdAt: "2026-05-26T00:00:09.000Z" },
+        ],
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: 特典映像",
+        conversationState: {
+          hasFinalMedium: true,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasAdditionalWork: false,
+          hasDocumentaryAttachments: false,
+          turnCount: 5,
+        },
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
+      hasAdditionalWork: true,
+      hasDocumentaryAttachments: true,
+    })
+    expect(harness.generate.mock.calls[0]?.[0].jobContext).toMatchObject({
+      jobKind: "live-60m",
+      finalMedium: "live",
+      projectLengthMinutes: 150,
+      additionalWork: ["retouch", "skin-retouch"],
+      documentaryAttachment: { kind: "bonus", count: 1 },
+    })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: expect.objectContaining({ id: workSiteChoices.id }),
+        conversationState: expect.objectContaining({
+          hasAdditionalWork: true,
+          hasDocumentaryAttachments: true,
+        }),
+      }),
+    )
+  })
+
   it("keeps an empty other choice on the same slot and logs a clarification flow step", async () => {
     const harness = setup({
       existingConversation: conversation({
@@ -2866,6 +3649,37 @@ describe("handleChatbotMessage user context", () => {
     expect(notification.retryDiagnostics).not.toHaveProperty("rawRequest")
     expect(notification.retryDiagnostics).not.toHaveProperty("requestBody")
     expect(notification.retryDiagnostics).not.toHaveProperty("browser")
+  })
+
+  it("passes only safe pending recovery diagnostics to Slack conversation notifications", async () => {
+    const harness = setup({
+      existingConversation: conversation({
+        context: { sessionId: "session_1", userId: "user_a", slackThreadTs: "1700000000.000100" },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: "復旧応答です。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+    harness.slackNotifier.mockResolvedValue({ status: "sent", ts: "1700000000.000200" })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "復旧対象です",
+        clientUserMessageId: "client_msg_33333333-3333-4333-8333-333333333333",
+        recoverClientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+        pendingRequestKind: "message",
+      },
+      harness.options,
+    )
+
+    expect(harness.slackNotifier).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "conversation",
+      pendingRecovery: true,
+      pendingRequestKind: "message",
+    }))
   })
 
   it("posts a problem notification when a response falls below hosted tier2", async () => {

@@ -1,13 +1,13 @@
-import { hasRequiredEmailConsultationSlots } from "@/lib/chatbot/domain"
+import { hasRequiredEmailConsultationSlots, surveyChoiceSets } from "@/lib/chatbot/domain"
 import type {
   BookingCardPrefill,
   ChatbotConversation,
   ChatbotMessage,
-  ConversationSummary,
   ConversationState,
   DocumentaryAttachmentItem,
   JobContext,
   RoutingDecision,
+  SurveyChoiceSet,
 } from "@/lib/chatbot/domain"
 import {
   appendMessage,
@@ -26,6 +26,7 @@ import {
   updateConversationRouting,
   updateConversationSlackThreadTs,
   type ChatbotLlmClient,
+  type ChatbotLlmRequest,
   type ChatbotLlmResponse,
   type ChatbotLlmTierOrchestrator,
   type ChatbotLlmTier,
@@ -37,7 +38,7 @@ import {
   findCandidateCalendar,
   type CandidateCalendarResult,
 } from "@/lib/chatbot/server/availability-finder"
-import { applyActiveChoiceAnswer } from "@/lib/chatbot/server/choice-panel-state"
+import { applyActiveChoiceAnswer, isSatisfiedChoicePanel } from "@/lib/chatbot/server/choice-panel-state"
 import { buildConversationState } from "@/lib/chatbot/server/conversation-state"
 import {
   resolveWorkflowDurationContext,
@@ -62,6 +63,7 @@ import {
   applyBookingFinalConfirmationPolicy,
   inferChatbotFlowStep,
   isBookingFinalConfirmationPrompt,
+  isNoAdditionalBookingConcern,
   type ChatbotFlowStep,
 } from "@/lib/chatbot/server/flow-policy"
 import { redactForChatbotLog } from "@/lib/chatbot/server/log-redaction"
@@ -111,6 +113,8 @@ export type HandleChatbotMessageInput = {
   conversationId?: string
   editTargetMessageId?: string
   clientUserMessageId?: string
+  recoverClientUserMessageId?: string
+  pendingRequestKind?: "message" | "edit"
   jobContext?: Partial<JobContext>
   conversationState?: Partial<ConversationState>
 }
@@ -174,9 +178,10 @@ const defaultRepository: ChatbotMessageRepository = {
   linkConversationToUser,
 }
 
-const clientUserMessageIdPattern =
-  /^client_msg_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const assistantNameAnswer = "のーちゃんです。"
+const llmHistoryMaxMessages = 8
+const llmHistoryMaxCharacters = 4_000
+const llmHistoryMaxCharactersPerMessage = 1_500
 
 export async function handleChatbotMessage(
   input: HandleChatbotMessageInput,
@@ -201,22 +206,23 @@ export async function handleChatbotMessage(
     await repository.linkConversationToUser({ conversationId: conversation.id, userId: input.userId })
   }
 
-  const isEditRequest = Boolean(input.editTargetMessageId)
+  let didTruncateForEdit = false
   if (input.editTargetMessageId) {
     const targetIndex = conversation.messages.findIndex((message) => message.id === input.editTargetMessageId)
     if (targetIndex === -1) {
-      if (!clientUserMessageIdPattern.test(input.editTargetMessageId)) {
-        throw new Error("chatbot_edit_target_not_found")
-      }
-      const fallbackTargetIndex = findLastUserMessageIndex(conversation.messages)
-      if (fallbackTargetIndex >= 0) {
-        await repository.truncateConversationFromMessage({
-          conversationId: conversation.id,
-          messageId: conversation.messages[fallbackTargetIndex].id,
-        })
-        conversation = resetEditedConversationContext(conversation, conversation.messages.slice(0, fallbackTargetIndex))
-      } else {
-        conversation = resetEditedConversationContext(conversation, [])
+      if (!isClientGeneratedMessageId(input.editTargetMessageId)) {
+        const fallbackTargetIndex = findLastUserMessageIndex(conversation.messages)
+        if (fallbackTargetIndex >= 0) {
+          await repository.truncateConversationFromMessage({
+            conversationId: conversation.id,
+            messageId: conversation.messages[fallbackTargetIndex].id,
+          })
+          conversation = resetEditedConversationContext(conversation, conversation.messages.slice(0, fallbackTargetIndex))
+          didTruncateForEdit = true
+        } else {
+          conversation = resetEditedConversationContext(conversation, [])
+          didTruncateForEdit = true
+        }
       }
     } else {
       await repository.truncateConversationFromMessage({
@@ -224,8 +230,30 @@ export async function handleChatbotMessage(
         messageId: input.editTargetMessageId,
       })
       conversation = resetEditedConversationContext(conversation, conversation.messages.slice(0, targetIndex))
+      didTruncateForEdit = true
     }
   }
+
+  if (input.recoverClientUserMessageId && !input.editTargetMessageId) {
+    const recoverTargetIndex = conversation.messages.findIndex(
+      (message) => message.id === input.recoverClientUserMessageId && message.role === "user",
+    )
+    if (recoverTargetIndex >= 0) {
+      await repository.truncateConversationFromMessage({
+        conversationId: conversation.id,
+        messageId: input.recoverClientUserMessageId,
+      })
+      conversation = resetEditedConversationContext(conversation, conversation.messages.slice(0, recoverTargetIndex))
+      console.info("[chatbot pending request recovered]", {
+        conversationId: conversation.id,
+        sessionId: conversation.context.sessionId,
+        recoveredMessageIdKind: "client",
+        truncated: true,
+      })
+    }
+  }
+
+  conversation = reconcileConversationContextFromHistory(conversation)
 
   const userMessage = await repository.appendMessage({
     ...(input.clientUserMessageId ? { id: input.clientUserMessageId } : {}),
@@ -271,7 +299,7 @@ export async function handleChatbotMessage(
   const knowledgeSnapshot = await knowledgeSnapshotLoader()
   const noteAccess = evaluateCustomerFacingNoteAccess(input.message, knowledgeSnapshot)
   const durationContext = resolveWorkflowDurationContext({
-    inputJobContext: isEditRequest ? undefined : input.jobContext,
+    inputJobContext: didTruncateForEdit ? undefined : input.jobContext,
     conversation,
     activeChoiceJobContext: activeChoiceAnswer?.jobContext,
     latestUserMessage: input.message,
@@ -285,7 +313,7 @@ export async function handleChatbotMessage(
       conversation,
       latestUserMessage: input.message,
       conversationState: buildConversationState({
-        inputConversationState: isEditRequest ? undefined : input.conversationState,
+        inputConversationState: didTruncateForEdit ? undefined : input.conversationState,
         conversation,
         userMessage,
         activeChoiceConversationState: activeChoiceAnswer?.conversationState,
@@ -316,11 +344,9 @@ export async function handleChatbotMessage(
       userAgent: input.userAgent,
     })
   const llmResponse = await orchestrator.generate({
+    requestId: input.requestId,
     systemPrompt,
-    messages: [
-      ...conversation.messages.map(({ role, content }) => ({ role, content })),
-      { role: userMessage.role, content: userMessage.content },
-    ],
+    messages: buildLlmMessages(conversation.messages, userMessage),
     conversationState,
     jobContext,
     latestUserMessage: input.message,
@@ -328,6 +354,7 @@ export async function handleChatbotMessage(
     maxOutputTokens: 900,
   })
   const retryDiagnostics = summarizeChatbotRetryDiagnostics(llmResponse.diagnostics)
+  const isPendingRequestRecovery = input.pendingRequestKind === "message" || input.pendingRequestKind === "edit"
   const fallbackRoutingDecision = decideRoutingFallback({
     jobContext,
     conversationState,
@@ -411,6 +438,8 @@ export async function handleChatbotMessage(
     issueReasons,
     userAgent: input.userAgent,
     retryDiagnostics,
+    pendingRecovery: isPendingRequestRecovery,
+    pendingRequestKind: input.pendingRequestKind,
   })
   if (routingDecision) {
     try {
@@ -452,6 +481,8 @@ export async function handleChatbotMessage(
     flowStepReason: persistedConversationState.activeIntakeClarification?.reason,
     issueReasons,
     retryDiagnostics,
+    pendingRecovery: isPendingRequestRecovery,
+    pendingRequestKind: input.pendingRequestKind,
   })
 
   return {
@@ -535,6 +566,8 @@ async function notifySlackForChatbotResponse(input: {
   flowStepReason?: string
   issueReasons?: string[]
   retryDiagnostics?: ChatbotRetryDiagnosticsSummary
+  pendingRecovery?: boolean
+  pendingRequestKind?: "message" | "edit"
 }): Promise<void> {
   try {
     const threadTs = input.conversation.context.slackThreadTs
@@ -554,6 +587,8 @@ async function notifySlackForChatbotResponse(input: {
       assistantResponse: input.assistantText,
       bookingProgress: input.bookingProgress,
       retryDiagnostics: input.retryDiagnostics,
+      pendingRecovery: input.pendingRecovery,
+      pendingRequestKind: input.pendingRequestKind,
     }
     const result = await input.notifier(baseNotification)
     const savedThreadTs = threadTs ?? (result.status === "sent" ? result.ts : null)
@@ -578,6 +613,8 @@ async function notifySlackForChatbotResponse(input: {
         threadTs: savedThreadTs,
         issueReasons,
         retryDiagnostics: input.retryDiagnostics,
+        pendingRecovery: input.pendingRecovery,
+        pendingRequestKind: input.pendingRequestKind,
       })
     }
   } catch (error) {
@@ -604,11 +641,353 @@ function findLastUserMessageIndex(messages: ChatbotMessage[]): number {
   return -1
 }
 
+function isClientGeneratedMessageId(messageId: string): boolean {
+  return messageId.startsWith("client_msg_")
+}
+
 function findLastAssistantMessageContent(messages: ChatbotMessage[]): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index].role === "assistant") return messages[index].content
   }
   return undefined
+}
+
+function reconcileConversationContextFromHistory(conversation: ChatbotConversation): ChatbotConversation {
+  if (conversation.messages.length === 0) return conversation
+
+  const recovered = recoverChoicePanelContextFromHistory(conversation.messages)
+  const recoveredBooking = recoverBookingContextFromHistory(conversation.messages)
+  const conversationState = mergeRecoveredBookingContext(
+    mergeRecoveredConversationState(conversation.context.conversationState ?? {}, recovered.conversationState),
+    recoveredBooking,
+  )
+  const jobContext = {
+    ...(conversation.context.jobContext ?? {}),
+    ...recovered.jobContext,
+  }
+  const activeChoices = selectRecoveredActiveChoices({
+    recovered: recovered.activeChoices,
+    stored: conversation.context.activeChoices,
+    conversationState,
+  })
+  const context: ChatbotConversation["context"] = {
+    ...conversation.context,
+    ...(Object.keys(jobContext).length > 0 ? { jobContext } : {}),
+    conversationState,
+  }
+
+  if (activeChoices) {
+    context.activeChoices = activeChoices
+    context.currentQuestion = activeChoices.question
+  } else {
+    delete context.activeChoices
+    delete context.currentQuestion
+  }
+
+  return {
+    ...conversation,
+    context,
+  }
+}
+
+function recoverChoicePanelContextFromHistory(messages: ChatbotMessage[]): {
+  activeChoices?: SurveyChoiceSet
+  conversationState: Partial<ConversationState>
+  jobContext: Partial<JobContext>
+} {
+  let activeChoices: SurveyChoiceSet | undefined
+  let conversationState: Partial<ConversationState> = {}
+  let jobContext: Partial<JobContext> = {}
+
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      const choiceSet = findChoiceSetFromAssistantContent(message.content)
+      if (choiceSet && !isChoicePanelSatisfied(choiceSet, conversationState)) {
+        activeChoices = choiceSet
+      }
+      continue
+    }
+
+    if (message.role !== "user" || !activeChoices) continue
+
+    const patch = applyActiveChoiceAnswer({
+      activeChoices,
+      message: message.content,
+      activeIntakeClarification: conversationState.activeIntakeClarification,
+    })
+    if (!patch) continue
+
+    conversationState = mergeRecoveredConversationState(conversationState, patch.conversationState)
+    jobContext = {
+      ...jobContext,
+      ...patch.jobContext,
+    }
+    activeChoices = undefined
+  }
+
+  return { activeChoices, conversationState, jobContext }
+}
+
+function recoverBookingContextFromHistory(messages: ChatbotMessage[]): {
+  conversationState: Partial<ConversationState>
+  bookingPrefill: BookingCardPrefill
+} {
+  let pendingField: "projectTitle" | "contactName" | "contactEmail" | undefined
+  const bookingPrefill: BookingCardPrefill = {}
+  const conversationState: Partial<ConversationState> = {}
+
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      const confirmedProjectTitle = extractQuotedValue(message.content, /案件名[「『"]([^」』"]{1,120})[」』"]/u)
+      if (confirmedProjectTitle) bookingPrefill.projectTitle = confirmedProjectTitle
+
+      const confirmedContactName = extractQuotedValue(
+        message.content,
+        /(?:ご担当者|担当者|お名前)[「『"]([^」』"]{1,80})[」』"]/u,
+      )
+      if (confirmedContactName) {
+        bookingPrefill.contactName = confirmedContactName
+        conversationState.customerName = confirmedContactName
+        conversationState.hasCustomerIdentity = true
+      }
+
+      const confirmedEmail = findContactEmailInText(message.content)
+      if (confirmedEmail) {
+        bookingPrefill.contactEmail = confirmedEmail
+        conversationState.contactEmail = confirmedEmail
+        conversationState.hasContactEmail = true
+      }
+
+      pendingField = inferPendingBookingField(message.content)
+      continue
+    }
+
+    if (message.role !== "user" || !pendingField) continue
+
+    if (pendingField === "projectTitle" && !bookingPrefill.projectTitle) {
+      bookingPrefill.projectTitle = normalizeFreeTextBookingValue(message.content, 120)
+    } else if (pendingField === "contactName" && !bookingPrefill.contactName) {
+      const contactName = normalizeContactNameValue(message.content)
+      if (contactName) {
+        bookingPrefill.contactName = contactName
+        conversationState.customerName = contactName
+        conversationState.hasCustomerIdentity = true
+      }
+    } else if (pendingField === "contactEmail" && !bookingPrefill.contactEmail) {
+      const contactEmail = findContactEmailInText(message.content)
+      if (contactEmail) {
+        bookingPrefill.contactEmail = contactEmail
+        conversationState.contactEmail = contactEmail
+        conversationState.hasContactEmail = true
+      }
+    }
+
+    pendingField = undefined
+  }
+
+  return { conversationState, bookingPrefill }
+}
+
+function mergeRecoveredBookingContext(
+  stored: Partial<ConversationState>,
+  recovered: ReturnType<typeof recoverBookingContextFromHistory>,
+): Partial<ConversationState> {
+  const recoveredPrefill = recovered.bookingPrefill
+  const storedBookingFinalConfirmation = stored.bookingFinalConfirmation
+  const storedPrefill = storedBookingFinalConfirmation?.bookingPrefill ?? {}
+  const bookingPrefill = compactBookingPrefill({
+    projectTitle: storedPrefill.projectTitle ?? recoveredPrefill.projectTitle,
+    contactName: storedPrefill.contactName ?? recoveredPrefill.contactName,
+    contactEmail: storedPrefill.contactEmail ?? recoveredPrefill.contactEmail,
+    companyName: storedPrefill.companyName ?? recoveredPrefill.companyName,
+    dueDate: storedPrefill.dueDate ?? recoveredPrefill.dueDate,
+    memo: storedPrefill.memo ?? recoveredPrefill.memo,
+  })
+
+  return {
+    ...stored,
+    ...recovered.conversationState,
+    ...(storedBookingFinalConfirmation || Object.keys(bookingPrefill).length > 0
+      ? {
+          bookingFinalConfirmation: {
+            ...(storedBookingFinalConfirmation ?? { status: "pending" as const }),
+            ...(Object.keys(bookingPrefill).length > 0 ? { bookingPrefill } : {}),
+          },
+        }
+      : {}),
+  }
+}
+
+function compactBookingPrefill(input: BookingCardPrefill): BookingCardPrefill {
+  return Object.fromEntries(
+    Object.entries(input).filter((entry): entry is [keyof BookingCardPrefill, string] => (
+      typeof entry[1] === "string" && entry[1].trim().length > 0
+    )),
+  )
+}
+
+function inferPendingBookingField(content: string): "projectTitle" | "contactName" | "contactEmail" | undefined {
+  const normalized = content.normalize("NFKC")
+  if (/(案件名|作品名).{0,40}(教えて|入力|ください|伺)/u.test(normalized)) return "projectTitle"
+  if (/(担当者|お名前|氏名).{0,40}(教えて|入力|ください|伺)/u.test(normalized)) return "contactName"
+  if (/(メール|mail|email|連絡先).{0,40}(教えて|入力|ください|伺)/iu.test(normalized)) return "contactEmail"
+  return undefined
+}
+
+function extractQuotedValue(content: string, pattern: RegExp): string | undefined {
+  const match = pattern.exec(content)
+  return normalizeFreeTextBookingValue(match?.[1], 120)
+}
+
+function normalizeFreeTextBookingValue(value: string | undefined, maxLength: number): string | undefined {
+  const normalized = value
+    ?.normalize("NFKC")
+    .replace(/^\s*選択\s*[:：]\s*/u, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[。.!！?？]+$/u, "")
+  return normalized ? normalized.slice(0, maxLength) : undefined
+}
+
+function normalizeContactNameValue(value: string): string | undefined {
+  return normalizeFreeTextBookingValue(
+    value
+      .replace(/[。．.]/gu, " ")
+      .replace(/(?:です|でございます|になります)$/u, ""),
+    80,
+  )
+}
+
+function findContactEmailInText(value: string): string | undefined {
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu.exec(value)?.[0]
+}
+
+function findChoiceSetFromAssistantContent(content: string): SurveyChoiceSet | undefined {
+  const normalized = content.normalize("NFKC")
+  return surveyChoiceSets.find((choiceSet) => {
+    if (normalized.includes(choiceSet.question.normalize("NFKC"))) return true
+    switch (choiceSet.id) {
+      case "job-kind":
+        return normalized.includes("案件種別")
+      case "project-length":
+        return normalized.includes("尺・分量")
+      case "final-medium":
+        return normalized.includes("最終媒体")
+      case "additional-work":
+        return normalized.includes("カラグレ以外の追加作業")
+      case "documentary-attachment":
+        return normalized.includes("付随する映像")
+      case "work-site":
+        return normalized.includes("作業場所")
+      default:
+        return false
+    }
+  })
+}
+
+function selectRecoveredActiveChoices(input: {
+  recovered?: SurveyChoiceSet
+  stored?: SurveyChoiceSet
+  conversationState: Partial<ConversationState>
+}): SurveyChoiceSet | undefined {
+  if (input.recovered && !isChoicePanelSatisfied(input.recovered, input.conversationState)) return input.recovered
+  if (input.stored && !isChoicePanelSatisfied(input.stored, input.conversationState)) return input.stored
+  return undefined
+}
+
+const booleanConversationSlots = [
+  "hasFinalMedium",
+  "hasJobKind",
+  "hasProjectLength",
+  "hasMaterialHandoff",
+  "hasMaterialDetails",
+  "hasAdditionalWork",
+  "hasDocumentaryAttachments",
+  "hasWorkSite",
+  "hasReferenceUrls",
+  "hasDeliveryFormat",
+  "hasProductionOptions",
+  "hasBudgetRange",
+  "hasContactEmail",
+  "hasDesiredSchedule",
+  "hasCustomerIdentity",
+  "hasLectureTrainingIntent",
+  "hasLectureTrainingContent",
+  "hasLectureTrainingVenue",
+  "hasLectureTrainingSoftware",
+  "hasResolveVersion",
+  "hasControlPanel",
+  "hasAudienceGuiDisplay",
+  "hasInstructorMonitorSetup",
+  "hasPreferredLectureSchedule",
+] as const satisfies readonly (keyof ConversationState)[]
+
+function mergeRecoveredConversationState(
+  stored: Partial<ConversationState>,
+  recovered: Partial<ConversationState>,
+): Partial<ConversationState> {
+  const bookingSubmission = {
+    ...(stored.bookingSubmission ?? {}),
+    ...(recovered.bookingSubmission ?? {}),
+  }
+  const hasSubmittedBooking = bookingSubmission.status === "submitted" && bookingSubmission.reservationNumber
+  const bookingFinalConfirmation = {
+    ...(stored.bookingFinalConfirmation ?? {}),
+    ...(recovered.bookingFinalConfirmation ?? {}),
+  }
+  const merged: Partial<ConversationState> = {
+    ...stored,
+    ...recovered,
+    otherChoiceComments: {
+      ...(stored.otherChoiceComments ?? {}),
+      ...(recovered.otherChoiceComments ?? {}),
+    },
+    lectureTrainingInquiry: {
+      ...(stored.lectureTrainingInquiry ?? {}),
+      ...(recovered.lectureTrainingInquiry ?? {}),
+    },
+    intakeClarifications: {
+      ...(stored.intakeClarifications ?? {}),
+      ...(recovered.intakeClarifications ?? {}),
+    },
+    ...(hasSubmittedBooking
+      ? { bookingSubmission: bookingSubmission as NonNullable<ConversationState["bookingSubmission"]> }
+      : {}),
+    ...(!hasSubmittedBooking && bookingFinalConfirmation.status
+      ? { bookingFinalConfirmation: bookingFinalConfirmation as NonNullable<ConversationState["bookingFinalConfirmation"]> }
+      : {}),
+  }
+
+  for (const key of booleanConversationSlots) {
+    if (stored[key] === true || recovered[key] === true) {
+      merged[key] = true
+    }
+  }
+  if (hasSubmittedBooking) delete merged.bookingFinalConfirmation
+
+  if (!Object.keys(merged.otherChoiceComments ?? {}).length) delete merged.otherChoiceComments
+  if (!Object.keys(merged.lectureTrainingInquiry ?? {}).length) delete merged.lectureTrainingInquiry
+  if (!Object.keys(merged.intakeClarifications ?? {}).length) delete merged.intakeClarifications
+
+  return merged
+}
+
+function isChoicePanelSatisfied(
+  choiceSet: SurveyChoiceSet | undefined,
+  conversationState: Partial<ConversationState>,
+): boolean {
+  return isSatisfiedChoicePanel(choiceSet, {
+    hasFinalMedium: false,
+    hasJobKind: false,
+    hasAdditionalWork: false,
+    hasDocumentaryAttachments: false,
+    hasWorkSite: false,
+    hasReferenceUrls: false,
+    hasContactEmail: false,
+    hasDesiredSchedule: false,
+    turnCount: 0,
+    ...conversationState,
+  })
 }
 
 function resetEditedConversationContext(
@@ -680,7 +1059,9 @@ function buildChatbotSystemPrompt(
     "さとしさん本人を日本語で呼ぶ場合は、本人呼称を常に「則兼」と表記します。",
     "不明なことを推測で断定せず、未確認事項として質問します。",
     "LOOK Decomposer v2 の詳細には触れず、直接確認が必要な事項として扱います。",
-    "2026年10月より前は作業場所のデフォルト提案をせず、クライアントの希望を先に確認します。",
+    "内部前提: さとしさんのスタジオは2026年9月中旬から稼働し始める予定です。",
+    "2026年9月15日 JST より前は、スタジオ利用をお客様向けの条件、選択肢、提案、FAQ回答として提示せず、公開前の未確定選択肢として内部前提に留めます。",
+    "2026年9月15日 JST 以降は、状況に応じてスタジオ利用を作業場所の選択肢として扱えます。",
     "呼称は中立に保ち、他顧客の情報を参照または推測しません。",
     "ユーザーへの表示文は直近ユーザー入力への返答だけにし、内部識別、バックエンド名、JSON 出力の説明だけを返しません。",
     '予約候補カードを出すべきと判断した時だけ、本文に {"tool":"show_booking_card","args":{"projectTitle":"...","contactName":"...","contactEmail":"...","companyName":"...","dueDate":"YYYY-MM-DD","memo":"..."}} を 1 個だけ含めます。',
@@ -1013,6 +1394,8 @@ function logChatbotLlmFinalResponse(input: {
   issueReasons: string[]
   userAgent?: string
   retryDiagnostics?: ChatbotRetryDiagnosticsSummary
+  pendingRecovery?: boolean
+  pendingRequestKind?: "message" | "edit"
 }): void {
   if (process.env.NODE_ENV === "test") return
 
@@ -1030,6 +1413,8 @@ function logChatbotLlmFinalResponse(input: {
       incident: input.issueReasons.length > 0,
       issueReasons: input.issueReasons,
       retryDiagnostics: input.retryDiagnostics,
+      pendingRecovery: Boolean(input.pendingRecovery),
+      pendingRequestKind: input.pendingRequestKind,
     }),
   )
 }
@@ -1152,12 +1537,6 @@ function toMessageUi(input: {
   }
 
   if (routingDecision.kind === "to-booking-inline") {
-    if (routingDecision.suggestedSlots.length === 0) {
-      return {
-        kind: "consultation-summary-form",
-        summary: buildConversationSummary(routingDecision.jobContext, input.conversationState),
-      }
-    }
     return {
       kind: "booking-card",
       suggestedSlots: routingDecision.suggestedSlots,
@@ -1186,75 +1565,6 @@ function toMessageUi(input: {
   return { kind: "none" }
 }
 
-function buildConversationSummary(jobContext: JobContext, conversationState: ConversationState): ConversationSummary {
-  const detailSegments = buildChoiceDetailSegments(jobContext, conversationState)
-  return {
-    subject: "チャットボット相談",
-    customerEmail: conversationState.contactEmail ?? "",
-    ...(conversationState.customerName ? { customerName: conversationState.customerName } : {}),
-    ...(conversationState.companyName ? { companyName: conversationState.companyName } : {}),
-    jobContext,
-    summaryText: [
-      `${jobContext.jobKind ?? "案件種別未確認"} / ${jobContext.finalMedium} / ${jobContext.workSite} / ${
-        conversationState.hasDesiredSchedule ? "搬入〜納品あり" : "搬入〜納品未定"
-      }`,
-      ...detailSegments,
-    ].join(" / "),
-    openQuestions: [
-      conversationState.hasFinalMedium ? undefined : "最終媒体未確認",
-      conversationState.hasJobKind && conversationState.hasProjectLength ? undefined : "案件種別・尺未確認",
-      conversationState.hasMaterialHandoff ? undefined : "素材受け渡し未確認",
-      conversationState.hasAdditionalWork ? undefined : "追加作業未確認",
-      conversationState.hasDocumentaryAttachments ? undefined : "付随映像未確認",
-      conversationState.hasWorkSite ? undefined : "作業場所未確認",
-      conversationState.hasReferenceUrls ? undefined : "参考URL未確認",
-      conversationState.hasDesiredSchedule ? undefined : "素材搬入〜納品時期未確認",
-    ].filter((item): item is string => Boolean(item)),
-  }
-}
-
-function buildChoiceDetailSegments(jobContext: JobContext, conversationState: ConversationState): string[] {
-  const otherComments = conversationState.otherChoiceComments ?? {}
-  const segments: string[] = []
-
-  if (!jobContext.jobKind && otherComments["job-kind"]) {
-    segments.push(`案件種別:その他(${otherComments["job-kind"]})`)
-  }
-  if (conversationState.hasProjectLength && typeof jobContext.projectLengthMinutes !== "number" && otherComments["project-length"]) {
-    segments.push(`尺:${otherComments["project-length"]}`)
-  }
-  if (jobContext.additionalWork?.length) {
-    segments.push(`追加作業:${jobContext.additionalWork.map((item) => labelChoice(item, otherComments["additional-work"])).join("・")}`)
-  }
-  const attachment = labelDocumentaryAttachmentSummary(jobContext.documentaryAttachment)
-  if (attachment) {
-    segments.push(`付随素材:${attachment}`)
-  }
-  if (conversationState.productionOptions?.length) {
-    segments.push(
-      `制作オプション:${conversationState.productionOptions
-        .map((item) => labelChoice(item, otherComments["production-options"]))
-        .join("・")}`,
-    )
-  }
-
-  return segments
-}
-
-function labelChoice(value: string, otherComment?: string): string {
-  return value === "other" && otherComment ? `その他(${otherComment})` : value
-}
-
-function labelDocumentaryAttachmentSummary(value: JobContext["documentaryAttachment"] | undefined): string | undefined {
-  if (!value || value.kind === "none") return undefined
-  if (value.kind === "mixed") return value.items.map(labelDocumentaryAttachmentItemSummary).join("・")
-  return labelDocumentaryAttachmentItemSummary(value)
-}
-
-function labelDocumentaryAttachmentItemSummary(value: DocumentaryAttachmentItem): string {
-  return value.kind === "other" && "note" in value && value.note.trim() ? `その他(${value.note.trim()})` : value.kind
-}
-
 async function resolveRoutingDecision(input: {
   llmResponse: ChatbotLlmResponse
   jobContext: JobContext
@@ -1264,14 +1574,97 @@ async function resolveRoutingDecision(input: {
   knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
 }): Promise<RoutingDecision | undefined> {
   if (input.llmResponse.tier === "tier-4-form-fallback") return input.fallbackRoutingDecision
-  if (input.fallbackRoutingDecision.kind === "to-direct-contact") return input.fallbackRoutingDecision
-  if (input.fallbackRoutingDecision.kind === "to-email") return input.fallbackRoutingDecision
+  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
+  const submittedBooking = getSubmittedBooking(input.conversationState)
+  if (submittedBooking && (toolCall || input.fallbackRoutingDecision.kind !== "continue")) {
+    return {
+      kind: "continue",
+      nextQuestion: buildSubmittedBookingFollowup(submittedBooking),
+    }
+  }
+  if (input.fallbackRoutingDecision.kind === "to-direct-contact") {
+    if (
+      !submittedBooking &&
+      input.fallbackRoutingDecision.reason === "complex" &&
+      input.conversationState.bookingFinalConfirmation?.status === "confirmed" &&
+      input.jobContext.jobKind
+    ) {
+      return buildBookingInlineRoutingDecision({
+        jobContext: input.jobContext,
+        conversationState: input.conversationState,
+        bookingPrefill: input.conversationState.bookingFinalConfirmation.bookingPrefill ?? {},
+        candidateWindowFinder: input.candidateWindowFinder,
+        knowledgeSnapshot: input.knowledgeSnapshot,
+      })
+    }
+    return input.fallbackRoutingDecision
+  }
+  if (input.fallbackRoutingDecision.kind === "to-email") {
+    if (input.jobContext.jobKind && !isLectureTrainingInquiry(input.conversationState)) {
+      if (toolCall) {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: toolCall.args,
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+      if (!submittedBooking && input.conversationState.bookingFinalConfirmation?.status === "confirmed") {
+        return buildBookingInlineRoutingDecision({
+          jobContext: input.jobContext,
+          conversationState: input.conversationState,
+          bookingPrefill: input.conversationState.bookingFinalConfirmation.bookingPrefill ?? {},
+          candidateWindowFinder: input.candidateWindowFinder,
+          knowledgeSnapshot: input.knowledgeSnapshot,
+        })
+      }
+    }
+    return input.fallbackRoutingDecision
+  }
   if (isLectureTrainingInquiry(input.conversationState)) return input.fallbackRoutingDecision
 
-  const toolCall = parseShowBookingCardToolCall(input.llmResponse.rawText)
-  if (!toolCall) return undefined
   if (!input.jobContext.jobKind) return undefined
+  if (!toolCall) {
+    if (submittedBooking) return undefined
+    if (input.conversationState.bookingFinalConfirmation?.status !== "confirmed") return undefined
+    return buildBookingInlineRoutingDecision({
+      jobContext: input.jobContext,
+      conversationState: input.conversationState,
+      bookingPrefill: input.conversationState.bookingFinalConfirmation.bookingPrefill ?? {},
+      candidateWindowFinder: input.candidateWindowFinder,
+      knowledgeSnapshot: input.knowledgeSnapshot,
+    })
+  }
 
+  return buildBookingInlineRoutingDecision({
+    jobContext: input.jobContext,
+    conversationState: input.conversationState,
+    bookingPrefill: toolCall.args,
+    candidateWindowFinder: input.candidateWindowFinder,
+    knowledgeSnapshot: input.knowledgeSnapshot,
+  })
+}
+
+function getSubmittedBooking(
+  conversationState: ConversationState,
+): NonNullable<ConversationState["bookingSubmission"]> | undefined {
+  const submission = conversationState.bookingSubmission
+  if (submission?.status !== "submitted") return undefined
+  return submission.reservationNumber.trim() ? submission : undefined
+}
+
+function buildSubmittedBookingFollowup(submission: NonNullable<ConversationState["bookingSubmission"]>): string {
+  return `予約番号 ${submission.reservationNumber} は送信完了済みです。内容は受け付け済みなので、同じ予約カードは再表示しません。則兼が内容を確認してご連絡します。`
+}
+
+async function buildBookingInlineRoutingDecision(input: {
+  jobContext: JobContext
+  conversationState: ConversationState
+  bookingPrefill: BookingCardPrefill
+  candidateWindowFinder: CandidateWindowFinder
+  knowledgeSnapshot?: ChatbotKnowledgeSnapshot | null
+}): Promise<Extract<RoutingDecision, { kind: "to-booking-inline" }> | undefined> {
   const workflowEstimate = estimateWorkflow(input.jobContext, { knowledgeSnapshot: input.knowledgeSnapshot })
   const jobContext = {
     ...input.jobContext,
@@ -1282,7 +1675,7 @@ async function resolveRoutingDecision(input: {
     const calendar = normalizeCandidateCalendarResult(await input.candidateWindowFinder({
       jobContext,
       workflowEstimate,
-      desiredDeadline: toolCall.args.dueDate,
+      desiredDeadline: input.bookingPrefill.dueDate,
       notBefore: input.jobContext.preferredStartDate,
       candidateLimit: 31,
       busyMode: "block",
@@ -1293,12 +1686,42 @@ async function resolveRoutingDecision(input: {
       suggestedSlots: calendar.candidates,
       busyDateKeys: calendar.busyDateKeys,
       jobContext,
-      bookingPrefill: normalizeBookingCardPrefill(toolCall.args, jobContext, input.conversationState),
+      bookingPrefill: normalizeBookingCardPrefill(input.bookingPrefill, jobContext, input.conversationState),
     }
   } catch (error) {
     if (error instanceof ChatbotAvailabilityError) return undefined
     throw error
   }
+}
+
+function buildLlmMessages(
+  history: readonly ChatbotMessage[],
+  userMessage: Pick<ChatbotMessage, "role" | "content">,
+): ChatbotLlmRequest["messages"] {
+  return [...selectRecentLlmHistory(history), { role: userMessage.role, content: userMessage.content }]
+}
+
+function selectRecentLlmHistory(history: readonly ChatbotMessage[]): ChatbotLlmRequest["messages"] {
+  const selected: Array<{ role: ChatbotMessage["role"]; content: string }> = []
+  let selectedCharacters = 0
+
+  for (const message of [...history].reverse()) {
+    if (selected.length >= llmHistoryMaxMessages) break
+
+    const content = truncateLlmHistoryContent(message.content)
+    const nextCharacters = selectedCharacters + content.length
+    if (selected.length > 0 && nextCharacters > llmHistoryMaxCharacters) break
+
+    selected.push({ role: message.role, content })
+    selectedCharacters = nextCharacters
+  }
+
+  return selected.reverse()
+}
+
+function truncateLlmHistoryContent(content: string): string {
+  if (content.length <= llmHistoryMaxCharactersPerMessage) return content
+  return `${content.slice(0, llmHistoryMaxCharactersPerMessage)}\n[...truncated...]`
 }
 
 function normalizeCandidateCalendarResult(
@@ -1390,20 +1813,39 @@ function normalizeBookingCardPrefill(
   jobContext: JobContext,
   conversationState: ConversationState,
 ): BookingCardPrefill {
-  const projectTitle = normalizeBookingProjectTitle(prefill.projectTitle, jobContext)
-  const memoParts = [prefill.memo, ...buildChoiceDetailSegments(jobContext, conversationState)]
-  const contactEmail = isValidContactEmail(prefill.contactEmail) ? prefill.contactEmail : conversationState.contactEmail
+  const statePrefill = conversationState.bookingFinalConfirmation?.bookingPrefill ?? {}
+  const stateContactEmail =
+    conversationState.hasContactEmail && isValidContactEmail(conversationState.contactEmail)
+      ? conversationState.contactEmail
+      : undefined
+  const statePrefillEmail = isValidContactEmail(statePrefill.contactEmail) ? statePrefill.contactEmail : undefined
+  const toolContactEmail = isValidContactEmail(prefill.contactEmail) ? prefill.contactEmail : undefined
+  const toolPrefillLooksStale = Boolean(stateContactEmail && toolContactEmail && stateContactEmail !== toolContactEmail)
+  const trustedToolPrefill = toolPrefillLooksStale ? {} : prefill
+  const projectTitle = normalizeBookingProjectTitle(statePrefill.projectTitle ?? trustedToolPrefill.projectTitle, jobContext)
+  const memoParts = [
+    normalizeSupplementalMemo(statePrefill.memo),
+    normalizeSupplementalMemo(trustedToolPrefill.memo),
+    normalizeSupplementalBookingFinalNote(conversationState.bookingFinalConfirmation?.supplementalNote),
+    ...buildChoiceDetailSegments(jobContext, conversationState),
+  ]
+  const stateCustomerName = conversationState.hasCustomerIdentity ? conversationState.customerName : undefined
+  const stateCompanyName = conversationState.hasCustomerIdentity ? conversationState.companyName : undefined
+  const contactName = stateCustomerName ?? statePrefill.contactName ?? trustedToolPrefill.contactName
+  const contactEmail = stateContactEmail ?? statePrefillEmail ?? (isValidContactEmail(trustedToolPrefill.contactEmail) ? trustedToolPrefill.contactEmail : undefined)
+  const companyName = stateCompanyName ?? statePrefill.companyName ?? trustedToolPrefill.companyName
+  const dueDate = statePrefill.dueDate ?? trustedToolPrefill.dueDate
 
-  if (prefill.projectTitle && projectTitle !== prefill.projectTitle) {
-    memoParts.push(prefill.projectTitle)
+  if (trustedToolPrefill.projectTitle && projectTitle !== trustedToolPrefill.projectTitle) {
+    memoParts.push(trustedToolPrefill.projectTitle)
   }
 
   return {
     ...(projectTitle ? { projectTitle } : {}),
-    ...(prefill.contactName ? { contactName: prefill.contactName } : {}),
+    ...(contactName ? { contactName } : {}),
     ...(isValidContactEmail(contactEmail) ? { contactEmail } : {}),
-    ...(prefill.companyName ? { companyName: prefill.companyName } : {}),
-    ...(prefill.dueDate ? { dueDate: prefill.dueDate } : {}),
+    ...(companyName ? { companyName } : {}),
+    ...(dueDate ? { dueDate } : {}),
     ...mergeMemoParts(memoParts),
   }
 }
@@ -1432,6 +1874,134 @@ function defaultProjectTitleForJob(jobContext: JobContext): string | undefined {
   if (jobContext.jobKind?.startsWith("feature-")) return "長編案件"
   if (jobContext.jobKind?.startsWith("vertical-")) return "縦型動画案件"
   return undefined
+}
+
+function buildChoiceDetailSegments(jobContext: JobContext, conversationState: ConversationState): string[] {
+  const segments: string[] = []
+  const requestCategory = labelRequestCategory(jobContext, conversationState)
+  const deliveryUse = labelDeliveryUse(jobContext, conversationState)
+
+  if (requestCategory) segments.push(`依頼内容: ${requestCategory}`)
+  if (deliveryUse) segments.push(`納品・使用先: ${deliveryUse}`)
+  if (jobContext.deliveryMedium) segments.push(`納品形式: ${labelDeliveryMedium(jobContext.deliveryMedium)}`)
+  if (jobContext.additionalWork?.length) {
+    segments.push(`追加作業: ${jobContext.additionalWork.map((item) => labelAdditionalWork(item)).join(" / ")}`)
+  }
+  const attachment = buildDocumentaryAttachmentMemo(jobContext.documentaryAttachment)
+  if (attachment) segments.push(attachment)
+  if (conversationState.productionOptions?.length) {
+    segments.push(
+      `制作オプション: ${conversationState.productionOptions
+        .map((item) => labelProductionOption(item, conversationState.otherChoiceComments?.["production-options"]))
+        .join(" / ")}`,
+    )
+  }
+
+  return segments
+}
+
+function labelRequestCategory(jobContext: JobContext, conversationState: ConversationState): string | undefined {
+  if (jobContext.jobKind === "live-60m") return "ライブ"
+  if (jobContext.jobKind === "cm-30s") return "Web CM / CM"
+  if (jobContext.jobKind === "mv-5m") return "MV"
+  if (jobContext.jobKind === "feature-90m") return "映画 / 長編"
+  if (jobContext.jobKind === "drama-first" || jobContext.jobKind === "drama-follow-up") return "ドラマ"
+  if (jobContext.jobKind === "vertical-60s") return "縦型動画 / SNS動画"
+  return normalizeSupplementalMemo(conversationState.otherChoiceComments?.["job-kind"])
+}
+
+function labelDeliveryUse(jobContext: JobContext, conversationState: ConversationState): string | undefined {
+  if (jobContext.finalMedium === "ott") return "配信"
+  if (jobContext.finalMedium === "cinema") return "映画 / 劇場"
+  if (jobContext.finalMedium === "tv-broadcast") return "放送"
+  if (jobContext.finalMedium === "live") return "ライブ / イベント"
+  if (jobContext.finalMedium === "web") return "Web / CM"
+  if (jobContext.finalMedium === "vertical-sns") return "縦型SNS"
+  return normalizeSupplementalMemo(conversationState.otherChoiceComments?.["final-medium"])
+}
+
+function labelDeliveryMedium(value: NonNullable<JobContext["deliveryMedium"]>): string {
+  switch (value) {
+    case "dvd":
+      return "ディスク納品"
+  }
+}
+
+function labelAdditionalWork(value: NonNullable<JobContext["additionalWork"]>[number]): string {
+  switch (value) {
+    case "retouch":
+      return "消し物/レタッチ"
+    case "skin-retouch":
+      return "肌修正"
+    case "other":
+      return "その他追加作業"
+  }
+}
+
+function labelProductionOption(value: NonNullable<ConversationState["productionOptions"]>[number], otherComment?: string): string {
+  switch (value) {
+    case "captions":
+      return "字幕"
+    case "telops":
+      return "テロップ"
+    case "narration":
+      return "ナレーション"
+    case "music":
+      return "音楽"
+    case "other":
+      return normalizeSupplementalMemo(otherComment) ?? "その他"
+  }
+}
+
+function buildDocumentaryAttachmentMemo(value: JobContext["documentaryAttachment"] | undefined): string | undefined {
+  if (!value || value.kind === "none") return undefined
+  const labels =
+    value.kind === "mixed"
+      ? value.items.map(labelDocumentaryAttachmentItem)
+      : [labelDocumentaryAttachmentItem(value)]
+  const text = labels.filter(Boolean).join(" / ")
+  return text ? `付随素材として、${text}が含まれる可能性があります。` : undefined
+}
+
+function labelDocumentaryAttachmentItem(value: DocumentaryAttachmentItem): string {
+  switch (value.kind) {
+    case "digest":
+      return withCount("ダイジェスト", value.count)
+    case "interview":
+      return withCount("インタビュー", value.count)
+    case "bonus":
+      return withCount("特典映像", value.count)
+    case "making":
+      return withCount("メイキング", value.count)
+    case "other":
+      return normalizeSupplementalMemo(value.note) ?? "その他素材"
+  }
+}
+
+function withCount(label: string, count: number): string {
+  return count > 1 ? `${label}${count}本` : label
+}
+
+function normalizeSupplementalMemo(value: string | undefined): string | undefined {
+  const text = value
+    ?.normalize("NFKC")
+    .replace(/^\s*選択\s*[:：]\s*/u, "")
+    .replace(/^\s*その他(?:コメント|の内容)?\s*[:：]\s*/u, "")
+    .replace(/付随素材として[、,]?\s*/u, "")
+    .replace(/付随素材(?:その他)?/u, "")
+    .replace(/含まれる可能性があります[。.]?$/u, "")
+    .replace(/[。.!！?？ー〜~]+$/u, "")
+    .replace(/(?:です|でございます|になります)$/u, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+  if (!text) return undefined
+  if (/特典映像/u.test(text) && text.length <= 20) return text
+  return text
+}
+
+function normalizeSupplementalBookingFinalNote(value: string | undefined): string | undefined {
+  if (!value || isNoAdditionalBookingConcern(value)) return undefined
+  return normalizeSupplementalMemo(value)
 }
 
 function mergeMemoParts(parts: Array<string | undefined>): Pick<BookingCardPrefill, "memo"> | Record<string, never> {

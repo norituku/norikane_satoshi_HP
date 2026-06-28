@@ -29,6 +29,11 @@ export function buildConversationState(input: {
     ...durationState,
     turnCount: userTurnCount,
   }
+  for (const key of booleanConversationStateKeys) {
+    if (stored[key] === true || inputState[key] === true || activeChoiceState[key] === true || durationState[key] === true) {
+      state[key] = true
+    }
+  }
   const otherChoiceComments = {
     ...(stored.otherChoiceComments ?? {}),
     ...(inputState.otherChoiceComments ?? {}),
@@ -49,9 +54,22 @@ export function buildConversationState(input: {
     ...(inputState.bookingFinalConfirmation ?? {}),
     ...(activeChoiceState.bookingFinalConfirmation ?? {}),
   }
-  const mergedBookingFinalConfirmation = bookingFinalConfirmation.status
+  const bookingSubmission = {
+    ...(stored.bookingSubmission ?? {}),
+    ...(inputState.bookingSubmission ?? {}),
+    ...(activeChoiceState.bookingSubmission ?? {}),
+  }
+  const hasSubmittedBooking = bookingSubmission.status === "submitted" && bookingSubmission.reservationNumber
+  const mergedBookingFinalConfirmation = !hasSubmittedBooking && bookingFinalConfirmation.status
     ? { bookingFinalConfirmation: bookingFinalConfirmation as NonNullable<ConversationState["bookingFinalConfirmation"]> }
     : {}
+  const mergedBookingSubmission =
+    hasSubmittedBooking
+      ? { bookingSubmission: bookingSubmission as NonNullable<ConversationState["bookingSubmission"]> }
+      : {}
+  if (hasSubmittedBooking) {
+    delete state.bookingFinalConfirmation
+  }
 
   return {
     ...state,
@@ -59,11 +77,39 @@ export function buildConversationState(input: {
     ...(Object.keys(lectureTrainingInquiry).length > 0 ? { lectureTrainingInquiry } : {}),
     ...(Object.keys(intakeClarifications).length > 0 ? { intakeClarifications } : {}),
     ...mergedBookingFinalConfirmation,
+    ...mergedBookingSubmission,
     ...(input.jobContext.finalMedium !== "other" ? { hasFinalMedium: true } : {}),
     ...(input.jobContext.jobKind ? { hasJobKind: true } : {}),
     ...(typeof input.jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
   }
 }
+
+const booleanConversationStateKeys = [
+  "hasFinalMedium",
+  "hasJobKind",
+  "hasProjectLength",
+  "hasMaterialHandoff",
+  "hasMaterialDetails",
+  "hasAdditionalWork",
+  "hasDocumentaryAttachments",
+  "hasWorkSite",
+  "hasReferenceUrls",
+  "hasDeliveryFormat",
+  "hasProductionOptions",
+  "hasBudgetRange",
+  "hasContactEmail",
+  "hasDesiredSchedule",
+  "hasCustomerIdentity",
+  "hasLectureTrainingIntent",
+  "hasLectureTrainingContent",
+  "hasLectureTrainingVenue",
+  "hasLectureTrainingSoftware",
+  "hasResolveVersion",
+  "hasControlPanel",
+  "hasAudienceGuiDisplay",
+  "hasInstructorMonitorSetup",
+  "hasPreferredLectureSchedule",
+] as const satisfies readonly (keyof ConversationState)[]
 
 export function deriveUserTurnCount(
   history: readonly ChatbotMessage[],

@@ -1,11 +1,18 @@
 "use client"
 
-import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { ChevronDown, GripHorizontal, Maximize2, Minimize2, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
 import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
 import type { JobContext } from "@/lib/chatbot/domain/workflow-estimate"
-import { isBookingEnabled } from "@/lib/feature-flags"
 import type { WidgetDisplayMode } from "./useWidgetState"
 
 import {
@@ -56,11 +63,34 @@ const initialMessage = {
 
 const noUi = { kind: "none" } satisfies WidgetUi
 const communicationFallbackMessage =
-  "通信に失敗しました。自動再試行後も復旧しないため、下のフォームから連絡できます。入力内容はこのまま残っています。"
+  "応答が中断しました。入力内容は残っています。もう一度送信できます。復旧できない場合だけフォームに切り替えます。"
+const formFallbackMessage =
+  "自動再試行でも応答できませんでした。入力内容は残したまま、必要なら下のフォームから連絡できます。"
 const inquirySentMessage = "送信しました。担当者からの返信をお待ちください。"
 const CHATBOT_SESSION_STORAGE_KEY = "hp-chatbot-session-v1"
 const CHATBOT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const CHATBOT_PENDING_REQUEST_TTL_MS = 15 * 60 * 1000
 const thinkingDelayNoticeMs = 6000
+const SCROLL_BOUNDARY_EPSILON_PX = 1
+const SCROLL_INDICATOR_FADE_DELAY_MS = 560
+const SCROLL_INDICATOR_MIN_THUMB_PX = 28
+const SCROLL_INDICATOR_VERTICAL_INSET_PX = 12
+
+type ScrollIndicatorState = {
+  isScrollable: boolean
+  isScrolling: boolean
+  trackHeight: number
+  thumbHeight: number
+  thumbTop: number
+}
+
+const hiddenScrollIndicatorState: ScrollIndicatorState = {
+  isScrollable: false,
+  isScrolling: false,
+  trackHeight: 0,
+  thumbHeight: 0,
+  thumbTop: 0,
+}
 
 const additionalWorkMemoLabels: Record<NonNullable<JobContext["additionalWork"]>[number], string> = {
   retouch: "消し物/レタッチ",
@@ -79,8 +109,20 @@ type StoredWidgetSession = {
   clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
+  customerDisplayName?: string
   lastResponseTier?: ChatbotResponseTier
+  pendingRequest?: StoredPendingRequest
+  recoverableRequest?: StoredPendingRequest
   expiresAt: string
+}
+
+type StoredPendingRequest = {
+  kind: "message" | "edit"
+  message: string
+  clientUserMessageId: string
+  submittedAt: string
+  conversationId?: string
+  editTargetMessageId?: string
 }
 
 function getInitialWidgetSession() {
@@ -98,12 +140,142 @@ function removeStoredWidgetSession() {
   }
 }
 
+function isStoredPendingRequest(input: unknown): input is StoredPendingRequest {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false
+  const pending = input as Partial<StoredPendingRequest>
+  if (pending.kind !== "message" && pending.kind !== "edit") return false
+  if (typeof pending.message !== "string" || pending.message.trim().length === 0) return false
+  if (typeof pending.clientUserMessageId !== "string" || !pending.clientUserMessageId.startsWith("client_msg_")) {
+    return false
+  }
+  if (pending.kind === "edit" && typeof pending.editTargetMessageId !== "string") return false
+  const submittedAt = typeof pending.submittedAt === "string" ? new Date(pending.submittedAt).getTime() : Number.NaN
+  return Number.isFinite(submittedAt)
+}
+
+function isFreshStoredPendingRequest(input: unknown, now = Date.now()): input is StoredPendingRequest {
+  if (!isStoredPendingRequest(input)) return false
+  const submittedAt = new Date(input.submittedAt).getTime()
+  return now - submittedAt <= CHATBOT_PENDING_REQUEST_TTL_MS
+}
+
+function persistWidgetSession(input: Omit<StoredWidgetSession, "expiresAt">) {
+  try {
+    const stored: StoredWidgetSession = {
+      ...input,
+      expiresAt: new Date(Date.now() + CHATBOT_SESSION_TTL_MS).toISOString(),
+    }
+    window.localStorage.setItem(CHATBOT_SESSION_STORAGE_KEY, JSON.stringify(stored))
+  } catch {
+    // localStorage may be unavailable in private or restricted contexts.
+  }
+}
+
+function normalizeDisplayName(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function findScrollableElementInsideShell(target: EventTarget, shell: HTMLElement) {
+  if (!(target instanceof Element)) return null
+  let element: Element | null = target
+
+  while (element && element !== shell) {
+    if (element instanceof HTMLElement) {
+      const style = window.getComputedStyle(element)
+      const hasScrollableOverflowY =
+        /(auto|scroll)/.test(style.overflowY) ||
+        element.classList.contains("overflow-y-auto") ||
+        element.classList.contains("overflow-y-scroll")
+      const canScrollY =
+        hasScrollableOverflowY && element.scrollHeight > element.clientHeight + SCROLL_BOUNDARY_EPSILON_PX
+
+      if (canScrollY) {
+        return element
+      }
+    }
+    element = element.parentElement
+  }
+
+  return null
+}
+
+function getScrollableElementForDelta(target: EventTarget, shell: HTMLElement, deltaY: number) {
+  const scrollableElement = findScrollableElementInsideShell(target, shell)
+  if (!scrollableElement || deltaY === 0) return null
+  if (deltaY < 0 && scrollableElement.scrollTop > SCROLL_BOUNDARY_EPSILON_PX) return scrollableElement
+  if (
+    deltaY > 0 &&
+    scrollableElement.scrollTop + scrollableElement.clientHeight <
+      scrollableElement.scrollHeight - SCROLL_BOUNDARY_EPSILON_PX
+  ) {
+    return scrollableElement
+  }
+  return null
+}
+
+function getFirstTouch(touches: TouchList) {
+  return typeof touches.item === "function" ? touches.item(0) : (touches[0] ?? null)
+}
+
+function getConversationScrollIndicatorState(container: HTMLElement, isScrolling: boolean): ScrollIndicatorState {
+  const { clientHeight, scrollHeight, scrollTop } = container
+  if (clientHeight <= 0 || scrollHeight <= clientHeight + SCROLL_BOUNDARY_EPSILON_PX) {
+    return hiddenScrollIndicatorState
+  }
+
+  const trackHeight = Math.max(0, clientHeight - SCROLL_INDICATOR_VERTICAL_INSET_PX * 2)
+  if (trackHeight <= 0) return hiddenScrollIndicatorState
+
+  const rawThumbHeight = (clientHeight / scrollHeight) * trackHeight
+  const thumbHeight = Math.min(trackHeight, Math.max(SCROLL_INDICATOR_MIN_THUMB_PX, Math.round(rawThumbHeight)))
+  const maxScrollTop = Math.max(1, scrollHeight - clientHeight)
+  const maxThumbTop = Math.max(0, trackHeight - thumbHeight)
+  const thumbTop = Math.min(maxThumbTop, Math.max(0, Math.round((scrollTop / maxScrollTop) * maxThumbTop)))
+
+  return {
+    isScrollable: true,
+    isScrolling,
+    trackHeight,
+    thumbHeight,
+    thumbTop,
+  }
+}
+
+function getCustomerDisplayNameFromUi(ui: WidgetUi): string | undefined {
+  if (ui.kind !== "booking-card") return undefined
+  return normalizeDisplayName(ui.completedBooking?.contactName) ?? normalizeDisplayName(ui.bookingPrefill?.contactName)
+}
+
+const assistantNameQuestionPattern = /(名前|なんて呼|どう呼|呼べば|あなた.*誰|誰.*あなた|何者)/u
+
+function isAssistantNameIntroduced(messages: WidgetMessage[]): boolean {
+  return messages.some((message, index) => {
+    if (message.role !== "assistant" || !message.content.includes("のーちゃん")) return false
+    return messages.slice(Math.max(0, index - 2), index).some((nearbyMessage) => {
+      return nearbyMessage.role === "user" && assistantNameQuestionPattern.test(nearbyMessage.content)
+    })
+  })
+}
+
+function serializeWidgetMessages(messages: WidgetMessage[]): StoredWidgetSession["messages"] {
+  return messages.map((message) => ({
+    ...(message.id ? { id: message.id } : {}),
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt.toISOString(),
+  }))
+}
+
 function loadStoredWidgetSession(): {
   messages: WidgetMessage[]
   clientSessionId?: string
   conversationId?: string
   activeUi: WidgetUi
+  customerDisplayName?: string
   lastResponseTier?: ChatbotResponseTier
+  pendingRequest?: StoredPendingRequest
+  recoverableRequest?: StoredPendingRequest
 } {
   if (typeof window === "undefined") return getInitialWidgetSession()
 
@@ -117,6 +289,12 @@ function loadStoredWidgetSession(): {
       return getInitialWidgetSession()
     }
 
+    const pendingRequest = isFreshStoredPendingRequest(parsed.pendingRequest) ? parsed.pendingRequest : undefined
+    const recoverableRequest = isStoredPendingRequest(parsed.recoverableRequest)
+      ? parsed.recoverableRequest
+      : isStoredPendingRequest(parsed.pendingRequest)
+        ? parsed.pendingRequest
+        : undefined
     const messages = Array.isArray(parsed.messages)
       ? parsed.messages
           .filter((message) => message.role && typeof message.content === "string" && message.createdAt)
@@ -127,13 +305,23 @@ function loadStoredWidgetSession(): {
             createdAt: new Date(message.createdAt),
           }))
       : []
+    const restoredMessages = messages.length > 0 ? messages : [initialMessage]
+    const messagesWithRecoveryNotice =
+      recoverableRequest && !pendingRequest && restoredMessages[restoredMessages.length - 1]?.role !== "system"
+        ? [...restoredMessages, { role: "system" as const, content: communicationFallbackMessage, createdAt: new Date() }]
+        : restoredMessages
 
     return {
-      messages: messages.length > 0 ? messages : [initialMessage],
+      messages: messagesWithRecoveryNotice,
       clientSessionId: parsed.clientSessionId,
       conversationId: parsed.conversationId,
-      activeUi: parsed.activeUi ?? noUi,
+      activeUi: pendingRequest || recoverableRequest ? noUi : parsed.activeUi ?? noUi,
+      customerDisplayName:
+        normalizeDisplayName(parsed.customerDisplayName) ??
+        getCustomerDisplayNameFromUi(pendingRequest || recoverableRequest ? noUi : parsed.activeUi ?? noUi),
       lastResponseTier: parsed.lastResponseTier,
+      pendingRequest,
+      recoverableRequest: pendingRequest ? undefined : recoverableRequest,
     }
   } catch {
     removeStoredWidgetSession()
@@ -207,11 +395,21 @@ export function WidgetShell({
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
   const [clientSessionId, setClientSessionId] = useState<string>(() => createClientSessionId())
   const [activeUi, setActiveUi] = useState<WidgetUi>(noUi)
+  const [customerDisplayName, setCustomerDisplayName] = useState<string | undefined>(undefined)
   const [submitting, setSubmitting] = useState(false)
   const [showThinkingDelayNotice, setShowThinkingDelayNotice] = useState(false)
   const [lastResponseTier, setLastResponseTier] = useState<ChatbotResponseTier | undefined>(undefined)
+  const [pendingRequest, setPendingRequest] = useState<StoredPendingRequest | undefined>(undefined)
+  const [recoverableRequest, setRecoverableRequest] = useState<StoredPendingRequest | undefined>(undefined)
   const [hasRestoredSession, setHasRestoredSession] = useState(false)
   const activeRequestControllerRef = useRef<AbortController | null>(null)
+  const pendingRecoveryStartedRef = useRef(false)
+  const restoredPendingRequestRef = useRef<StoredPendingRequest | undefined>(undefined)
+  const shellRef = useRef<HTMLElement | null>(null)
+  const shellTouchYRef = useRef<number | null>(null)
+  const scrollIndicatorFrameRef = useRef<number | null>(null)
+  const scrollIndicatorFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [scrollIndicator, setScrollIndicator] = useState<ScrollIndicatorState>(hiddenScrollIndicatorState)
   const showLocalTierDebug =
     typeof window !== "undefined" && isLocalChatbotTierDebugLocation(window.location.hostname, window.location.port)
   const conversationContentKey = [
@@ -230,8 +428,59 @@ export function WidgetShell({
     scrollToLatest,
   } = useConversationScroll(conversationContentKey)
 
+  const updateScrollIndicator = useCallback(
+    (isScrolling: boolean) => {
+      const container = conversationScrollRef.current
+      if (!container) {
+        setScrollIndicator(hiddenScrollIndicatorState)
+        return
+      }
+      setScrollIndicator(getConversationScrollIndicatorState(container, isScrolling))
+    },
+    [conversationScrollRef],
+  )
+
+  const scheduleScrollIndicatorUpdate = useCallback(
+    (isScrolling: boolean) => {
+      if (scrollIndicatorFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollIndicatorFrameRef.current)
+      }
+      scrollIndicatorFrameRef.current = window.requestAnimationFrame(() => {
+        scrollIndicatorFrameRef.current = null
+        updateScrollIndicator(isScrolling)
+      })
+    },
+    [updateScrollIndicator],
+  )
+
+  const showScrollIndicatorDuringScroll = useCallback(() => {
+    if (scrollIndicatorFadeTimerRef.current !== null) {
+      clearTimeout(scrollIndicatorFadeTimerRef.current)
+    }
+    scheduleScrollIndicatorUpdate(true)
+    scrollIndicatorFadeTimerRef.current = setTimeout(() => {
+      scrollIndicatorFadeTimerRef.current = null
+      scheduleScrollIndicatorUpdate(false)
+    }, SCROLL_INDICATOR_FADE_DELAY_MS)
+  }, [scheduleScrollIndicatorUpdate])
+
+  const handleConversationScrollWithIndicator = useCallback(
+    () => {
+      handleConversationScroll()
+      showScrollIndicatorDuringScroll()
+    },
+    [handleConversationScroll, showScrollIndicatorDuringScroll],
+  )
+
   const appendMessage = (message: WidgetMessage) => {
     setMessages((currentMessages) => [...currentMessages, message])
+  }
+
+  const rememberCustomerDisplayNameFromUi = (ui: WidgetUi) => {
+    const nextCustomerDisplayName = getCustomerDisplayNameFromUi(ui)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
   }
 
   useEffect(() => {
@@ -253,7 +502,11 @@ export function WidgetShell({
     }
     setConversationId(storedSession.conversationId)
     setActiveUi(storedSession.activeUi)
+    setCustomerDisplayName(storedSession.customerDisplayName)
     setLastResponseTier(storedSession.lastResponseTier)
+    restoredPendingRequestRef.current = storedSession.pendingRequest
+    setPendingRequest(storedSession.pendingRequest)
+    setRecoverableRequest(storedSession.recoverableRequest)
     setHasRestoredSession(true)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
@@ -261,25 +514,128 @@ export function WidgetShell({
   useEffect(() => {
     if (!hasRestoredSession) return
 
+    persistWidgetSession({
+      messages: serializeWidgetMessages(messages),
+      clientSessionId,
+      conversationId,
+      activeUi,
+      ...(customerDisplayName ? { customerDisplayName } : {}),
+      lastResponseTier,
+      ...(pendingRequest ? { pendingRequest } : {}),
+      ...(recoverableRequest ? { recoverableRequest } : {}),
+    })
+  }, [activeUi, clientSessionId, conversationId, customerDisplayName, hasRestoredSession, lastResponseTier, messages, pendingRequest, recoverableRequest])
+
+  const recoverPendingRequest = async (pending: StoredPendingRequest, controller: AbortController) => {
+    const recoveryClientUserMessageId = createClientUserMessageId()
+    const restoreAgeMs = Date.now() - new Date(pending.submittedAt).getTime()
+    console.warn("[CHATBOT_WIDGET_PENDING_RECOVERY]", {
+      event: "chatbot_widget_pending_recovery",
+      kind: pending.kind,
+      restoreAgeMs,
+      hasConversationId: Boolean(pending.conversationId ?? conversationId),
+      activeUiKind: activeUi.kind,
+      displayMode,
+    })
+
     try {
-      const stored: StoredWidgetSession = {
-        messages: messages.map((message) => ({
-          ...(message.id ? { id: message.id } : {}),
-          role: message.role,
-          content: message.content,
-          createdAt: message.createdAt.toISOString(),
-        })),
-        clientSessionId,
-        conversationId,
-        activeUi,
-        lastResponseTier,
-        expiresAt: new Date(Date.now() + CHATBOT_SESSION_TTL_MS).toISOString(),
+      const payload = await submitChatbotMessage(
+        {
+          message: pending.message,
+          conversationId: pending.conversationId ?? conversationId,
+          clientUserMessageId: recoveryClientUserMessageId,
+          clientSessionId,
+          pendingRequestKind: pending.kind,
+          ...(pending.kind === "edit"
+            ? { editTargetMessageId: pending.editTargetMessageId }
+            : { recoverClientUserMessageId: pending.clientUserMessageId }),
+        },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
+      setConversationId(payload.conversationId)
+      setLastResponseTier(payload.tier)
+      setMessages((currentMessages) => {
+        const submittedUserMessage = payload.userMessage ?? {
+          id: recoveryClientUserMessageId,
+          role: "user" as const,
+          content: pending.message,
+          createdAt: new Date().toISOString(),
+        }
+        const targetIds = [pending.clientUserMessageId, pending.editTargetMessageId, submittedUserMessage.id]
+          .filter((id): id is string => Boolean(id))
+        const targetIndex = currentMessages.findIndex(
+          (message) => message.role === "user" && targetIds.includes(message.id ?? ""),
+        )
+        const userMessage: WidgetMessage = {
+          id: submittedUserMessage.id,
+          role: submittedUserMessage.role,
+          content: submittedUserMessage.content,
+          createdAt: new Date(submittedUserMessage.createdAt),
+        }
+        const assistantMessage: WidgetMessage = {
+          id: payload.assistantMessage.id,
+          role: payload.assistantMessage.role,
+          content: payload.assistantMessage.content,
+          createdAt: new Date(payload.assistantMessage.createdAt),
+        }
+        const nextMessages =
+          targetIndex >= 0
+            ? [...currentMessages.slice(0, targetIndex), userMessage, assistantMessage]
+            : [...currentMessages, userMessage, assistantMessage]
+        persistWidgetSession({
+          messages: serializeWidgetMessages(nextMessages),
+          clientSessionId,
+          conversationId: payload.conversationId,
+          activeUi: payload.ui,
+          lastResponseTier: payload.tier,
+        })
+        return nextMessages
+      })
+      setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
+      setRecoverableRequest(undefined)
+    } catch (error) {
+      if (isChatbotRequestCancelledError(error)) return
+      if (isChatbotOperationError(error)) {
+        console.warn("[CHATBOT_WIDGET_FAILURE]", {
+          event: "chatbot_widget_failure",
+          operation: error.operation,
+          requestId: error.requestId,
+          stage: error.stage,
+          status: error.status,
+          retryable: error.retryable,
+          fallback: error.fallback,
+          hasConversationId: Boolean(pending.conversationId ?? conversationId),
+          activeUiKind: activeUi.kind,
+          recoveredPendingRequest: true,
+        })
       }
-      window.localStorage.setItem(CHATBOT_SESSION_STORAGE_KEY, JSON.stringify(stored))
-    } catch {
-      // localStorage may be unavailable in private or restricted contexts.
+      appendMessage({
+        role: "system",
+        content: communicationFallbackMessage,
+        createdAt: new Date(),
+      })
+      setActiveUi(noUi)
+      setRecoverableRequest(pending)
+    } finally {
+      finishRequest(controller)
     }
-  }, [activeUi, clientSessionId, conversationId, hasRestoredSession, lastResponseTier, messages])
+  }
+
+  useEffect(() => {
+    const restoredPendingRequest = restoredPendingRequestRef.current
+    if (!hasRestoredSession || !restoredPendingRequest || pendingRecoveryStartedRef.current) return
+    pendingRecoveryStartedRef.current = true
+    restoredPendingRequestRef.current = undefined
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
+    setShowThinkingDelayNotice(false)
+    setSubmitting(true)
+    void recoverPendingRequest(restoredPendingRequest, controller)
+    // recoverPendingRequest is intentionally guarded by restoredPendingRequestRef so it runs once per restored snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientSessionId, conversationId, displayMode, hasRestoredSession])
 
   useEffect(() => {
     return () => {
@@ -290,6 +646,7 @@ export function WidgetShell({
   const finishRequest = (controller: AbortController) => {
     if (activeRequestControllerRef.current !== controller) return
     activeRequestControllerRef.current = null
+    setPendingRequest(undefined)
     setShowThinkingDelayNotice(false)
     setSubmitting(false)
   }
@@ -299,6 +656,7 @@ export function WidgetShell({
     if (!controller) return
     controller.abort()
     activeRequestControllerRef.current = null
+    setPendingRequest(undefined)
     setShowThinkingDelayNotice(false)
     setSubmitting(false)
   }
@@ -309,10 +667,30 @@ export function WidgetShell({
     activeRequestControllerRef.current = controller
     const createdAt = new Date()
     const clientUserMessageId = createClientUserMessageId()
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      { id: clientUserMessageId, role: "user", content: text, createdAt },
-    ])
+    const nextPendingRequest: StoredPendingRequest = {
+      kind: "message",
+      message: text,
+      clientUserMessageId,
+      submittedAt: createdAt.toISOString(),
+      ...(conversationId ? { conversationId } : {}),
+    }
+    setPendingRequest(nextPendingRequest)
+    setRecoverableRequest(undefined)
+    setMessages((currentMessages) => {
+      const nextMessages = [
+        ...currentMessages,
+        { id: clientUserMessageId, role: "user" as const, content: text, createdAt },
+      ]
+      persistWidgetSession({
+        messages: serializeWidgetMessages(nextMessages),
+        clientSessionId,
+        conversationId,
+        activeUi: noUi,
+        lastResponseTier,
+        pendingRequest: nextPendingRequest,
+      })
+      return nextMessages
+    })
     setActiveUi(noUi)
     setShowThinkingDelayNotice(false)
     setSubmitting(true)
@@ -340,13 +718,28 @@ export function WidgetShell({
           ),
         )
       }
-      appendMessage({
-        id: payload.assistantMessage.id,
-        role: payload.assistantMessage.role,
-        content: payload.assistantMessage.content,
-        createdAt: new Date(payload.assistantMessage.createdAt),
+      setMessages((currentMessages) => {
+        const nextMessages = [
+          ...currentMessages,
+          {
+            id: payload.assistantMessage.id,
+            role: payload.assistantMessage.role,
+            content: payload.assistantMessage.content,
+            createdAt: new Date(payload.assistantMessage.createdAt),
+          },
+        ]
+        persistWidgetSession({
+          messages: serializeWidgetMessages(nextMessages),
+          clientSessionId,
+          conversationId: payload.conversationId,
+          activeUi: payload.ui,
+          lastResponseTier: payload.tier,
+        })
+        return nextMessages
       })
       setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
+      setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
       if (isChatbotOperationError(error)) {
@@ -367,7 +760,8 @@ export function WidgetShell({
         content: communicationFallbackMessage,
         createdAt: new Date(),
       })
-      setActiveUi({ kind: "tier4-inquiry-form" })
+      setActiveUi(noUi)
+      setRecoverableRequest(nextPendingRequest)
     } finally {
       finishRequest(controller)
     }
@@ -380,16 +774,36 @@ export function WidgetShell({
     const controller = new AbortController()
     activeRequestControllerRef.current = controller
     const optimisticCreatedAt = new Date()
+    const clientUserMessageId = createClientUserMessageId()
+    const nextPendingRequest: StoredPendingRequest = {
+      kind: "edit",
+      message: trimmedText,
+      clientUserMessageId,
+      editTargetMessageId: messageId,
+      submittedAt: optimisticCreatedAt.toISOString(),
+      ...(conversationId ? { conversationId } : {}),
+    }
+    setPendingRequest(nextPendingRequest)
+    setRecoverableRequest(undefined)
 
     setMessages((currentMessages) => {
       const currentTargetIndex = currentMessages.findIndex(
         (message) => message.id === messageId && message.role === "user",
       )
       const truncateIndex = currentTargetIndex === -1 ? Math.min(targetIndex, currentMessages.length) : currentTargetIndex
-      return [
+      const nextMessages = [
         ...currentMessages.slice(0, truncateIndex),
-        { id: messageId, role: "user", content: trimmedText, createdAt: optimisticCreatedAt },
+        { id: messageId, role: "user" as const, content: trimmedText, createdAt: optimisticCreatedAt },
       ]
+      persistWidgetSession({
+        messages: serializeWidgetMessages(nextMessages),
+        clientSessionId,
+        conversationId,
+        activeUi: noUi,
+        lastResponseTier,
+        pendingRequest: nextPendingRequest,
+      })
+      return nextMessages
     })
     setActiveUi(noUi)
     setShowThinkingDelayNotice(false)
@@ -397,7 +811,7 @@ export function WidgetShell({
 
     try {
       const payload = await submitChatbotMessage(
-        { message: trimmedText, conversationId, editTargetMessageId: messageId, clientSessionId },
+        { message: trimmedText, conversationId, editTargetMessageId: messageId, clientUserMessageId, clientSessionId },
         { signal: controller.signal },
       )
       if (controller.signal.aborted) return
@@ -416,7 +830,7 @@ export function WidgetShell({
             (message.id === messageId || message.id === userMessage.id),
         )
         const truncateIndex = currentTargetIndex === -1 ? Math.min(targetIndex, currentMessages.length) : currentTargetIndex
-        return [
+        const nextMessages = [
           ...currentMessages.slice(0, truncateIndex),
           {
             id: userMessage.id,
@@ -431,8 +845,18 @@ export function WidgetShell({
             createdAt: new Date(payload.assistantMessage.createdAt),
           },
         ]
+        persistWidgetSession({
+          messages: serializeWidgetMessages(nextMessages),
+          clientSessionId,
+          conversationId: payload.conversationId,
+          activeUi: payload.ui,
+          lastResponseTier: payload.tier,
+        })
+        return nextMessages
       })
       setActiveUi(payload.ui)
+      rememberCustomerDisplayNameFromUi(payload.ui)
+      setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
       if (isChatbotOperationError(error)) {
@@ -451,13 +875,39 @@ export function WidgetShell({
         content: communicationFallbackMessage,
         createdAt: new Date(),
       })
-      setActiveUi({ kind: "tier4-inquiry-form" })
+      setActiveUi(noUi)
+      setRecoverableRequest(nextPendingRequest)
     } finally {
       finishRequest(controller)
     }
   }
 
+  const handleRecoverableRetry = () => {
+    if (!recoverableRequest || submitting) return
+    setRecoverableRequest(undefined)
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
+    setShowThinkingDelayNotice(false)
+    setSubmitting(true)
+    void recoverPendingRequest(recoverableRequest, controller)
+  }
+
+  const handleRecoverableFormFallback = () => {
+    if (!recoverableRequest || submitting) return
+    setRecoverableRequest(undefined)
+    appendMessage({
+      role: "system",
+      content: formFallbackMessage,
+      createdAt: new Date(),
+    })
+    setActiveUi({ kind: "tier4-inquiry-form" })
+  }
+
   const handleInquirySubmit = async (input: Omit<SubmitInquiryInput, "conversationId">) => {
+    const nextCustomerDisplayName = normalizeDisplayName(input.name)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
     try {
       await submitChatbotInquiry({ ...input, conversationId })
       appendMessage({
@@ -477,6 +927,10 @@ export function WidgetShell({
   }
 
   const handleBookingCompleted = (booking: BookingCompletionSummary) => {
+    const nextCustomerDisplayName = normalizeDisplayName(booking.contactName)
+    if (nextCustomerDisplayName) {
+      setCustomerDisplayName(nextCustomerDisplayName)
+    }
     setActiveUi((currentUi) => {
       if (currentUi.kind !== "booking-card") return currentUi
       return {
@@ -489,6 +943,7 @@ export function WidgetShell({
   const isSidePeek = isDesktopLayout && displayMode === "side-peek"
   const isFloating = isDesktopLayout && displayMode === "floating"
   const isFullScreen = !isDesktopLayout && displayMode === "full-screen"
+  const assistantDisplayName = isAssistantNameIntroduced(messages) ? "のーちゃん" : "AI アシスタント"
   const shellSizeClassName = isDesktopLayout
     ? "h-full w-full max-w-none rounded-[20px]"
     : isFullScreen
@@ -521,9 +976,77 @@ export function WidgetShell({
     onSidePeekResizeBy?.(event.key === "ArrowLeft" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP)
   }
 
+  const stopShellEventPropagation = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation()
+  }
+
+  useEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return undefined
+
+    const handleWheel = (event: WheelEvent) => {
+      event.stopPropagation()
+      if (!getScrollableElementForDelta(event.target ?? shell, shell, event.deltaY)) {
+        event.preventDefault()
+      }
+    }
+    const handleTouchStart = (event: TouchEvent) => {
+      event.stopPropagation()
+      shellTouchYRef.current = getFirstTouch(event.touches)?.clientY ?? null
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      event.stopPropagation()
+      const currentY = getFirstTouch(event.touches)?.clientY ?? null
+      const previousY = shellTouchYRef.current
+      shellTouchYRef.current = currentY
+      if (currentY === null || previousY === null) return
+
+      const deltaY = previousY - currentY
+      if (!getScrollableElementForDelta(event.target ?? shell, shell, deltaY)) {
+        event.preventDefault()
+      }
+    }
+    const handleTouchEnd = (event: TouchEvent) => {
+      event.stopPropagation()
+      shellTouchYRef.current = null
+    }
+
+    shell.addEventListener("wheel", handleWheel, { passive: false })
+    shell.addEventListener("touchstart", handleTouchStart, { passive: true })
+    shell.addEventListener("touchmove", handleTouchMove, { passive: false })
+    shell.addEventListener("touchend", handleTouchEnd, { passive: true })
+    shell.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+    return () => {
+      shell.removeEventListener("wheel", handleWheel)
+      shell.removeEventListener("touchstart", handleTouchStart)
+      shell.removeEventListener("touchmove", handleTouchMove)
+      shell.removeEventListener("touchend", handleTouchEnd)
+      shell.removeEventListener("touchcancel", handleTouchEnd)
+    }
+  }, [])
+
+  useEffect(() => {
+    scheduleScrollIndicatorUpdate(false)
+    return () => {
+      if (scrollIndicatorFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollIndicatorFrameRef.current)
+        scrollIndicatorFrameRef.current = null
+      }
+      if (scrollIndicatorFadeTimerRef.current !== null) {
+        clearTimeout(scrollIndicatorFadeTimerRef.current)
+        scrollIndicatorFadeTimerRef.current = null
+      }
+    }
+  }, [conversationContentKey, displayMode, scheduleScrollIndicatorUpdate])
+
   return (
     <section
-      className={`glass-card glass-card--chat-frost pointer-events-auto relative flex animate-in fade-in slide-in-from-bottom-2 flex-col overflow-hidden duration-300 ${shellSizeClassName}`}
+      ref={shellRef}
+      className={`chatbot-widget-shell glass-card glass-card--chat-frost pointer-events-auto relative flex animate-in fade-in slide-in-from-bottom-2 flex-col overflow-hidden duration-300 ${shellSizeClassName}`}
+      onPointerDown={stopShellEventPropagation}
+      onPointerMove={stopShellEventPropagation}
+      onPointerUp={stopShellEventPropagation}
+      onPointerCancel={stopShellEventPropagation}
       style={{
         background: "rgba(255, 255, 255, 0.72)",
         backdropFilter: "blur(32px) saturate(130%)",
@@ -551,7 +1074,7 @@ export function WidgetShell({
             <Sparkles className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-hp">AI アシスタント</p>
+            <p className="text-sm font-semibold text-hp">{assistantDisplayName}</p>
             <p className="mt-0.5 truncate text-xs text-hp-muted">
               のりかね映像設計室のご相談窓口
             </p>
@@ -602,8 +1125,15 @@ export function WidgetShell({
       <div className="relative min-h-0 flex-1">
         <div
           ref={conversationScrollRef}
-          onScroll={handleConversationScroll}
-          className="h-full space-y-4 overflow-y-auto px-5 py-5"
+          onScroll={handleConversationScrollWithIndicator}
+          className="chatbot-conversation-scroll h-full space-y-4 overflow-y-auto px-5 py-5"
+          style={
+            {
+              WebkitOverflowScrolling: "touch",
+              overscrollBehaviorY: "contain",
+              touchAction: "pan-y",
+            } as CSSProperties
+          }
           aria-label="チャット本文"
         >
           <SecurityNote defaultOpen={false} />
@@ -615,12 +1145,40 @@ export function WidgetShell({
                 role={message.role}
                 content={message.content}
                 createdAt={message.createdAt}
+                displayName={
+                  message.role === "user"
+                    ? customerDisplayName
+                    : message.role === "assistant"
+                      ? assistantDisplayName
+                      : undefined
+                }
                 editingDisabled={submitting}
                 onEdit={handleEditMessage}
               />
             ))}
             {submitting ? <ThinkingIndicator showDelayNotice={showThinkingDelayNotice} /> : null}
           </div>
+          {recoverableRequest && !submitting ? (
+            <div className="glass-card-sm space-y-3 px-4 py-3 text-xs leading-relaxed text-hp-muted" role="status">
+              <p>直前の送信が完了していません。入力内容は保持しています。</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleRecoverableRetry}
+                  className="glass-btn px-3 py-2 text-xs font-semibold text-hp"
+                >
+                  再送する
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRecoverableFormFallback}
+                  className="glass-btn px-3 py-2 text-xs font-semibold text-hp-muted"
+                >
+                  フォームに切り替える
+                </button>
+              </div>
+            </div>
+          ) : null}
           <ActiveWidgetUi
             ui={activeUi}
             conversationId={conversationId}
@@ -629,6 +1187,28 @@ export function WidgetShell({
             onBookingCompleted={handleBookingCompleted}
           />
         </div>
+        {scrollIndicator.isScrollable ? (
+          <div
+            className="chatbot-scroll-indicator absolute right-2 z-10 w-1.5"
+            data-testid="chatbot-scroll-indicator"
+            data-scrolling={scrollIndicator.isScrolling ? "true" : "false"}
+            aria-hidden="true"
+            style={{
+              top: SCROLL_INDICATOR_VERTICAL_INSET_PX,
+              height: scrollIndicator.trackHeight,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              className="chatbot-scroll-indicator__thumb"
+              data-testid="chatbot-scroll-indicator-thumb"
+              style={{
+                height: scrollIndicator.thumbHeight,
+                top: scrollIndicator.thumbTop,
+              }}
+            />
+          </div>
+        ) : null}
         {shouldShowLatestButton ? (
           <button
             type="button"
@@ -691,10 +1271,9 @@ function ActiveWidgetUi({
   }
 
   if (ui.kind === "booking-card") {
-    if (!isBookingEnabled()) return null
-
     return (
       <ChatbotBookingCard
+        key={bookingCardInstanceKey(conversationId, ui)}
         conversationId={conversationId}
         candidates={ui.suggestedSlots}
         busyDateKeys={ui.busyDateKeys}
@@ -753,6 +1332,17 @@ function ActiveWidgetUi({
   }
 
   return null
+}
+
+function bookingCardInstanceKey(conversationId: string | undefined, ui: Extract<WidgetUi, { kind: "booking-card" }>) {
+  return [
+    conversationId ?? "new",
+    ui.completedBooking?.bookingGroupId ?? "draft",
+    ui.bookingPrefill?.projectTitle ?? "",
+    ui.bookingPrefill?.contactEmail ?? "",
+    ui.bookingPrefill?.dueDate ?? "",
+    ui.suggestedSlots.map((slot) => `${slot.start}/${slot.end}`).join(","),
+  ].join("|")
 }
 
 function formatChoicePanelSubmission(selection: {

@@ -17,7 +17,20 @@ export function applyBookingFinalConfirmationAnswer(input: {
   latestUserMessage: string
   previousAssistantMessage?: string
 }): ConversationState {
+  if (input.conversationState.bookingSubmission?.status === "submitted") {
+    return input.conversationState
+  }
   const current = input.conversationState.bookingFinalConfirmation
+  if (current?.status === "supplemental-received" && isNoAdditionalBookingConcern(input.latestUserMessage)) {
+    return {
+      ...input.conversationState,
+      bookingFinalConfirmation: {
+        ...current,
+        status: "confirmed",
+        confirmedAtTurn: input.conversationState.turnCount,
+      },
+    }
+  }
   if (current?.status !== "pending" && !isBookingFinalConfirmationPrompt(input.previousAssistantMessage)) {
     return input.conversationState
   }
@@ -53,6 +66,10 @@ export function applyBookingFinalConfirmationPolicy(input: {
   routingDecision: RoutingDecision | undefined
   conversationState: ConversationState
 } {
+  if (input.conversationState.bookingSubmission?.status === "submitted") {
+    return { routingDecision: input.routingDecision, conversationState: input.conversationState }
+  }
+
   if (input.conversationState.activeIntakeClarification?.status === "needs-clarification") {
     return applyIntakeClarificationPolicy({
       routingDecision: input.routingDecision,
@@ -70,16 +87,10 @@ export function applyBookingFinalConfirmationPolicy(input: {
     input.conversationState.bookingFinalConfirmation?.status === "supplemental-received"
   ) {
     return {
-      routingDecision:
-        input.routingDecision?.kind === "to-booking-inline"
-          ? {
-              kind: "continue",
-              nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
-            }
-          : input.routingDecision ?? {
-              kind: "continue",
-              nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
-            },
+      routingDecision: {
+        kind: "continue",
+        nextQuestion: "補足を反映しました。必要な点を確認してから進めます。",
+      },
       conversationState: input.conversationState,
     }
   }
@@ -189,8 +200,9 @@ export function isNoAdditionalBookingConcern(message: string): boolean {
   const compact = message
     .normalize("NFKC")
     .toLowerCase()
+    .replace(/^\s*選択\s*[:：]\s*/u, "")
     .replace(/[\s　。、,.!！?？「」『』()[\]（）]/g, "")
-  return /^(なし|無し|ない|ありません|大丈夫|だいじょうぶ|問題ありません|問題ない|ok|okay|okです|以上です|特にありません)$/.test(
+  return /^(なし|無し|ない|ありません|大丈夫|だいじょうぶ|了解|了解です|良い|良いです|いい|いいです|ok|okay|okです|問題ありません|問題ない|以上です|特にありません)(このまま進める|このまますすめる)?$/.test(
     compact,
   )
 }
@@ -207,13 +219,52 @@ export function isBookingFinalConfirmationPrompt(message: string | undefined): b
 
 function buildBookingFinalConfirmationQuestion(jobContext: JobContext): string {
   const summary = [
-    jobContext.jobKind ? `案件種別は${jobContext.jobKind}` : undefined,
-    jobContext.finalMedium && jobContext.finalMedium !== "other" ? `最終媒体は${jobContext.finalMedium}` : undefined,
+    labelRequestCategory(jobContext),
+    labelDeliveryUse(jobContext),
     typeof jobContext.projectLengthMinutes === "number" ? `尺は${formatMinutes(jobContext.projectLengthMinutes)}` : undefined,
   ].filter((item): item is string => Boolean(item))
   const prefix = summary.length > 0 ? `${summary.join("、")}として整理しています。` : "ここまでの内容で整理しています。"
 
   return `${prefix}ほかに確認したいこと、伝えておきたいこと、不安な点はありますか？なければ「なし」で進めます。`
+}
+
+function labelRequestCategory(jobContext: JobContext): string | undefined {
+  switch (jobContext.jobKind) {
+    case "live-60m":
+      return "依頼内容はライブ"
+    case "cm-30s":
+      return "依頼内容はWeb CM / CM"
+    case "mv-5m":
+      return "依頼内容はMV"
+    case "feature-90m":
+      return "依頼内容は映画 / 長編"
+    case "drama-first":
+    case "drama-follow-up":
+      return "依頼内容はドラマ"
+    case "vertical-60s":
+      return "依頼内容は縦型動画 / SNS動画"
+    default:
+      return undefined
+  }
+}
+
+function labelDeliveryUse(jobContext: JobContext): string | undefined {
+  switch (jobContext.finalMedium) {
+    case "ott":
+      return "納品・使用先は配信"
+    case "cinema":
+      return "納品・使用先は映画 / 劇場"
+    case "tv-broadcast":
+      return "納品・使用先は放送"
+    case "live":
+      return "納品・使用先はライブ / イベント"
+    case "web":
+      return "納品・使用先はWeb / CM"
+    case "vertical-sns":
+      return "納品・使用先は縦型SNS"
+    default:
+      return undefined
+  }
 }
 
 function formatMinutes(minutes: number): string {

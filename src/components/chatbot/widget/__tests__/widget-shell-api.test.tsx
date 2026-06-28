@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -28,6 +28,10 @@ const assistantMessage = {
   createdAt: "2026-05-26T00:00:00.000Z",
 }
 const chatbotSessionStorageKey = "hp-chatbot-session-v1"
+
+function touchPoint(identifier: number, clientX: number, clientY: number) {
+  return { identifier, clientX, clientY, target: window } as unknown as Touch
+}
 
 function installLocalStorage() {
   const values = new Map<string, string>()
@@ -57,7 +61,10 @@ function writeStoredWidgetSession(session: {
   clientSessionId?: string
   conversationId?: string
   activeUi?: unknown
+  customerDisplayName?: string
   lastResponseTier?: string
+  pendingRequest?: unknown
+  recoverableRequest?: unknown
 }) {
   window.localStorage.setItem(
     chatbotSessionStorageKey,
@@ -66,7 +73,10 @@ function writeStoredWidgetSession(session: {
       clientSessionId: session.clientSessionId,
       conversationId: session.conversationId,
       activeUi: session.activeUi ?? { kind: "none" },
+      customerDisplayName: session.customerDisplayName,
       lastResponseTier: session.lastResponseTier,
+      pendingRequest: session.pendingRequest,
+      recoverableRequest: session.recoverableRequest,
       expiresAt: "2999-01-01T00:00:00.000Z",
     }),
   )
@@ -83,6 +93,12 @@ function setConversationScrollGeometry(input: { scrollTop: number; clientHeight:
   Object.defineProperty(container, "scrollHeight", { configurable: true, value: input.scrollHeight })
   container.scrollTop = input.scrollTop
   return container
+}
+
+async function flushScrollIndicatorFrame() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20)
+  })
 }
 
 describe("WidgetShell API wiring", () => {
@@ -118,6 +134,140 @@ describe("WidgetShell API wiring", () => {
     expect(document.body).not.toHaveTextContent(/Local debug|Notion AI|DeepSeek|Ollama|local deterministic|Tier|\bmodel\b/i)
   })
 
+  it("keeps panel wheel, touch, and pointer operations inside the chatbot shell", () => {
+    const onPointerDown = vi.fn()
+    const onPointerMove = vi.fn()
+    const onTouchMove = vi.fn()
+    const onWheel = vi.fn()
+
+    render(
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onTouchMove={onTouchMove}
+        onWheel={onWheel}
+      >
+        <WidgetShell onMinimize={vi.fn()} />
+      </div>,
+    )
+
+    const shell = screen.getByLabelText("AI 相談窓口")
+    const conversation = screen.getByLabelText("チャット本文")
+
+    fireEvent.pointerDown(shell, { pointerId: 1, pointerType: "mouse", button: 0 })
+    fireEvent.pointerMove(shell, { pointerId: 1, pointerType: "mouse", clientX: 20, clientY: 20 })
+    Object.defineProperty(conversation, "clientHeight", { configurable: true, value: 300 })
+    Object.defineProperty(conversation, "scrollHeight", { configurable: true, value: 900 })
+    conversation.scrollTop = 600
+
+    fireEvent.touchStart(conversation, {
+      touches: [touchPoint(1, 120, 180)],
+      changedTouches: [touchPoint(1, 120, 180)],
+    })
+    const boundaryTouchMove = createEvent.touchMove(conversation, {
+      touches: [touchPoint(1, 120, 160)],
+      changedTouches: [touchPoint(1, 120, 160)],
+    })
+    const preventBoundaryTouchDefault = vi.spyOn(boundaryTouchMove, "preventDefault")
+    fireEvent(conversation, boundaryTouchMove)
+    expect(preventBoundaryTouchDefault).toHaveBeenCalled()
+
+    const boundaryWheel = createEvent.wheel(conversation, { deltaY: 120, cancelable: true })
+    const preventBoundaryWheelDefault = vi.spyOn(boundaryWheel, "preventDefault")
+    fireEvent(conversation, boundaryWheel)
+    expect(preventBoundaryWheelDefault).toHaveBeenCalled()
+
+    expect(onPointerDown).not.toHaveBeenCalled()
+    expect(onPointerMove).not.toHaveBeenCalled()
+    expect(onTouchMove).not.toHaveBeenCalled()
+    expect(onWheel).not.toHaveBeenCalled()
+  })
+
+  it("keeps chatbot conversation native scroll available inside the shell", () => {
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = screen.getByLabelText("チャット本文")
+    Object.defineProperty(conversation, "clientHeight", { configurable: true, value: 300 })
+    Object.defineProperty(conversation, "scrollHeight", { configurable: true, value: 900 })
+    conversation.scrollTop = 100
+
+    fireEvent.touchStart(conversation, {
+      touches: [touchPoint(1, 120, 180)],
+      changedTouches: [touchPoint(1, 120, 180)],
+    })
+    const innerTouchMove = createEvent.touchMove(conversation, {
+      touches: [touchPoint(1, 120, 120)],
+      changedTouches: [touchPoint(1, 120, 120)],
+    })
+    const preventInnerTouchDefault = vi.spyOn(innerTouchMove, "preventDefault")
+    fireEvent(conversation, innerTouchMove)
+    expect(preventInnerTouchDefault).not.toHaveBeenCalled()
+    expect(conversation.scrollTop).toBe(100)
+
+    const innerWheel = createEvent.wheel(conversation, { deltaY: 120, cancelable: true })
+    const preventInnerWheelDefault = vi.spyOn(innerWheel, "preventDefault")
+    fireEvent(conversation, innerWheel)
+    expect(preventInnerWheelDefault).not.toHaveBeenCalled()
+    expect(conversation.scrollTop).toBe(100)
+  })
+
+  it("marks chatbot conversation scrolling for mobile momentum", () => {
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = screen.getByLabelText("チャット本文")
+    expect(conversation).toHaveClass("chatbot-conversation-scroll")
+    expect(conversation).toHaveStyle({
+      overscrollBehaviorY: "contain",
+      touchAction: "pan-y",
+    })
+  })
+
+  it("shows a passive right-side scroll indicator while the mobile conversation scrolls", async () => {
+    vi.useFakeTimers()
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = setConversationScrollGeometry({ scrollTop: 100, clientHeight: 400, scrollHeight: 1200 })
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+
+    const indicator = screen.getByTestId("chatbot-scroll-indicator")
+    const thumb = screen.getByTestId("chatbot-scroll-indicator-thumb")
+    expect(indicator).toHaveAttribute("data-scrolling", "true")
+    expect(indicator).toHaveStyle({
+      pointerEvents: "none",
+      top: "12px",
+      height: "376px",
+    })
+    expect(thumb).toHaveStyle({ height: "125px" })
+
+    const initialThumbTop = Number.parseFloat(thumb.style.top)
+    conversation.scrollTop = 600
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+    expect(Number.parseFloat(thumb.style.top)).toBeGreaterThan(initialThumbTop)
+
+    Object.defineProperty(conversation, "scrollHeight", { configurable: true, value: 2000 })
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+    expect(Number.parseFloat(thumb.style.height)).toBeLessThan(125)
+  })
+
+  it("fades the mobile scroll indicator after scrolling stops", async () => {
+    vi.useFakeTimers()
+    render(<WidgetShell onMinimize={vi.fn()} />)
+
+    const conversation = setConversationScrollGeometry({ scrollTop: 120, clientHeight: 400, scrollHeight: 1200 })
+    fireEvent.scroll(conversation)
+    await flushScrollIndicatorFrame()
+    expect(screen.getByTestId("chatbot-scroll-indicator")).toHaveAttribute("data-scrolling", "true")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700)
+    })
+    await flushScrollIndicatorFrame()
+    expect(screen.getByTestId("chatbot-scroll-indicator")).toHaveAttribute("data-scrolling", "false")
+  })
+
   it("posts submitted chat text to /api/chatbot/message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({
@@ -146,6 +296,134 @@ describe("WidgetShell API wiring", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       message: "相談したいです",
     })
+  })
+
+  it("does not show the default customer label for user messages", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage,
+        tier: "tier-3-ollama-deepseek",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("劇場公開作品です。")
+
+    expect(await screen.findByText("劇場公開作品です。")).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("お客さま")
+    expect(document.body).not.toHaveTextContent("お客様")
+  })
+
+  it("uses and persists a known booking contact name for user message labels", async () => {
+    const slot = {
+      start: "2026-07-10T01:00:00.000Z",
+      end: "2026-07-10T02:00:00.000Z",
+      label: "7月10日 午前",
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            assistantMessage,
+            tier: "tier-3-ollama-deepseek",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [slot],
+              jobContext: {
+                finalMedium: "web",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                workflowEstimate: { stages: [], totalMinDays: 2, totalMaxDays: 3, riskFlags: [] },
+              },
+              bookingPrefill: {
+                projectTitle: "ライブ案件",
+                contactName: "田中",
+                contactEmail: "client@example.jp",
+              },
+            },
+          }),
+        )
+        .mockResolvedValue(mockJsonResponse({ candidates: [slot], busyDateKeys: [] })),
+    )
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("予約したいです")
+
+    expect(await screen.findByText("田中")).toBeInTheDocument()
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(stored.customerDisplayName).toBe("田中")
+    })
+  })
+
+  it("switches the assistant display name only after a nearby user name question", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage: {
+          ...assistantMessage,
+          content: "私はのーちゃんです。",
+        },
+        tier: "tier-2-hosted-chrome-notion-ai",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("AI アシスタント").length).toBeGreaterThan(0)
+    submitMessage("あなたの名前は？")
+
+    expect(await screen.findByText("私はのーちゃんです。")).toBeInTheDocument()
+    expect(screen.getAllByText("のーちゃん").length).toBeGreaterThan(0)
+  })
+
+  it("keeps the assistant display name unchanged for unrelated mentions and restores valid name switches", async () => {
+    writeStoredWidgetSession({
+      messages: [
+        {
+          id: "user_1",
+          role: "user",
+          content: "雑談です",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_1",
+          role: "assistant",
+          content: "のーちゃんという呼び方があります。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+    })
+    const firstRender = render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("AI アシスタント").length).toBeGreaterThan(0)
+    expect(screen.queryByText("のーちゃん")).not.toBeInTheDocument()
+
+    firstRender.unmount()
+    writeStoredWidgetSession({
+      messages: [
+        {
+          id: "user_2",
+          role: "user",
+          content: "なんて呼べばいい？",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_2",
+          role: "assistant",
+          content: "のーちゃんと呼んでください。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+    })
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(screen.getAllByText("のーちゃん").length).toBeGreaterThan(0)
   })
 
   it("shows the thinking indicator while waiting for a chatbot response", async () => {
@@ -177,6 +455,143 @@ describe("WidgetShell API wiring", () => {
     expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
     expect(screen.getByLabelText("相談内容")).toBeEnabled()
+  })
+
+  it("resends a pending mobile request after the widget remounts mid-response", async () => {
+    let firstSignal: AbortSignal | undefined
+    let resolveRecoveredFetch: (response: ReturnType<typeof mockJsonResponse>) => void = () => undefined
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) => {
+        firstSignal = init?.signal ?? undefined
+        return new Promise<ReturnType<typeof mockJsonResponse>>(() => undefined)
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<ReturnType<typeof mockJsonResponse>>((resolve) => {
+            resolveRecoveredFetch = resolve
+          }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const firstRender = render(<WidgetShell onMinimize={vi.fn()} displayMode="full-screen" />)
+    submitMessage("モバイル復元の相談です")
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const storedBeforeRemount = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+    expect(storedBeforeRemount.pendingRequest).toMatchObject({
+      kind: "message",
+      message: "モバイル復元の相談です",
+      clientUserMessageId: expect.stringMatching(/^client_msg_/),
+    })
+
+    firstRender.unmount()
+    expect(firstSignal?.aborted).toBe(true)
+
+    render(<WidgetShell onMinimize={vi.fn()} displayMode="full-screen" />)
+
+    expect(await screen.findByText("考え中")).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const recoveredBody = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(recoveredBody).toMatchObject({
+      message: "モバイル復元の相談です",
+      clientSessionId: expect.any(String),
+      recoverClientUserMessageId: storedBeforeRemount.pendingRequest.clientUserMessageId,
+      pendingRequestKind: "message",
+    })
+    expect(recoveredBody.clientUserMessageId).toMatch(/^client_msg_/)
+    expect(recoveredBody.clientUserMessageId).not.toBe(storedBeforeRemount.pendingRequest.clientUserMessageId)
+    resolveRecoveredFetch(
+      mockJsonResponse({
+        conversationId: "conv_recovered",
+        userMessage: {
+          id: "user_recovered",
+          role: "user",
+          content: "モバイル復元の相談です",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        assistantMessage: {
+          id: "assistant_recovered",
+          role: "assistant",
+          content: "復元後の回答です",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+        tier: "tier-3-ollama-deepseek",
+        ui: { kind: "choice-panel", choiceSet: finalMediumChoices },
+      }),
+    )
+    expect(await screen.findByText("復元後の回答です")).toBeInTheDocument()
+    expect(screen.getByText("最終媒体を教えてください")).toBeInTheDocument()
+    await waitFor(() => {
+      const storedAfterRecovery = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(storedAfterRecovery.pendingRequest).toBeUndefined()
+      expect(storedAfterRecovery.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "user_recovered", role: "user", content: "モバイル復元の相談です" }),
+          expect.objectContaining({ id: "assistant_recovered", role: "assistant", content: "復元後の回答です" }),
+        ]),
+      )
+    })
+  })
+
+  it("restores an expired pending mobile request as a retry action instead of the Tier4 form", async () => {
+    const submittedAt = new Date(Date.now() - 20 * 60 * 1000).toISOString()
+    const pendingRequest = {
+      kind: "message",
+      message: "長い入力の相談です",
+      clientUserMessageId: "client_msg_11111111-1111-4111-8111-111111111111",
+      submittedAt,
+      conversationId: "conv_1",
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        userMessage: {
+          id: "user_recovered",
+          role: "user",
+          content: "長い入力の相談です",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        assistantMessage: {
+          id: "assistant_recovered",
+          role: "assistant",
+          content: "復旧しました",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+        tier: "tier-3-gemini-flash",
+        ui: { kind: "none" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    writeStoredWidgetSession({
+      messages: [
+        {
+          id: pendingRequest.clientUserMessageId,
+          role: "user",
+          content: "長い入力の相談です",
+          createdAt: submittedAt,
+        },
+      ],
+      conversationId: "conv_1",
+      activeUi: { kind: "tier4-inquiry-form" },
+      pendingRequest,
+    })
+
+    render(<WidgetShell onMinimize={vi.fn()} displayMode="full-screen" />)
+
+    expect(await screen.findByText("直前の送信が完了していません。入力内容は保持しています。")).toBeInTheDocument()
+    expect(screen.queryByLabelText("問い合わせフォーム")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "再送する" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      message: "長い入力の相談です",
+      conversationId: "conv_1",
+      recoverClientUserMessageId: pendingRequest.clientUserMessageId,
+      pendingRequestKind: "message",
+    })
+    expect(await screen.findByText("復旧しました")).toBeInTheDocument()
+    expect(screen.queryByLabelText("問い合わせフォーム")).not.toBeInTheDocument()
   })
 
   it("auto-scrolls to the latest assistant response when the conversation is already at bottom", async () => {
@@ -273,7 +688,7 @@ describe("WidgetShell API wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "停止" }))
 
     await waitFor(() => expect(screen.queryByText("考え中")).not.toBeInTheDocument())
-    expect(screen.queryByText(/通信に失敗しました/u)).not.toBeInTheDocument()
+    expect(screen.queryByText(/応答が中断しました/u)).not.toBeInTheDocument()
     expect(screen.getByText("停止したい相談です")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "メッセージを編集" })).toBeInTheDocument()
     const fetchInit = fetchMock.mock.calls[0]?.[1]
@@ -769,6 +1184,114 @@ describe("WidgetShell API wiring", () => {
     expect(screen.queryByRole("button", { name: "予約内容を送信" })).not.toBeInTheDocument()
   })
 
+  it("drops restored booking completion state when an earlier message is edited into a new booking card", async () => {
+    process.env.NEXT_PUBLIC_ENABLE_BOOKING = "true"
+    const slot = {
+      start: "2026-07-10T01:00:00.000Z",
+      end: "2026-07-10T02:00:00.000Z",
+      label: "7月10日 午前",
+    }
+    writeStoredWidgetSession({
+      clientSessionId: "11111111-1111-4111-8111-111111111111",
+      conversationId: "conv_1",
+      messages: [
+        {
+          id: "user_original",
+          role: "user",
+          content: "良いです！",
+          createdAt: "2026-05-26T00:00:00.000Z",
+        },
+        {
+          id: "assistant_original",
+          role: "assistant",
+          content: "候補日を確認しました。",
+          createdAt: "2026-05-26T00:00:01.000Z",
+        },
+      ],
+      activeUi: {
+        kind: "booking-card",
+        suggestedSlots: [slot],
+        jobContext: {
+          finalMedium: "web",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+          workflowEstimate: { stages: [], totalMinDays: 1, totalMaxDays: 1, riskFlags: [] },
+        },
+        bookingPrefill: {
+          projectTitle: "旧ライブ案件",
+          contactName: "田中",
+          contactEmail: "client@example.jp",
+        },
+        completedBooking: {
+          bookingGroupId: "group_old",
+          bookingIds: ["slot_old"],
+          scheduleLabel: "7月10日",
+          projectTitle: "旧ライブ案件",
+          contactName: "田中",
+          contactEmail: "client@example.jp",
+        },
+      },
+    })
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === "/api/chatbot/message") {
+        return Promise.resolve(
+          mockJsonResponse({
+            conversationId: "conv_1",
+            userMessage: {
+              id: "user_edited",
+              role: "user",
+              content: "了解です",
+              createdAt: "2026-05-26T00:00:02.000Z",
+            },
+            assistantMessage: {
+              ...assistantMessage,
+              id: "assistant_edited",
+              content: "候補日を確認しました。\n下の予約カードから選択してください。",
+              createdAt: "2026-05-26T00:00:03.000Z",
+            },
+            tier: "tier-2-hosted-chrome-notion-ai",
+            ui: {
+              kind: "booking-card",
+              suggestedSlots: [slot],
+              jobContext: {
+                finalMedium: "web",
+                workSite: "remote-grading",
+                documentaryAttachment: { kind: "none" },
+                workflowEstimate: { stages: [], totalMinDays: 1, totalMaxDays: 1, riskFlags: [] },
+              },
+              bookingPrefill: {
+                projectTitle: "新ライブ案件",
+                contactName: "田中",
+                contactEmail: "client@example.jp",
+              },
+            },
+          }),
+        )
+      }
+      if (url === "/api/chatbot/booking-candidates") {
+        return Promise.resolve(mockJsonResponse({ candidates: [slot], busyDateKeys: [] }))
+      }
+      return Promise.resolve(mockJsonResponse({}))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    expect(await screen.findByLabelText("予約送信完了")).toBeInTheDocument()
+    expect(screen.getByText("予約番号: group_old")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
+    fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "了解です" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
+    fireEvent.click(screen.getByRole("button", { name: "OK" }))
+
+    expect(await screen.findByText("候補日時から予約する")).toBeInTheDocument()
+    expect(screen.getByLabelText("案件名")).toHaveValue("新ライブ案件")
+    expect(screen.queryByLabelText("予約送信完了")).not.toBeInTheDocument()
+    expect(screen.queryByText("予約番号: group_old")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "予約内容を送信" })).toBeInTheDocument()
+  })
+
   it("renders InquiryForm for tier4 responses and posts submit-inquiry", async () => {
     const fetchMock = vi
       .fn()
@@ -870,10 +1393,10 @@ describe("WidgetShell API wiring", () => {
 
     expect(await screen.findByText("最終媒体を選んでください")).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(screen.queryByText(/通信に失敗しました/u)).not.toBeInTheDocument()
+    expect(screen.queryByText(/応答が中断しました/u)).not.toBeInTheDocument()
   })
 
-  it("falls back to the inquiry form when message retries are exhausted", async () => {
+  it("keeps an exhausted transient message failure retryable before showing the inquiry form", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
@@ -894,10 +1417,14 @@ describe("WidgetShell API wiring", () => {
     render(<WidgetShell onMinimize={vi.fn()} />)
     submitMessage()
 
-    expect(await screen.findByText(/通信に失敗しました/u)).toBeInTheDocument()
-    expect(screen.getByLabelText("問い合わせフォーム")).toBeInTheDocument()
+    expect(await screen.findByText(/応答が中断しました/u)).toBeInTheDocument()
+    expect(screen.getByText("直前の送信が完了していません。入力内容は保持しています。")).toBeInTheDocument()
+    expect(screen.queryByLabelText("問い合わせフォーム")).not.toBeInTheDocument()
     expect(screen.getByText("相談したいです")).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole("button", { name: "フォームに切り替える" }))
+    expect(await screen.findByLabelText("問い合わせフォーム")).toBeInTheDocument()
   })
 
   it("edits a sent user message, truncates later local UI, and persists the edited conversation", async () => {
@@ -947,7 +1474,8 @@ describe("WidgetShell API wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "メッセージを編集" }))
     fireEvent.change(screen.getByLabelText("編集内容"), { target: { value: "編集後の相談です" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
-    expect(screen.getByText("保存すると、これより後のやり取りは削除されます。")).toBeInTheDocument()
+    expect(screen.getByText("この後の会話を削除します")).toBeInTheDocument()
+    expect(screen.queryByText("保存すると、これより後のやり取りは削除されます。")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "OK" }))
 
     expect(await screen.findByText("編集後の回答です")).toBeInTheDocument()

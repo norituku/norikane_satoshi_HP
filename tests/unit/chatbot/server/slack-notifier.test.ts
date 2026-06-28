@@ -11,7 +11,7 @@ function okSlackResponse(ts = "1710000000.000100"): Response {
 }
 
 function slackFetcher(ts?: string) {
-  return vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => okSlackResponse(ts))
+  return vi.fn<typeof fetch>(async () => okSlackResponse(ts))
 }
 
 describe("sendChatbotSlackNotification", () => {
@@ -30,6 +30,8 @@ describe("sendChatbotSlackNotification", () => {
           choiceSetId: "job-kind",
           flowStep: "intake",
           bookingProgress: false,
+          pendingRecovery: true,
+          pendingRequestKind: "message",
           userMessage: "相談です",
           assistantResponse: "確認します",
           retryDiagnostics: {
@@ -61,6 +63,8 @@ describe("sendChatbotSlackNotification", () => {
     const body = JSON.parse(String(init?.body)) as { text: string }
 
     expect(body.text).toContain("retryAttempts: 2/3")
+    expect(body.text).toContain("pendingRecovery: true")
+    expect(body.text).toContain("pendingRequestKind: message")
     expect(body.text).toContain("retryReasons: server-error,timeout")
     expect(body.text).toContain("repairAttempted: true")
     expect(body.text).toContain("totalGenerateDurationMs: 1234")
