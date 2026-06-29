@@ -398,6 +398,42 @@ describe("createChatbotLlmTierOrchestrator", () => {
     expect(tier4.generate).toHaveBeenCalledOnce()
   })
 
+  it("still tries hosted tier 2 when its health probe times out", async () => {
+    const tier2 = fakeClient("tier-2-hosted-chrome-notion-ai", {
+      healthPromise: new Promise<boolean>(() => {}),
+    })
+    const tier3 = fakeClient("tier-3-gemini-flash")
+    const orchestrator = createChatbotLlmTierOrchestrator({
+      clients: [tier2, tier3],
+      healthCheckTimeoutMs: 1,
+    })
+
+    await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
+      llmResponse("tier-2-hosted-chrome-notion-ai"),
+    )
+    expect(tier2.generate).toHaveBeenCalledOnce()
+    expect(tier3.generate).not.toHaveBeenCalled()
+  })
+
+  it("still tries hosted tier 2 after a retryable health error", async () => {
+    const healthError = llmError("tier-2-hosted-chrome-notion-ai", {
+      code: "connection",
+      isRetryable: true,
+    })
+    const tier2 = fakeClient("tier-2-hosted-chrome-notion-ai", {
+      healthy: false,
+      healthError,
+    })
+    const tier3 = fakeClient("tier-3-gemini-flash")
+    const orchestrator = createChatbotLlmTierOrchestrator({ clients: [tier2, tier3] })
+
+    await expect(orchestrator.generate(llmRequest())).resolves.toEqual(
+      llmResponse("tier-2-hosted-chrome-notion-ai"),
+    )
+    expect(tier2.generate).toHaveBeenCalledOnce()
+    expect(tier3.generate).not.toHaveBeenCalled()
+  })
+
   it("does not call fetch or any network transport directly", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch")
     const tier1 = fakeClient("tier-1-chrome-notion-ai")

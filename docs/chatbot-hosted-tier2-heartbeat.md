@@ -7,6 +7,7 @@ Runtime shape:
 - `studio.norikane.hosted-tier2-heartbeat.timer` runs every 2 minutes as a systemd user timer.
 - Each heartbeat run checks deep `GET /health` with bearer auth.
 - Production chatbot preflight uses quick `GET /health?mode=quick` so an active Notion AI generation or CDP runtime inspection spike does not skip Tier2 before `/generate`.
+- If the hosted Tier2 health probe times out or returns a retryable connection failure, Production still attempts `/generate`; fallback to Tier3 starts only after Tier2 generate exhausts its own repair/retry budget.
 - A lightweight `POST /generate` smoke runs every 2 minutes by default.
 - One failed run moves state to `unhealthy`; Tier2 generate failure is not treated as a successful lower-tier fallback.
 - On the first unhealthy transition, the script tries one repair sequence: `POST /ensure-chrome`, `systemctl --user restart hosted-notion-ai-worker.service`, then `systemctl --user restart hosted-worker-chrome.service`.
