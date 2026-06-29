@@ -2,6 +2,7 @@ import type {
   ConversationState,
   DocumentaryAttachment,
   DocumentaryAttachmentItem,
+  FinalMedium,
   JobContext,
   JobKind,
   SurveyChoice,
@@ -57,16 +58,18 @@ export function applyActiveChoiceAnswer(input: {
         jobContext: toProjectLengthJobContext(choice.id),
       }
     case "final-medium":
+      const finalMediumPatch = toFinalMediumJobContextPatch(activeChoices, choice)
       return {
         choiceSetId: activeChoices.id,
         choiceId: choice.id,
         choiceIds: [choice.id],
         conversationState: {
           hasFinalMedium: true,
+          ...finalMediumPatch.conversationState,
           ...otherCommentPatch,
           ...toIntakeClarityPatch(activeChoices, choices, "clear", "choice-confirmed"),
         },
-        jobContext: { finalMedium: choice.id as JobContext["finalMedium"] },
+        jobContext: finalMediumPatch.jobContext,
       }
     case "additional-work":
       if (choices.some((item) => item.id === "none")) {
@@ -472,6 +475,55 @@ function choicesFromIds(choiceSet: SurveyChoiceSet, choiceIds: string[]): Survey
   return choiceIds
     .map((choiceId) => choiceSet.choices.find((choice) => choice.id === choiceId))
     .filter((choice): choice is SurveyChoice => Boolean(choice))
+}
+
+const canonicalFinalMediumIds = new Set<FinalMedium>([
+  "ott",
+  "cinema",
+  "tv-broadcast",
+  "live",
+  "web",
+  "vertical-sns",
+  "other",
+])
+
+function toFinalMediumJobContextPatch(
+  activeChoices: SurveyChoiceSet,
+  choice: SurveyChoice,
+): {
+  conversationState: Partial<ConversationState>
+  jobContext: Pick<JobContext, "finalMedium">
+} {
+  const finalMedium = normalizeFinalMediumChoice(choice)
+  if (finalMedium !== "other") {
+    return {
+      conversationState: {},
+      jobContext: { finalMedium },
+    }
+  }
+
+  return {
+    conversationState: {
+      otherChoiceComments: {
+        [activeChoices.id]: choice.label,
+      },
+    },
+    jobContext: { finalMedium: "other" },
+  }
+}
+
+function normalizeFinalMediumChoice(choice: SurveyChoice): FinalMedium {
+  if (canonicalFinalMediumIds.has(choice.id as FinalMedium)) return choice.id as FinalMedium
+
+  const normalized = `${choice.id} ${choice.label}`.normalize("NFKC").toLowerCase()
+  if (/(?:ott|配信|streaming|vod|svod|tvod|hulu|netflix|prime|disney)/u.test(normalized)) return "ott"
+  if (/(?:劇場|映画館|cinema|theater|上映|映画祭)/u.test(normalized)) return "cinema"
+  if (/(?:テレビ|tv|放送|地上波|bs|cs|broadcast)/u.test(normalized)) return "tv-broadcast"
+  if (/(?:ライブ|live|イベント|舞台収録)/u.test(normalized)) return "live"
+  if (/(?:縦型|縦動画|縦長|shorts|reels|tiktok|vertical)/u.test(normalized)) return "vertical-sns"
+  if (/(?:web|ウェブ|youtube|vimeo|サイト|sns|公開)/u.test(normalized)) return "web"
+
+  return "other"
 }
 
 function isBareQuantity(message: string): boolean {

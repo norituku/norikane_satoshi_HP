@@ -562,6 +562,310 @@ describe("handleChatbotMessage user context", () => {
     }
   })
 
+  it("preserves a production-log-like LLM-authored drama final-medium panel", async () => {
+    const question = "このドラマの最終放映先・配信先はどちらですか？"
+    const choices = [
+      { id: "tv-broadcast", label: "地上波・BS／CS放送" },
+      { id: "ott", label: "配信プラットフォーム" },
+      { id: "web", label: "Web公開" },
+      { id: "cinema", label: "劇場・イベント上映" },
+      { id: "undecided", label: "未定・相談したい" },
+      { id: "other", label: "その他" },
+    ]
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: dramaProjectLengthChoices,
+          currentQuestion: dramaProjectLengthChoices.question,
+          conversationState: {
+            hasFinalMedium: false,
+            hasJobKind: true,
+            hasProjectLength: false,
+            hasAdditionalWork: false,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 2,
+          },
+          jobContext: {
+            jobKind: "drama-first",
+            finalMedium: "other",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+          },
+        },
+      }),
+    })
+    harness.generate.mockResolvedValueOnce({
+      rawText: `ドラマ初回・1話45〜60分で確認しました。続けて、最終的な放映先・媒体を教えてください。 ${JSON.stringify({
+        tool: "show_choice_panel",
+        args: {
+          id: "final-medium",
+          question,
+          selectionMode: "single",
+          allowFreeText: true,
+          choices,
+        },
+      })}`,
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        requestId: "req_drama_final_media",
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: 1話45〜60分",
+      },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toBe(`${question}\n下の選択肢から選んでください。`)
+    expect(result.ui).toMatchObject({
+      kind: "choice-panel",
+      choiceSet: {
+        id: "final-medium",
+        question,
+        allowFreeText: true,
+      },
+    })
+    expect(result.ui.kind === "choice-panel" ? result.ui.choiceSet.choices : []).toEqual(choices)
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentQuestion: question,
+        activeChoices: expect.objectContaining({
+          id: "final-medium",
+          question,
+          choices,
+          allowFreeText: true,
+        }),
+        conversationState: expect.objectContaining({
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasFinalMedium: false,
+        }),
+        jobContext: expect.objectContaining({
+          jobKind: "drama-first",
+          finalMedium: "other",
+          projectLengthMinutes: 60,
+        }),
+      }),
+    )
+  })
+
+  it("does not show the fixed final-medium fallback for drama context", async () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined)
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: "最終媒体を教えてください。",
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    try {
+      const result = await handleChatbotMessage(
+        {
+          requestId: "req_fixed_final_media_fallback",
+          sessionId: "session_1",
+          userId: "user_a",
+          message: "媒体はまだ相談したいです",
+          jobContext: {
+            jobKind: "drama-first",
+            finalMedium: "other",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 60,
+          },
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasFinalMedium: false,
+          },
+        },
+        harness.options,
+      )
+
+      expect(result.assistantMessage.content).toContain("ドラマ / シリーズとして整理しています")
+      expect(result.assistantMessage.content).toContain("公開先・納品先")
+      expect(result.ui).toEqual({ kind: "none" })
+      expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activeChoices: null,
+          currentQuestion: expect.stringContaining("ドラマ / シリーズとして整理しています"),
+        }),
+      )
+      expect(consoleInfo).toHaveBeenCalledWith(
+        expect.stringContaining('"event":"final_media_choice_mismatch"'),
+      )
+      expect(consoleInfo).toHaveBeenCalledWith(
+        expect.stringContaining('"reason":"fixed-final-medium-fallback"'),
+      )
+    } finally {
+      consoleInfo.mockRestore()
+    }
+  })
+
+  it("returns to a natural final-medium rejudgment question when LLM mixes another context", async () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined)
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: JSON.stringify({
+        tool: "show_choice_panel",
+        args: {
+          id: "final-medium",
+          question: "ライブ配信の最終媒体を選んでください",
+          choices: [
+            { id: "live", label: "ライブ配信" },
+            { id: "vertical-sns", label: "縦型SNS" },
+            { id: "web", label: "Web" },
+          ],
+        },
+      }),
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    try {
+      const result = await handleChatbotMessage(
+        {
+          requestId: "req_final_media_choice_mismatch",
+          sessionId: "session_1",
+          userId: "user_a",
+          message: "ドラマシリーズです。1話45分です。",
+          jobContext: {
+            jobKind: "drama-first",
+            finalMedium: "other",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 45,
+          },
+          conversationState: {
+            ...baseProductionConversationState(),
+            hasFinalMedium: false,
+          },
+        },
+        harness.options,
+      )
+
+      expect(result.assistantMessage.content).toContain("ドラマ / シリーズとして整理しています")
+      expect(result.assistantMessage.content).not.toContain("ライブ配信")
+      expect(result.ui).toEqual({ kind: "none" })
+      expect(consoleInfo).toHaveBeenCalledWith(
+        expect.stringContaining('"event":"final_media_choice_mismatch"'),
+      )
+      expect(consoleInfo).toHaveBeenCalledWith(
+        expect.stringContaining('"reason":"choice-set-context-mismatch"'),
+      )
+    } finally {
+      consoleInfo.mockRestore()
+    }
+  })
+
+  it("maps LLM-authored final-medium choice ids to canonical job context on the next turn", async () => {
+    const llmFinalMediumChoices = {
+      id: "final-medium",
+      question: "このドラマの最終放映先・配信先はどちらですか？",
+      allowFreeText: true,
+      choices: [
+        { id: "broadcast-drama", label: "地上波・BS／CS放送" },
+        { id: "streaming-drama", label: "配信プラットフォーム" },
+        { id: "web-public", label: "Web公開" },
+        { id: "other", label: "その他" },
+      ],
+    }
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: llmFinalMediumChoices,
+          currentQuestion: llmFinalMediumChoices.question,
+          conversationState: {
+            hasFinalMedium: false,
+            hasJobKind: true,
+            hasProjectLength: true,
+            hasAdditionalWork: false,
+            hasDocumentaryAttachments: false,
+            hasWorkSite: false,
+            hasReferenceUrls: false,
+            hasContactEmail: false,
+            hasDesiredSchedule: false,
+            turnCount: 3,
+          },
+          jobContext: {
+            jobKind: "drama-first",
+            finalMedium: "other",
+            workSite: "remote-grading",
+            documentaryAttachment: { kind: "none" },
+            projectLengthMinutes: 60,
+          },
+        },
+      }),
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: 地上波・BS／CS放送",
+      },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({ kind: "choice-panel", choiceSet: { id: "additional-work" } })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: additionalWorkChoices,
+        conversationState: expect.objectContaining({ hasFinalMedium: true }),
+        jobContext: expect.objectContaining({ finalMedium: "tv-broadcast" }),
+      }),
+    )
+  })
+
+  it.each([
+    ["live-60m", "ライブの公開・納品先を選んでください", ["配信", "会場上映", "パッケージ納品", "未定"]],
+    ["cm-30s", "CMの使用先を選んでください", ["Web広告", "SNS", "テレビ放送", "店頭・イベント"]],
+    ["mv-5m", "MVの公開先を選んでください", ["YouTube", "SNS", "配信プラットフォーム", "ライブ会場上映"]],
+  ] as const)("respects LLM-authored final-medium panel for %s", async (jobKind, question, labels) => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText: JSON.stringify({
+        tool: "show_choice_panel",
+        args: {
+          id: "final-medium",
+          question,
+          allowFreeText: true,
+          choices: labels.map((label, index) => ({ id: `${jobKind.replace(/[^a-z0-9]/g, "-")}-medium-${index + 1}`, label })),
+        },
+      }),
+      tier: "tier-2-hosted-chrome-notion-ai",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "媒体を相談したいです",
+        jobContext: {
+          jobKind,
+          finalMedium: "other",
+          workSite: "remote-grading",
+          documentaryAttachment: { kind: "none" },
+          projectLengthMinutes: jobKind === "cm-30s" ? 0.5 : 60,
+        },
+        conversationState: {
+          ...baseProductionConversationState(),
+          hasFinalMedium: false,
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.ui).toMatchObject({ kind: "choice-panel", choiceSet: { id: "final-medium", question } })
+    expect(result.ui.kind === "choice-panel" ? result.ui.choiceSet.choices.map((choice) => choice.label) : []).toEqual(labels)
+  })
+
   it("uses client user message ids for optimistic cancelled messages", async () => {
     const harness = setup()
 
@@ -1975,21 +2279,6 @@ describe("handleChatbotMessage user context", () => {
       projectLengthChoices.id,
     ],
     [
-      "final medium",
-      "MV 5分のカラーグレーディング相談です。",
-      {},
-      {
-        hasFinalMedium: false,
-        hasJobKind: true,
-        hasProjectLength: true,
-        hasAdditionalWork: true,
-        hasDocumentaryAttachments: true,
-        hasWorkSite: true,
-      },
-      "最終媒体は何になりますか？",
-      finalMediumChoices.id,
-    ],
-    [
       "additional work",
       "ライブ2時間半ぐらいあります。",
       {
@@ -2088,6 +2377,45 @@ describe("handleChatbotMessage user context", () => {
       )
     },
   )
+
+  it("does not force the fixed final-medium choice-panel prompt", async () => {
+    const harness = setup()
+    harness.generate.mockResolvedValueOnce({
+      rawText:
+        "受付内容の整理：MV案件です。納品形式も教えてください。追加で確認したいことがあります。",
+      tier: "tier-3-ollama-deepseek",
+    })
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "MV 5分のカラーグレーディング相談です。",
+        conversationState: {
+          ...baseProductionConversationState(),
+          hasFinalMedium: false,
+          hasJobKind: true,
+          hasProjectLength: true,
+          hasAdditionalWork: true,
+          hasDocumentaryAttachments: true,
+          hasWorkSite: true,
+        },
+      },
+      harness.options,
+    )
+
+    expect(result.assistantMessage.content).toContain("MV / 音楽映像として整理しています")
+    expect(result.assistantMessage.content).toContain("公開先・使用先")
+    expect(result.assistantMessage.content).not.toContain("受付内容の整理")
+    expect(result.assistantMessage.content).not.toContain("納品形式も教えてください")
+    expect(result.ui).toEqual({ kind: "none" })
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeChoices: null,
+        currentQuestion: expect.stringContaining("MV / 音楽映像として整理しています"),
+      }),
+    )
+  })
 
   it("forces contextual project length choices when Tier2 asks the duration as free text", async () => {
     const harness = setup()
@@ -3705,7 +4033,8 @@ describe("handleChatbotMessage user context", () => {
 
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeChoices: expect.objectContaining({ id: finalMediumChoices.id }),
+        activeChoices: null,
+        currentQuestion: expect.stringContaining("Web CM / CM として整理しています"),
         conversationState: expect.objectContaining({
           hasProjectLength: true,
           intakeClarifications: {

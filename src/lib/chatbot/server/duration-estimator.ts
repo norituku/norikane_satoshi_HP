@@ -62,7 +62,7 @@ export function inferWorkflowJobContextFromText(
     Boolean(jobKind) &&
     (!current.jobKind || !explicitJobKind || explicitJobKind === current.jobKind)
   const projectLengthMinutes = canInferProjectLength ? explicitProjectLengthMinutes : undefined
-  const finalMedium = current.finalMedium === "other" ? inferFinalMedium(normalized, jobKind) : undefined
+  const finalMedium = current.finalMedium === "other" ? inferFinalMedium(normalized) : undefined
   const deliveryMedium = current.deliveryMedium === undefined ? inferDeliveryMedium(normalized) : undefined
   const inferred: Partial<JobContext> = {}
 
@@ -99,16 +99,13 @@ function inferJobKind(text: string): JobKind | undefined {
   return undefined
 }
 
-function inferFinalMedium(text: string, jobKind: JobKind | undefined): FinalMedium | undefined {
+function inferFinalMedium(text: string): FinalMedium | undefined {
   if (/(?:ott|配信|streaming)/u.test(text)) return "ott"
   if (/(?:劇場|映画館|cinema|theater)/u.test(text)) return "cinema"
   if (/(?:テレビ|tv|放送|地上波)/u.test(text)) return "tv-broadcast"
   if (/(?:ライブ|live)/u.test(text)) return "live"
   if (/(?:縦型|縦動画|縦長|shorts|reels|tiktok|vertical)/u.test(text)) return "vertical-sns"
   if (/(?:web|ウェブ|youtube|サイト|sns)/u.test(text)) return "web"
-  if (jobKind === "live-60m") return "live"
-  if (jobKind === "vertical-60s") return "vertical-sns"
-
   return undefined
 }
 

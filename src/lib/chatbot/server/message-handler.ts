@@ -1,4 +1,5 @@
 import {
+  finalMediumChoices,
   hasRequiredEmailConsultationSlots,
   projectLengthChoices,
   projectLengthChoicesForJobKind,
@@ -397,8 +398,16 @@ export async function handleChatbotMessage(
     rawAssistantText: llmResponse.rawText,
     jobContext,
   })
-  const flowPolicy = applyBookingFinalConfirmationPolicy({
+  const finalMediumRoutingDecision = enforceFinalMediumChoiceContract({
+    requestId: input.requestId,
+    conversation,
+    tier: llmResponse.tier,
     routingDecision: contractRoutingDecision,
+    rawAssistantText: llmResponse.rawText,
+    jobContext,
+  })
+  const flowPolicy = applyBookingFinalConfirmationPolicy({
+    routingDecision: finalMediumRoutingDecision,
     conversationState,
     jobContext,
     latestUserMessage: input.message,
@@ -678,6 +687,133 @@ function logProjectTypeChoiceMismatch(input: {
       correctedQuestion: redactForChatbotLog(input.correctedQuestion),
       receivedChoiceLabels: input.receivedChoiceLabels.map(redactForChatbotLog),
       correctedChoiceLabels: input.correctedChoiceLabels.map(redactForChatbotLog),
+    }),
+  )
+}
+
+function enforceFinalMediumChoiceContract(input: {
+  requestId?: string
+  conversation: ChatbotConversation
+  tier: ChatbotLlmTier
+  routingDecision: RoutingDecision | undefined
+  rawAssistantText: string
+  jobContext: JobContext
+}): RoutingDecision | undefined {
+  const routingDecision = input.routingDecision
+  const jobKind = input.jobContext.jobKind
+  if (!jobKind || routingDecision?.kind !== "continue" || routingDecision.presentChoices?.id !== "final-medium") {
+    return routingDecision
+  }
+
+  const mismatchReason = getFinalMediumChoiceMismatchReason({
+    jobKind,
+    choiceSet: routingDecision.presentChoices,
+    rawAssistantText: input.rawAssistantText,
+  })
+  if (!mismatchReason) return routingDecision
+
+  const correctedQuestion = buildFinalMediumRejudgmentQuestion(jobKind)
+  logFinalMediumChoiceMismatch({
+    requestId: input.requestId,
+    conversation: input.conversation,
+    tier: input.tier,
+    jobKind,
+    reason: mismatchReason,
+    receivedQuestion: routingDecision.nextQuestion,
+    correctedQuestion,
+    receivedChoiceLabels: routingDecision.presentChoices.choices.map((choice) => choice.label),
+  })
+
+  return {
+    kind: "continue",
+    nextQuestion: correctedQuestion,
+  }
+}
+
+function getFinalMediumChoiceMismatchReason(input: {
+  jobKind: NonNullable<JobContext["jobKind"]>
+  choiceSet: SurveyChoiceSet
+  rawAssistantText: string
+}): "fixed-final-medium-fallback" | "choice-set-context-mismatch" | undefined {
+  if (isStaticFinalMediumChoiceSet(input.choiceSet)) return "fixed-final-medium-fallback"
+
+  const text = [
+    input.rawAssistantText,
+    input.choiceSet.question,
+    ...input.choiceSet.choices.map((choice) => `${choice.id} ${choice.label}`),
+  ]
+    .join("\n")
+    .normalize("NFKC")
+    .toLowerCase()
+
+  switch (input.jobKind) {
+    case "drama-first":
+    case "drama-follow-up":
+      return /(ライブ|コンサート|舞台収録|縦型|縦動画|shorts|reels|tiktok|web\s*cm|ウェブ\s*cm|コマーシャル|ミュージックビデオ|music\s*video|(?:^|[^a-z0-9])mv(?:$|[^a-z0-9]))/u.test(text)
+        ? "choice-set-context-mismatch"
+        : undefined
+    case "live-60m":
+      return /(ドラマ|シリーズ|1話|話数|web\s*cm|ウェブ\s*cm|コマーシャル|ミュージックビデオ|music\s*video|(?:^|[^a-z0-9])mv(?:$|[^a-z0-9])|縦型|縦動画|shorts|reels|tiktok)/u.test(text)
+        ? "choice-set-context-mismatch"
+        : undefined
+    case "cm-30s":
+      return /(ドラマ|シリーズ|1話|話数|ライブ|コンサート|舞台収録|ミュージックビデオ|music\s*video|(?:^|[^a-z0-9])mv(?:$|[^a-z0-9]))/u.test(text)
+        ? "choice-set-context-mismatch"
+        : undefined
+    case "mv-5m":
+      return /(ドラマ|シリーズ|1話|話数|web\s*cm|ウェブ\s*cm|コマーシャル)/u.test(text)
+        ? "choice-set-context-mismatch"
+        : undefined
+    default:
+      return undefined
+  }
+}
+
+function isStaticFinalMediumChoiceSet(choiceSet: SurveyChoiceSet): boolean {
+  if (choiceSet.id !== finalMediumChoices.id) return false
+  const actual = choiceSet.choices.map((choice) => `${choice.id}:${choice.label}`).join("|")
+  const canonical = finalMediumChoices.choices.map((choice) => `${choice.id}:${choice.label}`).join("|")
+  return choiceSet.question === finalMediumChoices.question && actual === canonical
+}
+
+function buildFinalMediumRejudgmentQuestion(jobKind: NonNullable<JobContext["jobKind"]>): string {
+  switch (jobKind) {
+    case "drama-first":
+    case "drama-follow-up":
+      return "ドラマ / シリーズとして整理しています。放送、配信、Web公開、劇場上映など、想定している公開先・納品先を1つ教えてください。"
+    case "live-60m":
+      return "ライブ / 舞台収録として整理しています。配信、会場上映、パッケージ納品、Web公開など、想定している公開先・納品先を1つ教えてください。"
+    case "cm-30s":
+      return "Web CM / CM として整理しています。Web広告、SNS、テレビ放送、店頭・イベントなど、想定している公開先・使用先を1つ教えてください。"
+    case "mv-5m":
+      return "MV / 音楽映像として整理しています。YouTube、SNS、配信プラットフォーム、ライブ会場上映など、想定している公開先・使用先を1つ教えてください。"
+    default:
+      return "今回の案件で想定している公開先・納品先・使用先を1つ教えてください。"
+  }
+}
+
+function logFinalMediumChoiceMismatch(input: {
+  requestId?: string
+  conversation: ChatbotConversation
+  tier: ChatbotLlmTier
+  jobKind: JobContext["jobKind"]
+  reason: "fixed-final-medium-fallback" | "choice-set-context-mismatch"
+  receivedQuestion: string
+  correctedQuestion: string
+  receivedChoiceLabels: string[]
+}): void {
+  console.info(
+    JSON.stringify({
+      event: "final_media_choice_mismatch",
+      requestId: input.requestId,
+      conversationId: input.conversation.id,
+      sessionId: input.conversation.context.sessionId,
+      tier: input.tier,
+      jobKind: input.jobKind,
+      reason: input.reason,
+      receivedQuestion: redactForChatbotLog(input.receivedQuestion),
+      correctedQuestion: redactForChatbotLog(input.correctedQuestion),
+      receivedChoiceLabels: input.receivedChoiceLabels.map(redactForChatbotLog),
     }),
   )
 }
@@ -1196,6 +1332,7 @@ function buildChatbotSystemPrompt(
     "choice-panel の id は job-kind / project-length / final-medium / additional-work / documentary-attachment / work-site / production-options のいずれかを使います。",
     "案件種別ごとの候補表は例と安全網です。最終的な質問文、選択肢粒度、複数選択可否、自由入力有無は、会話全体、確定済み facts、未確定 facts、ユーザーの言い方から自然に判断します。",
     "ドラマ / シリーズ、ライブ、Web CM、MV の尺確認では、固定順や固定候補表に縛られず、会話に合う粒度を選びます。ただし別文脈の選択肢を混ぜません。",
+    "最終媒体 / 公開先 / 納品先の確認でも固定候補表をそのまま出さず、案件種別、作品形態、尺・話数、放送、配信、Web公開、劇場上映、イベント上映などの文脈から自然な質問文と選択肢を作ります。ドラマ / シリーズにライブ・縦型SNS・Web CM など別文脈の候補を混ぜず、ライブ、Web CM、MV でもそれぞれの公開・納品文脈に合わせます。",
     "現在確認している1項目について、会話文脈、選択済み項目、自由入力、未確認項目から次へ進めるほど明確かを判断します。疑問が残る場合は同じ項目について確認を1問だけ返し、十分明確なら過剰確認せず次へ進みます。",
     "明確でないが未定として扱える回答は未定として保持し、後段の相談、最終確認、予約可否判断で扱います。",
     "勝手に予約確定、料金判断、実施可否判断、本人判断が必要な確約はしません。",
@@ -1355,6 +1492,13 @@ function buildAssistantDisplayContent(input: {
     !input.routingDecision.presentChoices &&
     input.jobContext.jobKind &&
     hasProjectTypeTextMismatch(text, input.jobContext.jobKind)
+  ) {
+    return withGuardReport(sanitize(input.routingDecision.nextQuestion))
+  }
+  if (
+    input.routingDecision?.kind === "continue" &&
+    !input.routingDecision.presentChoices &&
+    isFinalMediumRejudgmentQuestion(input.routingDecision.nextQuestion)
   ) {
     return withGuardReport(sanitize(input.routingDecision.nextQuestion))
   }
@@ -1652,6 +1796,10 @@ function sanitizeTierAttemptCause(cause: unknown): unknown {
 }
 
 const dayRangePattern = /\d+(?:\.\d+)?\s*(?:日\s*から\s*|[〜～\-ー]\s*)\d+(?:\.\d+)?\s*日/u
+
+function isFinalMediumRejudgmentQuestion(message: string): boolean {
+  return /公開先・(?:納品先|使用先)|納品先・使用先/u.test(message)
+}
 
 function isBackendIdentityOnlyResponse(text: string): boolean {
   const compact = text.replace(/\s+/g, "")
@@ -2071,8 +2219,50 @@ function extractJsonObjectCandidates(text: string): string[] {
   if (firstBrace >= 0 && lastBrace > firstBrace) {
     candidates.push(text.slice(firstBrace, lastBrace + 1))
   }
+  candidates.push(...extractBalancedJsonObjectCandidates(text))
 
   return [...new Set(candidates)]
+}
+
+function extractBalancedJsonObjectCandidates(text: string): string[] {
+  const candidates: string[] = []
+  let start = -1
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === "\"") {
+      inString = true
+      continue
+    }
+    if (char === "{") {
+      if (depth === 0) start = index
+      depth += 1
+      continue
+    }
+    if (char !== "}" || depth === 0) continue
+
+    depth -= 1
+    if (depth === 0 && start >= 0) {
+      candidates.push(text.slice(start, index + 1))
+      start = -1
+    }
+  }
+
+  return candidates
 }
 
 function parseJson(value: string): unknown {
