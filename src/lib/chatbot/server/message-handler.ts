@@ -729,6 +729,7 @@ function enforceFinalMediumChoiceContract(input: {
   return {
     kind: "continue",
     nextQuestion: correctedQuestion,
+    presentChoices: buildFinalMediumRejudgmentChoiceSet(jobKind, correctedQuestion),
   }
 }
 
@@ -791,6 +792,56 @@ function buildFinalMediumRejudgmentQuestion(jobKind: NonNullable<JobContext["job
       return "MV / 音楽映像として整理しています。YouTube、SNS、配信プラットフォーム、ライブ会場上映など、想定している公開先・使用先を1つ教えてください。"
     default:
       return "今回の案件で想定している公開先・納品先・使用先を1つ教えてください。"
+  }
+}
+
+function buildFinalMediumRejudgmentChoiceSet(
+  jobKind: NonNullable<JobContext["jobKind"]>,
+  question: string,
+): SurveyChoiceSet {
+  const choices =
+    jobKind === "drama-first" || jobKind === "drama-follow-up"
+      ? [
+          { id: "tv-broadcast", label: "地上波・BS／CS放送" },
+          { id: "ott", label: "配信プラットフォーム" },
+          { id: "web", label: "Web公開" },
+          { id: "cinema", label: "劇場・イベント上映" },
+          { id: "undecided", label: "未定・相談したい" },
+          { id: "other", label: "その他" },
+        ]
+      : jobKind === "live-60m"
+        ? [
+            { id: "ott", label: "配信" },
+            { id: "cinema", label: "会場上映・イベント上映" },
+            { id: "web", label: "Web公開" },
+            { id: "undecided", label: "未定・相談したい" },
+            { id: "other", label: "その他" },
+          ]
+        : jobKind === "cm-30s"
+          ? [
+              { id: "web", label: "Web広告・Web公開" },
+              { id: "vertical-sns", label: "SNS広告・縦型SNS" },
+              { id: "tv-broadcast", label: "テレビ放送" },
+              { id: "cinema", label: "店頭・イベント上映" },
+              { id: "undecided", label: "未定・相談したい" },
+              { id: "other", label: "その他" },
+            ]
+          : jobKind === "mv-5m"
+            ? [
+                { id: "web", label: "YouTube / Web公開" },
+                { id: "vertical-sns", label: "SNS / 縦型展開" },
+                { id: "ott", label: "配信プラットフォーム" },
+                { id: "cinema", label: "ライブ会場・イベント上映" },
+                { id: "undecided", label: "未定・相談したい" },
+                { id: "other", label: "その他" },
+              ]
+            : finalMediumChoices.choices
+
+  return {
+    id: "final-medium",
+    question,
+    allowFreeText: true,
+    choices,
   }
 }
 

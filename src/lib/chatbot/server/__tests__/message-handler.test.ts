@@ -791,10 +791,21 @@ describe("handleChatbotMessage user context", () => {
 
       expect(result.assistantMessage.content).toContain("ドラマ / シリーズとして整理しています")
       expect(result.assistantMessage.content).toContain("公開先・納品先")
-      expect(result.ui).toEqual({ kind: "none" })
+      expect(result.ui).toMatchObject({
+        kind: "choice-panel",
+        choiceSet: {
+          id: "final-medium",
+          choices: expect.arrayContaining([
+            { id: "tv-broadcast", label: "地上波・BS／CS放送" },
+            { id: "ott", label: "配信プラットフォーム" },
+            { id: "web", label: "Web公開" },
+            { id: "cinema", label: "劇場・イベント上映" },
+          ]),
+        },
+      })
       expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
         expect.objectContaining({
-          activeChoices: null,
+          activeChoices: expect.objectContaining({ id: "final-medium" }),
           currentQuestion: expect.stringContaining("ドラマ / シリーズとして整理しています"),
         }),
       )
@@ -852,7 +863,10 @@ describe("handleChatbotMessage user context", () => {
 
       expect(result.assistantMessage.content).toContain("ドラマ / シリーズとして整理しています")
       expect(result.assistantMessage.content).not.toContain("ライブ配信")
-      expect(result.ui).toEqual({ kind: "none" })
+      expect(result.ui).toMatchObject({
+        kind: "choice-panel",
+        choiceSet: { id: "final-medium" },
+      })
       expect(consoleInfo).toHaveBeenCalledWith(
         expect.stringContaining('"event":"final_media_choice_mismatch"'),
       )
@@ -2593,7 +2607,7 @@ describe("handleChatbotMessage user context", () => {
     },
   )
 
-  it("does not force the fixed final-medium choice-panel prompt", async () => {
+  it("replaces the fixed final-medium prompt with a contextual choice panel", async () => {
     const harness = setup()
     harness.generate.mockResolvedValueOnce({
       rawText:
@@ -2623,10 +2637,13 @@ describe("handleChatbotMessage user context", () => {
     expect(result.assistantMessage.content).toContain("公開先・使用先")
     expect(result.assistantMessage.content).not.toContain("受付内容の整理")
     expect(result.assistantMessage.content).not.toContain("納品形式も教えてください")
-    expect(result.ui).toEqual({ kind: "none" })
+    expect(result.ui).toMatchObject({
+      kind: "choice-panel",
+      choiceSet: { id: "final-medium" },
+    })
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeChoices: null,
+        activeChoices: expect.objectContaining({ id: "final-medium" }),
         currentQuestion: expect.stringContaining("MV / 音楽映像として整理しています"),
       }),
     )
@@ -4248,7 +4265,7 @@ describe("handleChatbotMessage user context", () => {
 
     expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeChoices: null,
+        activeChoices: expect.objectContaining({ id: "final-medium" }),
         currentQuestion: expect.stringContaining("Web CM / CM として整理しています"),
         conversationState: expect.objectContaining({
           hasProjectLength: true,
