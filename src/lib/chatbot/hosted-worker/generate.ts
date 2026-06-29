@@ -29,7 +29,7 @@ type GenerateOptions = {
   diagnosticsPath?: string
 }
 
-const defaultWorkerGenerateTimeoutMs = 50000
+const defaultWorkerGenerateTimeoutMs = 70000
 const timeoutTag = "timeout"
 const abortTag = "request_aborted"
 const diagnosticsEventName = "hosted_worker_generate"

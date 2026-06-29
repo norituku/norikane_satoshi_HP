@@ -4403,7 +4403,7 @@ describe("handleChatbotMessage user context", () => {
         perAttemptTimeoutMs: 15000,
         fallbackReason: "retryable-timeout",
         exhausted: false,
-        attempts: [{ attempt: 1, requestBody: "raw" }],
+        attempts: [{ attempt: 1, outcome: "error", reason: "timeout", durationMs: 2000, timeoutMs: 15000, requestBody: "raw" }],
         token: "secret-token",
         cookie: "secret-cookie",
         authorization: "Bearer secret",
@@ -4435,11 +4435,15 @@ describe("handleChatbotMessage user context", () => {
         perAttemptTimeoutMs: 15000,
         fallbackReason: "retryable-timeout",
         exhausted: false,
+        attempts: [{ attempt: 1, outcome: "error", reason: "timeout", durationMs: 2000, timeoutMs: 15000 }],
       },
     }))
     const notification = harness.slackNotifier.mock.calls[0]?.[0]
     expect(JSON.stringify(notification.retryDiagnostics)).not.toContain("secret")
-    expect(notification.retryDiagnostics).not.toHaveProperty("attempts")
+    expect(notification.retryDiagnostics).toHaveProperty("attempts", [
+      { attempt: 1, outcome: "error", reason: "timeout", durationMs: 2000, timeoutMs: 15000 },
+    ])
+    expect(JSON.stringify(notification.retryDiagnostics)).not.toContain("raw")
     expect(notification.retryDiagnostics).not.toHaveProperty("token")
     expect(notification.retryDiagnostics).not.toHaveProperty("cookie")
     expect(notification.retryDiagnostics).not.toHaveProperty("authorization")
@@ -4542,7 +4546,7 @@ describe("handleChatbotMessage user context", () => {
         totalGenerateDurationMs: 45000,
         totalGenerateBudgetMs: 45000,
         exhausted: true,
-        attempts: [{ attempt: 3, requestBody: "raw" }],
+        attempts: [{ attempt: 3, outcome: "error", reason: "timeout", durationMs: 45000, timeoutMs: 45000, requestBody: "raw" }],
         token: "secret-token",
         systemPrompt: "secret system prompt",
       },
@@ -4561,6 +4565,7 @@ describe("handleChatbotMessage user context", () => {
       totalGenerateDurationMs: 45000,
       totalGenerateBudgetMs: 45000,
       exhausted: true,
+      attempts: [{ attempt: 3, outcome: "error", reason: "timeout", durationMs: 45000, timeoutMs: 45000 }],
     }
     expect(harness.slackNotifier).toHaveBeenNthCalledWith(1, expect.objectContaining({
       kind: "conversation",
@@ -4572,7 +4577,10 @@ describe("handleChatbotMessage user context", () => {
     }))
     const issueNotification = harness.slackNotifier.mock.calls[1]?.[0]
     expect(JSON.stringify(issueNotification.retryDiagnostics)).not.toContain("secret")
-    expect(issueNotification.retryDiagnostics).not.toHaveProperty("attempts")
+    expect(issueNotification.retryDiagnostics).toHaveProperty("attempts", [
+      { attempt: 3, outcome: "error", reason: "timeout", durationMs: 45000, timeoutMs: 45000 },
+    ])
+    expect(JSON.stringify(issueNotification.retryDiagnostics)).not.toContain("raw")
     expect(issueNotification.retryDiagnostics).not.toHaveProperty("token")
     expect(issueNotification.retryDiagnostics).not.toHaveProperty("systemPrompt")
   })

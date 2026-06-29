@@ -68,6 +68,8 @@ export type HostedWorkerEnsureResult = {
 export type HostedWorkerHealthResponse = HostedWorkerEnsureResult & {
   tier: typeof hostedWorkerTier
   queue: HostedWorkerQueueState
+  healthMode?: "deep" | "quick"
+  checkedAt?: string
 }
 
 export type HostedWorkerGenerateRequest = ChatbotLlmRequest

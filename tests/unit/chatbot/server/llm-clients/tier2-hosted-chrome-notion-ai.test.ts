@@ -104,7 +104,7 @@ describe("Tier2HostedChromeNotionAiClient", () => {
 
     await expect(client.isHealthy()).resolves.toBe(true)
     expect(httpClient).toHaveBeenCalledWith(
-      "https://worker.example.test/health",
+      "https://worker.example.test/health?mode=quick",
       expect.objectContaining({
         method: "GET",
         headers: { authorization: "Bearer test-token" },

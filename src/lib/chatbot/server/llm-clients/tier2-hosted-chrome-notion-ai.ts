@@ -79,16 +79,16 @@ class HostedWorkerHttpStatusError extends Error {
 }
 
 export const tier2HostedChromeNotionAiDefaults = {
-  requestTimeoutMs: 55000,
+  requestTimeoutMs: 75000,
   healthCheckTimeoutMs: 3000,
-  totalGenerateBudgetMs: 65000,
+  totalGenerateBudgetMs: 90000,
   enabled: true,
 } as const
 
 const tier = "tier-2-hosted-chrome-notion-ai" as const
 const timeoutTag: TimeoutTag = "timeout"
 const abortTag: AbortTag = "aborted"
-const healthEndpointPath = "/health"
+const healthEndpointPath = "/health?mode=quick"
 const generateEndpointPath = "/generate"
 const ensureChromeEndpointPath = "/ensure-chrome"
 const httpMethodGet = "GET"

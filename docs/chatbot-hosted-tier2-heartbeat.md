@@ -5,7 +5,8 @@
 Runtime shape:
 
 - `studio.norikane.hosted-tier2-heartbeat.timer` runs every 2 minutes as a systemd user timer.
-- Each run checks `GET /health` with bearer auth.
+- Each heartbeat run checks deep `GET /health` with bearer auth.
+- Production chatbot preflight uses quick `GET /health?mode=quick` so an active Notion AI generation or CDP runtime inspection spike does not skip Tier2 before `/generate`.
 - A lightweight `POST /generate` smoke runs every 2 minutes by default.
 - One failed run moves state to `unhealthy`; Tier2 generate failure is not treated as a successful lower-tier fallback.
 - On the first unhealthy transition, the script tries one repair sequence: `POST /ensure-chrome`, `systemctl --user restart hosted-notion-ai-worker.service`, then `systemctl --user restart hosted-worker-chrome.service`.
@@ -13,6 +14,8 @@ Runtime shape:
 - Notifications are state-change only: `unhealthy` and `recovered`. Slack is primary when configured; Resend email remains fallback. Same-state alert spam is rate-limited.
 - Logs are JSONL and do not include bearer tokens, raw prompts, raw model output, cookies, or personal request bodies.
 - When `/health` is ready but `/generate` fails, JSONL and Slack mark `incident_kind: health_ok_generate_failed` with phase, HTTP status, duration, sanitized worker error code/message preview, and repair action summary.
+- Chatbot Slack/Vercel structured logs include sanitized retry attempt summaries: attempt number, outcome, reason, duration, timeout, HTTP status, and retryability only.
+- Timeout budgets are aligned so the worker does not abort Notion AI at 50s while the Production client still has budget: worker generate default 70s, client attempt default 75s, total Tier2 budget 90s, `/api/chatbot/message` maxDuration 120s.
 
 Default VPS files:
 

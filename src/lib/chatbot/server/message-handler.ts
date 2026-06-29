@@ -1745,8 +1745,53 @@ function summarizeChatbotRetryDiagnostics(diagnostics: unknown): ChatbotRetryDia
       .map((reason) => redactForChatbotLog(reason.trim()))
     if (retryReasons.length > 0) summary.retryReasons = retryReasons
   }
+  const attempts = summarizeRetryAttempts(source.attempts)
+  if (attempts.length > 0) summary.attempts = attempts
 
   return Object.keys(summary).length > 0 ? summary : undefined
+}
+
+function summarizeRetryAttempts(value: unknown): NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]> {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((entry): NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]> => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return []
+    const source = entry as Record<string, unknown>
+    const attempt: NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]>[number] = {}
+    assignAttemptFiniteNumber(attempt, "attempt", source.attempt)
+    assignAttemptFiniteNumber(attempt, "durationMs", source.durationMs)
+    assignAttemptFiniteNumber(attempt, "timeoutMs", source.timeoutMs)
+    assignAttemptFiniteNumber(attempt, "httpStatus", source.httpStatus)
+    assignAttemptBoolean(attempt, "retryable", source.retryable)
+    assignAttemptString(attempt, "outcome", source.outcome)
+    assignAttemptString(attempt, "reason", source.reason)
+    assignAttemptString(attempt, "errorCode", source.errorCode)
+    return Object.keys(attempt).length > 0 ? [attempt] : []
+  })
+}
+
+function assignAttemptFiniteNumber(
+  target: NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]>[number],
+  key: "attempt" | "durationMs" | "timeoutMs" | "httpStatus",
+  value: unknown,
+): void {
+  if (typeof value === "number" && Number.isFinite(value)) target[key] = value
+}
+
+function assignAttemptBoolean(
+  target: NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]>[number],
+  key: "retryable",
+  value: unknown,
+): void {
+  if (typeof value === "boolean") target[key] = value
+}
+
+function assignAttemptString(
+  target: NonNullable<ChatbotRetryDiagnosticsSummary["attempts"]>[number],
+  key: "outcome" | "reason" | "errorCode",
+  value: unknown,
+): void {
+  if (typeof value === "string" && value.trim()) target[key] = redactForChatbotLog(value.trim())
 }
 
 function assignFiniteNumber(

@@ -25,6 +25,18 @@ export type ChatbotRetryDiagnosticsSummary = {
   perAttemptTimeoutMs?: number
   fallbackReason?: string
   exhausted?: boolean
+  attempts?: ChatbotRetryAttemptSummary[]
+}
+
+type ChatbotRetryAttemptSummary = {
+  attempt?: number
+  outcome?: string
+  durationMs?: number
+  timeoutMs?: number
+  reason?: string
+  httpStatus?: number
+  errorCode?: string
+  retryable?: boolean
 }
 
 export type ChatbotSlackNotificationInput = {
@@ -189,6 +201,7 @@ function formatRetryDiagnosticLines(
     ...(typeof summary.perAttemptTimeoutMs === "number" ? [`perAttemptTimeoutMs: ${summary.perAttemptTimeoutMs}`] : []),
     ...(summary.fallbackReason ? [`fallbackReason: ${redactForChatbotLog(summary.fallbackReason)}`] : []),
     ...(typeof summary.exhausted === "boolean" ? [`retryExhausted: ${summary.exhausted}`] : []),
+    ...(summary.attempts?.length ? [`attempts: ${formatRetryAttempts(summary.attempts)}`] : []),
   ]
 }
 
@@ -226,8 +239,66 @@ function coerceRetryDiagnosticsSummary(
       .filter((reason): reason is string => typeof reason === "string" && reason.trim().length > 0)
       .map((reason) => redactForChatbotLog(reason.trim()))
   }
+  const attempts = coerceRetryAttempts(diagnostics.attempts)
+  if (attempts.length > 0) summary.attempts = attempts
 
   return Object.keys(summary).length > 0 ? summary : undefined
+}
+
+function coerceRetryAttempts(value: unknown): ChatbotRetryAttemptSummary[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((entry): ChatbotRetryAttemptSummary[] => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return []
+    const source = entry as Record<string, unknown>
+    const attempt: ChatbotRetryAttemptSummary = {}
+    assignAttemptNumber(attempt, "attempt", source.attempt)
+    assignAttemptNumber(attempt, "durationMs", source.durationMs)
+    assignAttemptNumber(attempt, "timeoutMs", source.timeoutMs)
+    assignAttemptNumber(attempt, "httpStatus", source.httpStatus)
+    assignAttemptBoolean(attempt, "retryable", source.retryable)
+    assignAttemptString(attempt, "outcome", source.outcome)
+    assignAttemptString(attempt, "reason", source.reason)
+    assignAttemptString(attempt, "errorCode", source.errorCode)
+    return Object.keys(attempt).length > 0 ? [attempt] : []
+  })
+}
+
+function assignAttemptNumber(
+  target: ChatbotRetryAttemptSummary,
+  key: "attempt" | "durationMs" | "timeoutMs" | "httpStatus",
+  value: unknown,
+): void {
+  if (typeof value === "number" && Number.isFinite(value)) target[key] = value
+}
+
+function assignAttemptBoolean(target: ChatbotRetryAttemptSummary, key: "retryable", value: unknown): void {
+  if (typeof value === "boolean") target[key] = value
+}
+
+function assignAttemptString(
+  target: ChatbotRetryAttemptSummary,
+  key: "outcome" | "reason" | "errorCode",
+  value: unknown,
+): void {
+  if (typeof value === "string" && value.trim()) target[key] = redactForChatbotLog(value.trim())
+}
+
+function formatRetryAttempts(attempts: ChatbotRetryAttemptSummary[]): string {
+  return attempts
+    .map((attempt) =>
+      [
+        typeof attempt.attempt === "number" ? `#${attempt.attempt}` : "#?",
+        attempt.outcome,
+        attempt.reason,
+        typeof attempt.httpStatus === "number" ? `http:${attempt.httpStatus}` : undefined,
+        typeof attempt.durationMs === "number" ? `${attempt.durationMs}ms` : undefined,
+        typeof attempt.timeoutMs === "number" ? `timeout:${attempt.timeoutMs}` : undefined,
+      ]
+        .filter(Boolean)
+        .join("/"),
+    )
+    .join(";")
 }
 
 function formatIssueReasonLines(reasons: string[] | undefined): string[] {
