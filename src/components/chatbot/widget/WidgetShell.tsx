@@ -11,7 +11,7 @@ import {
 } from "react"
 import { ChevronDown, GripHorizontal, Maximize2, Minimize2, Minus, PanelRightOpen, Sparkles } from "lucide-react"
 
-import type { ChatbotMessageRole } from "@/lib/chatbot/domain/conversation"
+import type { ChatbotMessageRole, ConversationState } from "@/lib/chatbot/domain/conversation"
 import type { JobContext } from "@/lib/chatbot/domain/workflow-estimate"
 import type { WidgetDisplayMode } from "./useWidgetState"
 
@@ -251,6 +251,10 @@ function getConversationScrollIndicatorState(container: HTMLElement, isScrolling
 function getCustomerDisplayNameFromUi(ui: WidgetUi): string | undefined {
   if (ui.kind !== "booking-card") return undefined
   return normalizeDisplayName(ui.completedBooking?.contactName) ?? normalizeDisplayName(ui.bookingPrefill?.contactName)
+}
+
+function getCustomerDisplayNameFromConversationState(conversationState: Partial<ConversationState> | undefined): string | undefined {
+  return normalizeDisplayName(conversationState?.customerName)
 }
 
 const assistantNameQuestionPattern = /(名前|なんて呼|どう呼|呼べば|あなた.*誰|誰.*あなた|何者)/u
@@ -580,8 +584,9 @@ export function WidgetShell({
     setMessages((currentMessages) => [...currentMessages, message])
   }
 
-  const rememberCustomerDisplayNameFromUi = (ui: WidgetUi) => {
-    const nextCustomerDisplayName = getCustomerDisplayNameFromUi(ui)
+  const rememberCustomerDisplayNameFromResponse = (payload: { ui: WidgetUi; conversationState?: Partial<ConversationState> }) => {
+    const nextCustomerDisplayName =
+      getCustomerDisplayNameFromConversationState(payload.conversationState) ?? getCustomerDisplayNameFromUi(payload.ui)
     if (nextCustomerDisplayName) {
       setCustomerDisplayName(nextCustomerDisplayName)
     }
@@ -697,7 +702,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
-      rememberCustomerDisplayNameFromUi(payload.ui)
+      rememberCustomerDisplayNameFromResponse(payload)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
@@ -842,7 +847,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
-      rememberCustomerDisplayNameFromUi(payload.ui)
+      rememberCustomerDisplayNameFromResponse(payload)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return
@@ -959,7 +964,7 @@ export function WidgetShell({
         return nextMessages
       })
       setActiveUi(payload.ui)
-      rememberCustomerDisplayNameFromUi(payload.ui)
+      rememberCustomerDisplayNameFromResponse(payload)
       setRecoverableRequest(undefined)
     } catch (error) {
       if (isChatbotRequestCancelledError(error)) return

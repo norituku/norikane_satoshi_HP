@@ -1,4 +1,5 @@
 import type { ChatbotConversation, ChatbotMessage, ConversationState, JobContext } from "@/lib/chatbot/domain"
+import { mergeContactIdentityFromUserText } from "@/lib/chatbot/server/contact-identity"
 
 export function buildConversationState(input: {
   conversation: ChatbotConversation
@@ -71,7 +72,7 @@ export function buildConversationState(input: {
     delete state.bookingFinalConfirmation
   }
 
-  return {
+  return mergeContactIdentityFromUserText({
     ...state,
     ...(Object.keys(otherChoiceComments).length > 0 ? { otherChoiceComments } : {}),
     ...(Object.keys(lectureTrainingInquiry).length > 0 ? { lectureTrainingInquiry } : {}),
@@ -81,7 +82,7 @@ export function buildConversationState(input: {
     ...(input.jobContext.finalMedium !== "other" ? { hasFinalMedium: true } : {}),
     ...(input.jobContext.jobKind ? { hasJobKind: true } : {}),
     ...(typeof input.jobContext.projectLengthMinutes === "number" ? { hasProjectLength: true } : {}),
-  }
+  }, input.userMessage.content)
 }
 
 const booleanConversationStateKeys = [

@@ -61,6 +61,7 @@ export type ChatbotMessageResponse = {
   routingDecision?: RoutingDecision
   tier: ChatbotResponseTier
   ui: WidgetUi
+  conversationState?: Partial<ConversationState>
   clientBuildId?: string
 }
 

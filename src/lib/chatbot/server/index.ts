@@ -13,6 +13,7 @@ export {
   recordInquiry,
   recordSurveyResponse,
   truncateConversationFromMessage,
+  updateConversationContext,
   updateConversationRouting,
   updateConversationSlackThreadTs,
 } from "@/lib/chatbot/server/repository"

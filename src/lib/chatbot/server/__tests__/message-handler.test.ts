@@ -125,6 +125,7 @@ function setup(overrides: {
         Promise.resolve({ ...message(input.role, input.content), ...(input.id ? { id: input.id } : {}) }),
       ),
     truncateConversationFromMessage: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+    updateConversationContext: vi.fn(),
     updateConversationRouting: vi.fn(),
     updateConversationSlackThreadTs: vi.fn(),
     linkConversationToUser: vi.fn(),
@@ -232,6 +233,43 @@ describe("handleChatbotMessage user context", () => {
     expect(result.ui).toMatchObject({
       kind: "choice-panel",
       choiceSet: { id: jobKindChoices.id },
+    })
+  })
+
+  it("persists deterministic contact identity from normal intake free text", async () => {
+    const harness = setup()
+
+    const result = await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "担当者名は山田太郎です。会社名はテスト株式会社です。メールは client@example.jp です。",
+      },
+      harness.options,
+    )
+
+    expect(harness.generate.mock.calls[0]?.[0].conversationState).toMatchObject({
+      hasCustomerIdentity: true,
+      customerName: "山田太郎",
+      companyName: "テスト株式会社",
+      hasContactEmail: true,
+      contactEmail: "client@example.jp",
+    })
+    expect(harness.repository.updateConversationContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationState: expect.objectContaining({
+          hasCustomerIdentity: true,
+          customerName: "山田太郎",
+          companyName: "テスト株式会社",
+          hasContactEmail: true,
+          contactEmail: "client@example.jp",
+        }),
+      }),
+    )
+    expect(result.conversationState).toMatchObject({
+      customerName: "山田太郎",
+      companyName: "テスト株式会社",
+      contactEmail: "client@example.jp",
     })
   })
 

@@ -429,6 +429,31 @@ describe("WidgetShell API wiring", () => {
     expect(document.body).not.toHaveTextContent("お客様")
   })
 
+  it("uses the response conversation state customer name for user message labels", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        conversationId: "conv_1",
+        assistantMessage,
+        tier: "tier-2-hosted-chrome-notion-ai",
+        ui: { kind: "none" },
+        conversationState: {
+          hasCustomerIdentity: true,
+          customerName: "田中",
+        },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<WidgetShell onMinimize={vi.fn()} />)
+    submitMessage("担当者名は田中です。")
+
+    expect(await screen.findByText("田中")).toBeInTheDocument()
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(chatbotSessionStorageKey) ?? "{}")
+      expect(stored.customerDisplayName).toBe("田中")
+    })
+  })
+
   it("uses and persists a known booking contact name for user message labels", async () => {
     const slot = {
       start: "2026-07-10T01:00:00.000Z",

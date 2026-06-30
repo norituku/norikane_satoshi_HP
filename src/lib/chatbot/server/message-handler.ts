@@ -29,6 +29,7 @@ import {
   loadUserChatbotContext,
   loadConversationBySessionId,
   truncateConversationFromMessage,
+  updateConversationContext,
   updateConversationRouting,
   updateConversationSlackThreadTs,
   type ChatbotLlmClient,
@@ -108,6 +109,7 @@ export type ChatbotMessageApiResult = {
   routingDecision?: RoutingDecision
   tier: ChatbotLlmResponse["tier"]
   ui: ChatbotMessageUi
+  conversationState?: ConversationState
 }
 
 export type HandleChatbotMessageInput = {
@@ -130,6 +132,7 @@ type ChatbotMessageRepository = {
   createConversation: typeof createConversation
   appendMessage: typeof appendMessage
   truncateConversationFromMessage: typeof truncateConversationFromMessage
+  updateConversationContext: typeof updateConversationContext
   updateConversationRouting: typeof updateConversationRouting
   updateConversationSlackThreadTs: typeof updateConversationSlackThreadTs
   linkConversationToUser: typeof linkConversationToUser
@@ -185,6 +188,7 @@ const defaultRepository: ChatbotMessageRepository = {
   createConversation,
   appendMessage,
   truncateConversationFromMessage,
+  updateConversationContext,
   updateConversationRouting,
   updateConversationSlackThreadTs,
   linkConversationToUser,
@@ -496,8 +500,8 @@ export async function handleChatbotMessage(
     pendingRecovery: isPendingRequestRecovery,
     pendingRequestKind: input.pendingRequestKind,
   })
-  if (routingDecision) {
-    try {
+  try {
+    if (routingDecision) {
       await repository.updateConversationRouting({
         conversationId: conversation.id,
         routingDecision: routingDecision.kind,
@@ -506,15 +510,22 @@ export async function handleChatbotMessage(
         conversationState: persistedConversationState,
         jobContext,
       })
-    } catch (error) {
-      throw new ChatbotMessagePersistenceError({
-        cause: error,
+    } else {
+      await repository.updateConversationContext({
         conversationId: conversation.id,
-        tier: llmResponse.tier,
-        routingDecisionKind: routingDecision.kind,
-        uiKind: ui.kind,
+        currentQuestion: conversation.context.currentQuestion ?? null,
+        activeChoices: conversation.context.activeChoices ?? null,
+        conversationState: persistedConversationState,
       })
     }
+  } catch (error) {
+    throw new ChatbotMessagePersistenceError({
+      cause: error,
+      conversationId: conversation.id,
+      tier: llmResponse.tier,
+      routingDecisionKind: routingDecision?.kind ?? "continue",
+      uiKind: ui.kind,
+    })
   }
   await notifySlackForChatbotResponse({
     notifier: slackNotifier,
@@ -557,6 +568,7 @@ export async function handleChatbotMessage(
     routingDecision,
     tier: llmResponse.tier,
     ui,
+    conversationState: persistedConversationState,
   }
 }
 

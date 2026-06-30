@@ -243,6 +243,20 @@ export async function updateConversationRouting(input: {
   })
 }
 
+export async function updateConversationContext(input: {
+  conversationId: string
+  currentQuestion?: string | null
+  activeChoices?: SurveyChoiceSet | null
+  conversationState?: ConversationState
+}): Promise<void> {
+  await updateRepositoryContextFields(prisma, {
+    conversationId: input.conversationId,
+    currentQuestion: input.currentQuestion ?? null,
+    activeChoices: serializeActiveChoices(input.activeChoices ?? null),
+    conversationState: serializeConversationState(input.conversationState ?? null),
+  })
+}
+
 export async function updateConversationSlackThreadTs(input: {
   conversationId: string
   slackThreadTs: string
