@@ -93,7 +93,7 @@ type HeartbeatResult = {
 }
 
 const tier = "tier-2-hosted-chrome-notion-ai"
-const defaultWorkerUrl = "https://worker.norikane.studio"
+const defaultWorkerUrl = "http://127.0.0.1:8787"
 const defaultNotificationTo = "norikane.satoshi@gmail.com"
 const defaultTimeoutMs = 10_000
 const defaultGenerateTimeoutMs = 60_000

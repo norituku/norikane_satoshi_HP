@@ -5,7 +5,7 @@
 Runtime shape:
 
 - `studio.norikane.hosted-tier2-heartbeat.timer` runs every 2 minutes as a systemd user timer.
-- Each heartbeat run checks deep `GET /health` with bearer auth.
+- Each heartbeat run checks the VPS loopback worker (`http://127.0.0.1:8787` by default) with bearer auth, so worker JSON error codes stay visible instead of being flattened by the public tunnel.
 - Production chatbot preflight uses quick `GET /health?mode=quick` so an active Notion AI generation or CDP runtime inspection spike does not skip Tier2 before `/generate`.
 - If the hosted Tier2 health probe times out or returns a retryable connection failure, Production still attempts `/generate`; fallback to Tier3 starts only after Tier2 generate exhausts its own repair/retry budget.
 - A lightweight `POST /generate` smoke runs every 2 minutes by default.
@@ -29,7 +29,6 @@ Default VPS files:
 
 Required env keys stay on the VPS only:
 
-- `CHATBOT_HOSTED_NOTION_AI_WORKER_URL`
 - `CHATBOT_HOSTED_NOTION_AI_WORKER_TOKEN`
 - `SLACK_BOT_TOKEN` plus `CHATBOT_HOSTED_TIER2_HEARTBEAT_SLACK_CHANNEL`, or `CHATBOT_HOSTED_TIER2_HEARTBEAT_SLACK_WEBHOOK_URL`
 
@@ -37,6 +36,7 @@ Optional env keys:
 
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
+- `CHATBOT_HOSTED_NOTION_AI_WORKER_URL` (default: `http://127.0.0.1:8787`)
 - `CHATBOT_HOSTED_TIER2_HEARTBEAT_NOTIFY_EMAIL`
 - `CHATBOT_HOSTED_TIER2_HEARTBEAT_GENERATE_INTERVAL_MS`
 - `CHATBOT_HOSTED_TIER2_HEARTBEAT_GENERATE_TIMEOUT_MS`
