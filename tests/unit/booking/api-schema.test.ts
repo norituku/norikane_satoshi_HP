@@ -42,7 +42,21 @@ describe("bookingApiSchema", () => {
     expect(bookingApiSchema.safeParse(validBooking({ teamId: "" })).success).toBe(false)
   })
 
-  it("accepts empty selectedSlots when a requested date range is present", () => {
+  it("accepts empty selectedSlots when requested dates are present", () => {
+    const parsed = bookingApiSchema.safeParse(
+      validBooking({
+        selectedSlots: [],
+        requestedDates: ["2026-07-10", "2026-07-12", "2026-07-10"],
+      }),
+    )
+
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data.requestedDates).toEqual(["2026-07-10", "2026-07-12"])
+    }
+  })
+
+  it("keeps legacy requested date ranges valid", () => {
     const parsed = bookingApiSchema.safeParse(
       validBooking({
         selectedSlots: [],
@@ -56,12 +70,12 @@ describe("bookingApiSchema", () => {
     }
   })
 
-  it("rejects requests without selected slots or requested date range", () => {
+  it("rejects requests without selected slots or requested dates", () => {
     const parsed = bookingApiSchema.safeParse(validBooking({ selectedSlots: [] }))
 
     expect(parsed.success).toBe(false)
     if (!parsed.success) {
-      expect(parsed.error.issues.some((issue) => issue.path.join(".") === "requestedDateRange")).toBe(true)
+      expect(parsed.error.issues.some((issue) => issue.path.join(".") === "requestedDates")).toBe(true)
     }
   })
 

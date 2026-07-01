@@ -1,6 +1,6 @@
 import type { BookingApiInput } from "@/lib/booking/domain/api-schema"
 import { resolveConflictForFinalSubmit } from "@/lib/booking/domain/conflicts"
-import { formatBookingDateRange } from "@/lib/booking/domain/form-schema"
+import { bookingDateRangeToSelection, formatBookingDateSelection, type BookingDateSelection } from "@/lib/booking/domain/form-schema"
 import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/server/calendar-free-busy/free-busy"
 import { findConflictingBookings } from "@/lib/booking/server/conflicts"
 import { BookingConflictError } from "@/lib/booking/server/errors"
@@ -59,7 +59,7 @@ function createBookingEmailArgs(input: BookingApiInput, to: string, bookingGroup
     to,
     projectTitle: input.projectTitle,
     selectedSlots: input.selectedSlots,
-    requestedDateRange: input.requestedDateRange,
+    requestedDates: getRequestedDateSelection(input)?.dates,
     bookingGroupId,
     workScopes: [],
     otherWorkDetail: input.memo,
@@ -67,11 +67,18 @@ function createBookingEmailArgs(input: BookingApiInput, to: string, bookingGroup
   }
 }
 
+function getRequestedDateSelection(input: BookingApiInput): BookingDateSelection | null {
+  if ((input.requestedDates ?? []).length > 0) return { dates: input.requestedDates }
+  if (input.requestedDateRange) return bookingDateRangeToSelection(input.requestedDateRange)
+  return null
+}
+
 function getScheduleLabel(input: BookingApiInput): string {
   if (input.selectedSlots.length > 0) {
     return input.selectedSlots.map((slot) => `${slot.start} - ${slot.end}`).join(" / ")
   }
-  return input.requestedDateRange ? formatBookingDateRange(input.requestedDateRange) : "候補日未選択"
+  const requestedDateSelection = getRequestedDateSelection(input)
+  return requestedDateSelection ? formatBookingDateSelection(requestedDateSelection) : "候補日未選択"
 }
 
 async function warnOnEmailFailure(task: Promise<unknown>, tag: string, to: string) {

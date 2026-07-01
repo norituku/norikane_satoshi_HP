@@ -16,6 +16,17 @@ const bookingWeekdayOffset = e2eCurrentWeekdayOffset()
 const existingSlot = e2eSlot(bookingWeekdayOffset, 1)
 const bookingWeekSelectionDate = existingSlot.date
 
+function addDaysToDateKey(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  return date.toISOString().slice(0, 10)
+}
+
+function displayDateKey(dateKey: string) {
+  const [, month, day] = dateKey.split("-").map(Number)
+  return `${month}/${day}`
+}
+
 test.describe("booking personal smoke", () => {
   test("personal booking saves a date consultation request without creating a calendar event", async ({ page }) => {
     const prisma = prismaForE2E()
@@ -53,8 +64,14 @@ test.describe("booking personal smoke", () => {
     await expect(page.getByTestId("booking-date-request-panel")).toBeVisible()
     await expect(page.getByTestId("booking-month-slot-option")).toHaveCount(0)
     await expect(page.getByTestId("booking-action-panel")).toHaveCount(0)
-    await page.locator(`.fc-daygrid-day[data-date="${bookingWeekSelectionDate}"] .fc-daygrid-day-number`).click()
-    await expect(page.getByTestId("booking-date-request-summary")).toContainText("1日間")
+    const skippedDate = addDaysToDateKey(bookingWeekSelectionDate, 1)
+    const laterDate = addDaysToDateKey(bookingWeekSelectionDate, 2)
+    await page.locator(`.fc-daygrid-day[data-date="${laterDate}"] .fc-daygrid-day-number`).click()
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText("2日間")
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText(displayDateKey(bookingWeekSelectionDate))
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText(displayDateKey(laterDate))
+    await expect(page.getByTestId("booking-date-request-summary")).not.toContainText(displayDateKey(skippedDate))
+    await expect(page.locator(`.fc-daygrid-day[data-date="${skippedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
     await page.getByRole("button", { name: "この日程で相談する" }).click()
 
     await expect(page.getByLabel("案件名")).toBeVisible()
@@ -95,6 +112,14 @@ test.describe("booking personal smoke", () => {
       where: { projectTitle: `${prefix} personal`, status: "NEEDS_SCHEDULE" },
     })
     expect(scheduleRequestCount).toBe(1)
+    const scheduleRequest = await prisma.bookingGroup.findFirst({
+      where: { projectTitle: `${prefix} personal`, status: "NEEDS_SCHEDULE" },
+      select: { memo: true, timeSlots: { select: { id: true } } },
+    })
+    expect(scheduleRequest?.memo).toContain(displayDateKey(bookingWeekSelectionDate))
+    expect(scheduleRequest?.memo).toContain(displayDateKey(laterDate))
+    expect(scheduleRequest?.memo).not.toContain(displayDateKey(skippedDate))
+    expect(scheduleRequest?.timeSlots).toHaveLength(0)
 
     await prisma.bookingGroup.deleteMany({ where: { projectTitle: { startsWith: prefix } } })
     await prisma.user.deleteMany({ where: { email: testUserEmail } })

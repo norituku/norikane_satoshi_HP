@@ -106,16 +106,16 @@ describe("booking email sender", () => {
     expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
   })
 
-  it("summarizes requested date ranges as consultation dates in customer mail", async () => {
+  it("summarizes requested date arrays as consultation dates in customer mail", async () => {
     process.env.RESEND_API_KEY = "resend_key"
-    mocks.send.mockResolvedValue({ data: { id: "email_date_range_1" }, error: null })
+    mocks.send.mockResolvedValue({ data: { id: "email_date_array_1" }, error: null })
     const { sendBookingConfirmedEmail } = await import("@/lib/booking/server/email")
 
     await sendBookingConfirmedEmail({
       to: "client@example.com",
       projectTitle: "Date request",
       selectedSlots: [],
-      requestedDateRange: { startDate: "2026-07-10", endDate: "2026-07-12" },
+      requestedDates: ["2026-07-10", "2026-07-12", "2026-07-15"],
       bookingGroupId: "group_date_range",
       workScopes: [],
       otherWorkDetail: "",
@@ -127,7 +127,9 @@ describe("booking email sender", () => {
     expect(message.subject).toContain("3日間")
     expect(message.text).toContain("相談希望日:")
     expect(message.text).toContain("2026/07/10")
+    expect(message.text).not.toContain("2026/07/11")
     expect(message.text).toContain("2026/07/12")
+    expect(message.text).toContain("2026/07/15")
     expect(message.text).toContain("確定予約ではなく、相談希望日としてお預かりしています")
     expect(message.subject).not.toMatch(/予約確定|本予約として確定|確定しました/)
     expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
@@ -224,7 +226,7 @@ describe("booking email sender", () => {
     delete process.env.CHATBOT_BOOKING_OWNER_EMAIL
   })
 
-  it("summarizes requested date ranges in owner notification", async () => {
+  it("summarizes requested date arrays in owner notification", async () => {
     process.env.RESEND_API_KEY = "resend_key"
     process.env.CHATBOT_BOOKING_OWNER_EMAIL = "owner@example.com"
     mocks.send.mockResolvedValue({ data: { id: "email_owner_3" }, error: null })
@@ -236,14 +238,16 @@ describe("booking email sender", () => {
       contactName: "田中",
       contactEmail: "client@example.com",
       selectedSlots: [],
-      requestedDateRange: { startDate: "2026-07-10", endDate: "2026-07-12" },
+      requestedDates: ["2026-07-10", "2026-07-12", "2026-07-15"],
     })
 
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       to: "owner@example.com",
       text: expect.stringContaining("候補日: 2026/07/10"),
     }))
+    expect(mocks.send.mock.calls[0][0].text).not.toContain("2026/07/11")
     expect(mocks.send.mock.calls[0][0].text).toContain("2026/07/12")
+    expect(mocks.send.mock.calls[0][0].text).toContain("2026/07/15")
     delete process.env.CHATBOT_BOOKING_OWNER_EMAIL
   })
 

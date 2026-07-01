@@ -15,6 +15,11 @@ function addDaysToDateKey(dateKey: string, days: number) {
   return isoDate(new Date(Date.UTC(year, month - 1, day + days)))
 }
 
+function displayDateKey(dateKey: string) {
+  const [, month, day] = dateKey.split("-").map(Number)
+  return `${month}/${day}`
+}
+
 function buildDailyBusySlots(startIso: string, endIso: string) {
   const start = new Date(startIso)
   const end = new Date(endIso)
@@ -72,7 +77,7 @@ test.describe("booking calendar mobile layout and selection", () => {
     hasTouch: true,
   })
 
-  test("uses month-only mobile flow without Japanese day suffix and selects a continuous date request", async ({ page }) => {
+  test("uses month-only mobile flow and toggles non-contiguous date requests", async ({ page }) => {
     await openAuthenticatedBooking(page, { dailyBusy: true })
 
     await expect(page.getByRole("button", { name: "週" })).toHaveCount(0)
@@ -94,11 +99,22 @@ test.describe("booking calendar mobile layout and selection", () => {
     await expect(page.getByTestId("booking-month-slot-option")).toHaveCount(0)
     await expect(page.getByTestId("booking-action-panel")).toHaveCount(0)
 
-    const nextDay = page.locator(`.fc-daygrid-day[data-date="${addDaysToDateKey(targetDate, 2)}"]`)
-    await nextDay.locator(".fc-daygrid-day-number").click()
+    const skippedDate = addDaysToDateKey(targetDate, 1)
+    const laterDate = addDaysToDateKey(targetDate, 2)
+    await page.locator(`.fc-daygrid-day[data-date="${laterDate}"] .fc-daygrid-day-number`).click()
 
-    await expect(page.getByTestId("booking-date-request-summary")).toContainText("3日間")
-    await expect(page.locator(".booking-calendar__selected-range")).toHaveCount(3)
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText("2日間")
+    await expect(page.getByTestId("booking-date-request-summary")).not.toContainText(displayDateKey(skippedDate))
+    await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(2)
+    await expect(page.locator(`.fc-daygrid-day[data-date="${skippedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
+    await expect(page.getByTestId("booking-date-request-chip")).toHaveCount(2)
+
+    await page.locator(`.fc-daygrid-day[data-date="${targetDate}"] .fc-daygrid-day-number`).click()
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText("1日間")
+    await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(1)
+    await page.locator(`.fc-daygrid-day[data-date="${targetDate}"] .fc-daygrid-day-number`).click()
+    await expect(page.getByTestId("booking-date-request-summary")).toContainText("2日間")
+    await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(2)
     const panelBox = await page.getByTestId("booking-date-request-panel").boundingBox()
     expect(panelBox).not.toBeNull()
     expect(panelBox!.width).toBeGreaterThanOrEqual(374)
@@ -121,6 +137,7 @@ test("booking calendar desktop hides view tabs and reaches the booking form from
   if (!targetDate) throw new Error("target date was not available")
   await page.locator(`.fc-daygrid-day[data-date="${addDaysToDateKey(targetDate, 1)}"] .fc-daygrid-day-number`).click()
   await expect(page.getByTestId("booking-date-request-summary")).toContainText("2日間")
+  await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(2)
   await page.getByRole("button", { name: "この日程で相談する" }).click()
   await expect(page.getByLabel("案件名")).toBeVisible()
 })

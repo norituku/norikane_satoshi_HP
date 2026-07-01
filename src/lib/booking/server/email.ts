@@ -13,6 +13,7 @@ export type BookingEmailArgs = {
   start?: string | Date
   end?: string | Date
   selectedSlots?: BookingScheduleSlot[]
+  requestedDates?: string[]
   requestedDateRange?: BookingDateRange
   bookingGroupId?: string
   workScopes: string[]
@@ -37,6 +38,7 @@ export type ChatbotBookingOwnerNotificationArgs = {
   companyName?: string
   memo?: string
   selectedSlots: BookingScheduleSlot[]
+  requestedDates?: string[]
   requestedDateRange?: BookingDateRange
   submittedAt?: string | Date
 }
@@ -106,6 +108,12 @@ function formatRequestedDateRange(range: BookingDateRange): string {
   return `${formatDateOnly(range.startDate)}〜${formatDateOnly(range.endDate)}${countLabel}`
 }
 
+function formatRequestedDates(dates: string[]): string {
+  const normalized = Array.from(new Set(dates.filter((date) => dateFromDateKey(date)))).sort()
+  const dateLabel = normalized.map((date) => formatDateOnly(date)).join(", ")
+  return normalized.length > 0 ? `${dateLabel}、${normalized.length}日間` : "候補日未選択"
+}
+
 function formatWork(args: Pick<BookingEmailArgs, "workScopes" | "otherWorkDetail" | "estimatedDuration">): string {
   const scopes = args.workScopes.join(" / ")
   const detail = args.otherWorkDetail?.trim()
@@ -173,9 +181,13 @@ function formatOptional(value: string | undefined): string {
 
 function formatSelectedSlots(
   slots: ChatbotBookingOwnerNotificationArgs["selectedSlots"],
+  requestedDates?: string[],
   requestedDateRange?: BookingDateRange,
 ): string {
-  if (slots.length === 0) return requestedDateRange ? formatRequestedDateRange(requestedDateRange) : "候補日未選択"
+  if (slots.length === 0) {
+    if (requestedDates?.length) return formatRequestedDates(requestedDates)
+    return requestedDateRange ? formatRequestedDateRange(requestedDateRange) : "候補日未選択"
+  }
   return slots.map((slot) => formatSchedule(slot.start, slot.end)).join("\n")
 }
 
@@ -185,8 +197,11 @@ function getBookingEmailSlots(args: BookingEmailArgs): BookingScheduleSlot[] {
   return []
 }
 
-function getBookingEmailSubjectSchedule(slots: BookingScheduleSlot[], requestedDateRange?: BookingDateRange): string {
-  if (slots.length === 0) return requestedDateRange ? formatRequestedDateRange(requestedDateRange) : "候補日未選択"
+function getBookingEmailSubjectSchedule(slots: BookingScheduleSlot[], requestedDates?: string[], requestedDateRange?: BookingDateRange): string {
+  if (slots.length === 0) {
+    if (requestedDates?.length) return formatRequestedDates(requestedDates)
+    return requestedDateRange ? formatRequestedDateRange(requestedDateRange) : "候補日未選択"
+  }
   if (slots.length === 1) return formatSchedule(slots[0].start, slots[0].end)
   return `${slots.length}件の仮キープ候補`
 }
@@ -195,7 +210,7 @@ export async function sendChatbotBookingOwnerNotification(
   args: ChatbotBookingOwnerNotificationArgs,
 ): Promise<BookingEmailResult> {
   const to = getChatbotBookingOwnerEmail()
-  const schedule = formatSelectedSlots(args.selectedSlots, args.requestedDateRange)
+  const schedule = formatSelectedSlots(args.selectedSlots, args.requestedDates, args.requestedDateRange)
   const submittedAt = args.submittedAt ?? new Date()
 
   return sendBookingEmail({
@@ -222,16 +237,16 @@ export async function sendChatbotBookingOwnerNotification(
 
 export async function sendBookingConfirmedEmail(args: BookingEmailArgs): Promise<BookingEmailResult> {
   const slots = getBookingEmailSlots(args)
-  const schedule = formatSelectedSlots(slots, args.requestedDateRange)
-  const subject = `【仮キープ受付】${args.projectTitle} のご相談を受け付けました（${getBookingEmailSubjectSchedule(slots, args.requestedDateRange)}）`
+  const schedule = formatSelectedSlots(slots, args.requestedDates, args.requestedDateRange)
+  const subject = `【仮キープ受付】${args.projectTitle} のご相談を受け付けました（${getBookingEmailSubjectSchedule(slots, args.requestedDates, args.requestedDateRange)}）`
   const scheduleLine = slots.length > 0
     ? `仮キープ候補日:\n${schedule}`
-    : args.requestedDateRange
+    : args.requestedDates?.length || args.requestedDateRange
       ? `相談希望日: ${schedule}`
       : "候補日: 候補日未選択（候補日未選択の相談として受け付けました）"
   const scheduleNote = slots.length > 0
     ? "選択された日程は実施日ではなく、仮キープ候補としてお預かりしています。"
-    : args.requestedDateRange
+    : args.requestedDates?.length || args.requestedDateRange
       ? "選択された日程は確定予約ではなく、相談希望日としてお預かりしています。"
       : "候補日は未選択のため、日程は後ほど相談させてください。"
   const bookingGroupLine = args.bookingGroupId ? [`予約番号: ${args.bookingGroupId}`] : []

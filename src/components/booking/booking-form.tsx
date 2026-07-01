@@ -5,11 +5,11 @@ import { useEffect } from "react"
 import { useForm } from "react-hook-form"
 
 import {
-  formatBookingDateRange,
+  formatBookingDateSelection,
   bookingFormSchema,
   formatDurationMinutes,
   getTotalDurationMinutes,
-  type BookingDateRange,
+  type BookingDateSelection,
   type BookingFormData,
   type BookingSlot,
 } from "@/lib/booking/domain/form-schema"
@@ -18,7 +18,7 @@ import {
 type BookingFormProps = {
   formData: BookingFormData
   selectedSlots: BookingSlot[]
-  requestedDateRange?: BookingDateRange | null
+  requestedDateSelection?: BookingDateSelection | null
   onChange: (data: Partial<BookingFormData>) => void
   onValidityChange: (isValid: boolean) => void
   onReselectDate: (slot?: BookingSlot) => void
@@ -42,7 +42,7 @@ function formatSlot(slot: BookingSlot): string {
 export function BookingForm({
   formData,
   selectedSlots,
-  requestedDateRange = null,
+  requestedDateSelection = null,
   onChange,
   onValidityChange,
   onReselectDate,
@@ -73,14 +73,14 @@ export function BookingForm({
     <div className="booking-form">
       <div className="booking-form__slot-row">
         <div className="booking-form__slot-list">
-          {requestedDateRange ? (
+          {requestedDateSelection ? (
             <button
               type="button"
               className="glass-badge booking-form__slot-pill"
               onClick={() => onReselectDate()}
-              aria-label={`${formatBookingDateRange(requestedDateRange)} の相談希望日に戻って調整`}
+              aria-label={`${formatBookingDateSelection(requestedDateSelection)} の相談希望日に戻って調整`}
             >
-              {formatBookingDateRange(requestedDateRange)}
+              {formatBookingDateSelection(requestedDateSelection)}
             </button>
           ) : selectedSlots.length === 0 ? (
             <span className="glass-badge booking-form__slot-pill">相談希望日未選択</span>

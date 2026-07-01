@@ -13,6 +13,7 @@ function bookingInput(overrides: Partial<BookingApiInput> = {}): BookingApiInput
     memo: "",
     agreed: true,
     selectedSlots: [],
+    requestedDates: [],
     ...overrides,
   }
 }
@@ -171,13 +172,13 @@ describe("createBookingFromApiInput", () => {
     }))
   })
 
-  it("persists requested date ranges as schedule consultations without creating a calendar event", async () => {
+  it("persists requested date arrays as schedule consultations without creating a calendar event", async () => {
     const service = await loadCreateBooking()
 
     const result = await service.createBookingFromApiInput({
       input: bookingInput({
         selectedSlots: [],
-        requestedDateRange: { startDate: "2026-07-10", endDate: "2026-07-12" },
+        requestedDates: ["2026-07-10", "2026-07-12", "2026-07-15"],
       }),
       userId: "user_1",
       userEmail: "satoshi@example.com",
@@ -196,6 +197,9 @@ describe("createBookingFromApiInput", () => {
     expect(result.body).toMatchObject({
       scheduleLabel: expect.stringContaining("3日間"),
     })
+    expect(result.body).toMatchObject({
+      scheduleLabel: expect.not.stringContaining("7/11"),
+    })
     expect(service.prisma.bookingGroup.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -209,7 +213,7 @@ describe("createBookingFromApiInput", () => {
     expect(service.createCalendarEvent).not.toHaveBeenCalled()
     expect(service.sendBookingConfirmedEmail).toHaveBeenCalledWith(expect.objectContaining({
       bookingGroupId: "group_1",
-      requestedDateRange: { startDate: "2026-07-10", endDate: "2026-07-12" },
+      requestedDates: ["2026-07-10", "2026-07-12", "2026-07-15"],
       selectedSlots: [],
     }))
   })

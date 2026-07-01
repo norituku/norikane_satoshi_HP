@@ -1,8 +1,8 @@
 import {
-  formatBookingDateRange,
+  formatBookingDateSelection,
   formatDurationMinutes,
   getTotalDurationMinutes,
-  type BookingDateRange,
+  type BookingDateSelection,
   type BookingFormData,
   type BookingSlot,
 } from "@/lib/booking/domain/form-schema"
@@ -10,7 +10,7 @@ import {
 type BookingConfirmProps = {
   formData: BookingFormData
   selectedSlots: BookingSlot[]
-  requestedDateRange?: BookingDateRange | null
+  requestedDateSelection?: BookingDateSelection | null
   submitError?: string | null
   onDismissSubmitError?: () => void
   onReselectDate?: (slot?: BookingSlot) => void
@@ -36,8 +36,8 @@ function valueOrDash(value: string | string[]): string {
   return value.trim() || "-"
 }
 
-function formatSlots(slots: BookingSlot[], requestedDateRange?: BookingDateRange | null): string {
-  if (requestedDateRange) return formatBookingDateRange(requestedDateRange)
+function formatSlots(slots: BookingSlot[], requestedDateSelection?: BookingDateSelection | null): string {
+  if (requestedDateSelection) return formatBookingDateSelection(requestedDateSelection)
   if (slots.length === 0) return "相談希望日未選択"
   return slots.map((slot) => formatSlot(slot)).join(" / ")
 }
@@ -45,14 +45,14 @@ function formatSlots(slots: BookingSlot[], requestedDateRange?: BookingDateRange
 export function BookingConfirm({
   formData,
   selectedSlots,
-  requestedDateRange = null,
+  requestedDateSelection = null,
   submitError,
   onDismissSubmitError,
   onReselectDate,
 }: BookingConfirmProps) {
   const rows = [
     ["案件名", formData.projectTitle],
-    ["相談希望日", formatSlots(selectedSlots, requestedDateRange)],
+    ["相談希望日", formatSlots(selectedSlots, requestedDateSelection)],
     ...(selectedSlots.length > 0 ? [["想定作業時間合計", formatDurationMinutes(getTotalDurationMinutes(selectedSlots))] as const] : []),
     ["納期", formData.dueDate],
     ["会社名", formData.companyName],
@@ -85,7 +85,7 @@ export function BookingConfirm({
         </div>
       ) : null}
       <div>
-        <span className="glass-badge booking-confirm__slot-pill">{formatSlots(selectedSlots, requestedDateRange)}</span>
+        <span className="glass-badge booking-confirm__slot-pill">{formatSlots(selectedSlots, requestedDateSelection)}</span>
         <h2 className="booking-confirm__title">日程相談内容の確認</h2>
       </div>
       <dl className="booking-confirm__list glass-inset">

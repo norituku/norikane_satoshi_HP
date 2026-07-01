@@ -168,7 +168,7 @@ describe("POST /api/booking Saga", () => {
     expect(route.prisma.bookingGroup.create).not.toHaveBeenCalled()
   })
 
-  it("accepts requested date ranges without creating Google Calendar events", async () => {
+  it("accepts requested date arrays without creating Google Calendar events", async () => {
     const route = await loadPost()
     route.prisma.bookingGroup.create.mockResolvedValueOnce({
       id: "clwxyz123abc",
@@ -177,7 +177,7 @@ describe("POST /api/booking Saga", () => {
 
     const response = await route.POST(request(validBooking({
       selectedSlots: [],
-      requestedDateRange: { startDate: "2026-07-10", endDate: "2026-07-12" },
+      requestedDates: ["2026-07-10", "2026-07-12"],
     })))
 
     expect(response.status).toBe(200)

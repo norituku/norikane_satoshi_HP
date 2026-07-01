@@ -31,7 +31,15 @@ import { signOut } from "next-auth/react"
 
 import { mapErrorCodeToJa, type BookingConflictsResponse } from "@/lib/booking/domain/api-schema"
 import { getHolidayName } from "@/lib/booking/domain/holidays"
-import { formatBookingDateRange, getBookingDateRangeDayCount, type BookingDateRange, type BookingSlot } from "@/lib/booking/domain/form-schema"
+import {
+  bookingDateRangeToSelection,
+  formatBookingDateSelection,
+  getBookingDateSelectionDayCount,
+  normalizeBookingDateKeys,
+  type BookingDateRange,
+  type BookingDateSelection,
+  type BookingSlot,
+} from "@/lib/booking/domain/form-schema"
 
 type TeamOption = {
   id: string
@@ -553,13 +561,19 @@ type BookingCalendarProps = {
   resetRequestKey?: number
   remoteRefreshRequestKey?: number
   focusSlot?: BookingSlot | null
+  initialDateSelection?: BookingDateSelection | null
   initialDateRange?: BookingDateRange | null
   teams?: TeamOption[]
   selectedTeamId?: string | null
   onSelectedTeamIdChange?: (teamId: string | null) => void
   monthSkeleton?: ReactNode
-  onCommit: (input: { slots: { start: string; end: string }[]; requestedDateRange?: BookingDateRange | null }) => void
+  onCommit: (input: { slots: { start: string; end: string }[]; requestedDateSelection?: BookingDateSelection | null }) => void
   onCodeChange?: (code: string | null) => void
+}
+
+function normalizeDateSelection(selection: BookingDateSelection | null | undefined): BookingDateSelection | null {
+  const dates = normalizeBookingDateKeys(selection?.dates ?? [])
+  return dates.length > 0 ? { dates } : null
 }
 
 export function BookingCalendar({
@@ -576,6 +590,7 @@ export function BookingCalendar({
   resetRequestKey = 0,
   remoteRefreshRequestKey = 0,
   focusSlot = null,
+  initialDateSelection = null,
   initialDateRange = null,
   teams = [],
   selectedTeamId = null,
@@ -584,16 +599,20 @@ export function BookingCalendar({
   onCommit,
   onCodeChange,
 }: BookingCalendarProps) {
+  const initialDateSelectionState = normalizeDateSelection(
+    initialDateSelection ?? (initialDateRange ? bookingDateRangeToSelection(initialDateRange) : null),
+  )
+  const initialDateSelectionSignature = initialDateSelectionState?.dates.join("||") ?? ""
   const [view, setView] = useState<CalendarView>("dayGridMonth")
   const [isFullCalendarReady, setIsFullCalendarReady] = useState(false)
   const [isMonthSkeletonMounted, setIsMonthSkeletonMounted] = useState(() => Boolean(monthSkeleton))
   const [isMonthSkeletonFading, setIsMonthSkeletonFading] = useState(false)
   const [selectedMonthDate, setSelectedMonthDate] = useState<string | null>(() => {
-    if (initialDateRange) return initialDateRange.startDate
+    if (initialDateSelectionState?.dates[0]) return initialDateSelectionState.dates[0]
     const firstSlot = initialSlots[0]
     return firstSlot ? toDateKey(new Date(firstSlot.start)) : null
   })
-  const [selectedDateRange, setSelectedDateRange] = useState<BookingDateRange | null>(initialDateRange)
+  const [selectedDateSelection, setSelectedDateSelection] = useState<BookingDateSelection | null>(initialDateSelectionState)
   const [modeKind, setModeKind] = useState<ModeKind>("normal")
   const [adjustingGroupId, setAdjustingGroupId] = useState<string | null>(null)
   const [adjustingTitle, setAdjustingTitle] = useState<string | null>(null)
@@ -645,6 +664,7 @@ export function BookingCalendar({
     [initialSlots],
   )
   const restoredInitialSlotsSignatureRef = useRef(initialSlotsSignature)
+  const restoredInitialDateSelectionSignatureRef = useRef(initialDateSelectionSignature)
 
   const activeDraft = useMemo(
     () => drafts.find((draft) => draft.id === activeDraftId) ?? null,
@@ -730,6 +750,19 @@ export function BookingCalendar({
     setDrafts(restored)
     setActiveDraftId(restored[0]?.id ?? null)
   }, [drafts.length, initialSlots, initialSlotsSignature])
+
+  useEffect(() => {
+    if (!initialDateSelectionSignature) {
+      restoredInitialDateSelectionSignatureRef.current = ""
+      return
+    }
+    if (selectedDateSelection || restoredInitialDateSelectionSignatureRef.current === initialDateSelectionSignature) return
+    restoredInitialDateSelectionSignatureRef.current = initialDateSelectionSignature
+    const dates = initialDateSelectionSignature.split("||")
+    // Restores persisted date-request props after hydration.
+    setSelectedDateSelection({ dates })
+    setSelectedMonthDate(dates[0] ?? null)
+  }, [initialDateSelectionSignature, selectedDateSelection])
 
   const changeCalendarView = useCallback((nextView: CalendarView, dateStr?: string) => {
     selectedViewRef.current = nextView
@@ -1086,6 +1119,8 @@ export function BookingCalendar({
     setDrafts([])
     setActiveDraftId(null)
     setDraftPreviewValue(null)
+    setSelectedDateSelection(null)
+    setSelectedMonthDate(null)
     setActionPanelPosition(null)
     setActionError(null)
     refetchDraftEvents()
@@ -1460,17 +1495,20 @@ export function BookingCalendar({
     )
   }, [overlapsBlockedEvent, overlapsConfirmedBufferZone])
 
-  const selectedDateRangeLabel = selectedDateRange ? formatBookingDateRange(selectedDateRange) : null
+  const selectedDateSelectionLabel = selectedDateSelection ? formatBookingDateSelection(selectedDateSelection) : null
 
   const selectMonthDate = useCallback((date: Date) => {
     const dateKey = toDateKey(date)
     selectedViewRef.current = "dayGridMonth"
     setView("dayGridMonth")
     setSelectedMonthDate(dateKey)
-    setSelectedDateRange((current) => {
-      if (!current || current.startDate !== current.endDate) return { startDate: dateKey, endDate: dateKey }
-      const [startDate, endDate] = [current.startDate, dateKey].sort()
-      return { startDate, endDate }
+    setSelectedDateSelection((current) => {
+      const currentDates = current?.dates ?? []
+      const nextDates = currentDates.includes(dateKey)
+        ? currentDates.filter((value) => value !== dateKey)
+        : [...currentDates, dateKey]
+      const normalized = normalizeBookingDateKeys(nextDates)
+      return normalized.length > 0 ? { dates: normalized } : null
     })
     setActionError(null)
     setActionPanelPosition(null)
@@ -1721,14 +1759,11 @@ export function BookingCalendar({
     const day = arg.date.getDay()
     if (day === 0 || day === 6) classes.push("booking-calendar__weekend")
     if (getHolidayName(arg.date)) classes.push("booking-calendar__holiday")
-    if (selectedMonthDate === toDateKey(arg.date)) classes.push("booking-calendar__selected-day")
-    if (selectedDateRange) {
-      const dateKey = toDateKey(arg.date)
-      if (dateKey >= selectedDateRange.startDate && dateKey <= selectedDateRange.endDate) {
-        classes.push("booking-calendar__selected-range")
-      }
-      if (dateKey === selectedDateRange.startDate) classes.push("booking-calendar__selected-range-start")
-      if (dateKey === selectedDateRange.endDate) classes.push("booking-calendar__selected-range-end")
+    const dateKey = toDateKey(arg.date)
+    const selectedDates = selectedDateSelection?.dates ?? []
+    if (selectedMonthDate === dateKey && selectedDates.includes(dateKey)) classes.push("booking-calendar__selected-day")
+    if (selectedDates.includes(dateKey)) {
+      classes.push("booking-calendar__selected-date")
     }
     return classes
   }
@@ -1890,7 +1925,7 @@ export function BookingCalendar({
           setActionError(verdict.message)
           return
         }
-        onCommit({ slots, requestedDateRange: null })
+        onCommit({ slots, requestedDateSelection: null })
       } catch (error) {
         const message = error instanceof Error ? error.message : "予約の重なり確認に失敗しました"
         setActionError(message)
@@ -1902,10 +1937,10 @@ export function BookingCalendar({
   )
 
   const startDateRequestCommit = useCallback(() => {
-    if (!selectedDateRange || preflighting) return
+    if (!selectedDateSelection || preflighting) return
     setActionError(null)
-    onCommit({ slots: [], requestedDateRange: selectedDateRange })
-  }, [onCommit, preflighting, selectedDateRange])
+    onCommit({ slots: [], requestedDateSelection: selectedDateSelection })
+  }, [onCommit, preflighting, selectedDateSelection])
 
   const executeMove = useCallback(
     async () => {
@@ -2184,26 +2219,37 @@ export function BookingCalendar({
           <div className="booking-calendar__date-request-head">
             <h2 className="booking-calendar__date-request-title">相談希望日</h2>
             <p className="booking-calendar__date-request-note">
-              日付をタップして開始日と終了日を選んでください。
+              日付をタップして相談希望日を選んでください。もう一度タップすると解除できます。
             </p>
           </div>
           <div className="booking-calendar__date-request-summary" aria-live="polite">
             <span className="booking-calendar__date-request-label">選択中</span>
             <strong data-testid="booking-date-request-summary">
-              {selectedDateRangeLabel ?? "未選択"}
+              {selectedDateSelectionLabel ?? "未選択"}
             </strong>
-            {selectedDateRange ? (
+            {selectedDateSelection ? (
               <span className="booking-calendar__date-request-days">
-                {getBookingDateRangeDayCount(selectedDateRange)}日間
+                {getBookingDateSelectionDayCount(selectedDateSelection)}日間
               </span>
             ) : null}
+            {selectedDateSelection ? (
+              <div className="booking-calendar__date-request-chips" data-testid="booking-date-request-chips">
+                {selectedDateSelection.dates.map((date) => (
+                  <span className="glass-badge booking-calendar__date-request-chip" data-testid="booking-date-request-chip" key={date}>
+                    {date.slice(5).replace("-", "/")}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="booking-calendar__date-request-empty">相談希望日を 1 日以上選択してください。</span>
+            )}
           </div>
           <div className="booking-calendar__date-request-actions">
             <button
               type="button"
               className="booking-calendar__action-button booking-calendar__action-button--primary"
               onClick={startDateRequestCommit}
-              disabled={!selectedDateRange || preflighting}
+              disabled={!selectedDateSelection || preflighting}
             >
               この日程で相談する
             </button>
@@ -2211,13 +2257,13 @@ export function BookingCalendar({
               type="button"
               className="booking-calendar__action-button booking-calendar__action-button--ghost"
               onClick={() => {
-                setSelectedDateRange(null)
+                setSelectedDateSelection(null)
                 setSelectedMonthDate(null)
                 setActionError(null)
               }}
-              disabled={!selectedDateRange || preflighting}
+              disabled={!selectedDateSelection || preflighting}
             >
-              選択をクリア
+              すべて解除
             </button>
           </div>
         </div>

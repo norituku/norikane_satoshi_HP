@@ -12,6 +12,10 @@ export type BookingDateRange = {
   endDate: string
 }
 
+export type BookingDateSelection = {
+  dates: string[]
+}
+
 const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/
 
 function toLocalDate(value: string): Date | null {
@@ -43,6 +47,42 @@ function formatDateKey(value: string): string {
     day: "numeric",
     weekday: "short",
   })
+}
+
+export function normalizeBookingDateKeys(dates: string[]): string[] {
+  return Array.from(new Set(dates.filter((date) => toLocalDate(date)))).sort()
+}
+
+export function bookingDateRangeToSelection(range: BookingDateRange): BookingDateSelection {
+  if (!isValidBookingDateRange(range)) return { dates: [] }
+  const start = toLocalDate(range.startDate)!
+  const end = toLocalDate(range.endDate)!
+  const dates: string[] = []
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setDate(cursor.getDate() + 1)) {
+    dates.push(toDateKey(cursor))
+  }
+  return { dates }
+}
+
+export function isValidBookingDateSelection(selection: BookingDateSelection): boolean {
+  return normalizeBookingDateKeys(selection.dates).length > 0
+}
+
+export function getBookingDateSelectionDayCount(selection: BookingDateSelection): number {
+  return normalizeBookingDateKeys(selection.dates).length
+}
+
+function toDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+export function formatBookingDateSelection(selection: BookingDateSelection): string {
+  const dates = normalizeBookingDateKeys(selection.dates)
+  const dateLabel = dates.map((date) => formatDateKey(date)).join(", ")
+  return dates.length > 0 ? `${dateLabel}、${dates.length}日間` : "未選択"
 }
 
 export function formatBookingDateRange(range: BookingDateRange): string {

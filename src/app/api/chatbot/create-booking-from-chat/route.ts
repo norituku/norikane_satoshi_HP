@@ -99,6 +99,7 @@ function toBookingApiInput(input: z.infer<typeof chatbotBookingRequestSchema>): 
   return {
     ...bookingFormSchema.parse(baseInput),
     selectedSlots: [],
+    requestedDates: [],
   }
 }
 

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { bookingFormSchema, isValidBookingDateRange } from "@/lib/booking/domain/form-schema"
+import { bookingFormSchema, isValidBookingDateRange, normalizeBookingDateKeys } from "@/lib/booking/domain/form-schema"
 
 const slotSchema = z.object({
   start: z.string().datetime(),
@@ -11,20 +11,22 @@ const dateRangeSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })
+const requestedDatesSchema = z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]).transform((dates) => normalizeBookingDateKeys(dates))
 
 export const bookingApiSchema = bookingFormSchema
   .extend({
     entryPoint: z.enum(["web", "line_liff"]).optional(),
     teamId: z.string().min(1).nullable().optional(),
     selectedSlots: z.array(slotSchema).default([]),
+    requestedDates: requestedDatesSchema,
     requestedDateRange: dateRangeSchema.optional(),
   })
   .superRefine((value, context) => {
-    if (value.selectedSlots.length === 0 && !value.requestedDateRange) {
+    if (value.selectedSlots.length === 0 && value.requestedDates.length === 0 && !value.requestedDateRange) {
       context.addIssue({
         code: "custom",
         message: "相談希望日を選択してください",
-        path: ["requestedDateRange"],
+        path: ["requestedDates"],
       })
     }
     if (value.requestedDateRange && !isValidBookingDateRange(value.requestedDateRange)) {
