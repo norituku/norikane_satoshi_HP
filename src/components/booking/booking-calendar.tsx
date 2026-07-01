@@ -34,7 +34,6 @@ import { getHolidayName } from "@/lib/booking/domain/holidays"
 import {
   bookingDateRangeToSelection,
   formatBookingDateSelection,
-  getBookingDateSelectionDayCount,
   normalizeBookingDateKeys,
   type BookingDateRange,
   type BookingDateSelection,
@@ -56,6 +55,7 @@ type BusySlot = {
   bufferBeforeHours?: number | null
   bufferAfterHours?: number | null
   summary?: string | null
+  source?: "google_calendar" | "notion_work"
 }
 
 type BookingFromApi = {
@@ -95,6 +95,8 @@ type BusyEventProps = {
   projectTitle?: string
   canView?: boolean
   canEdit?: boolean
+  lockedDate?: boolean
+  source?: BusySlot["source"]
 }
 
 type DraftEventProps = {
@@ -126,6 +128,8 @@ type AnyEventProps = {
   side?: "before" | "after"
   bookingStart?: string
   bookingEnd?: string
+  lockedDate?: boolean
+  source?: BusySlot["source"]
 }
 
 type BufferEdgeAllowProps = Pick<AnyEventProps, "side" | "bookingStart" | "bookingEnd">
@@ -260,6 +264,7 @@ function toBusyEvent(slot: BusySlot, isCalendarAdmin: boolean): EventInput {
     kind: "busy",
     label,
     canEdit: isCalendarAdmin,
+    source: slot.source,
     ...(isCalendarAdmin && summary ? { projectTitle: summary } : {}),
   }
 
@@ -275,6 +280,58 @@ function toBusyEvent(slot: BusySlot, isCalendarAdmin: boolean): EventInput {
     startEditable: false,
     durationEditable: false,
     extendedProps,
+  }
+}
+
+function isNotionWorkBusySlot(slot: BusySlot): boolean {
+  return slot.source === "notion_work" && !isFullDayBusySlot(slot)
+}
+
+function dateKeysForBusySlot(slot: BusySlot): string[] {
+  const start = new Date(slot.start)
+  const end = new Date(slot.end)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) return []
+  const inclusiveEnd = new Date(end.getTime() - 1)
+  const keys: string[] = []
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0)
+  const last = new Date(inclusiveEnd.getFullYear(), inclusiveEnd.getMonth(), inclusiveEnd.getDate(), 0, 0, 0, 0)
+
+  while (cursor.getTime() <= last.getTime()) {
+    keys.push(toDateKey(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return keys
+}
+
+function getLockedDateKeys(data: FreeBusyResponse): string[] {
+  const keys = new Set<string>()
+  for (const slot of data.busy ?? []) {
+    if (!isNotionWorkBusySlot(slot)) continue
+    for (const dateKey of dateKeysForBusySlot(slot)) {
+      keys.add(dateKey)
+    }
+  }
+  return Array.from(keys).sort()
+}
+
+function toLockedDateEvent(dateKey: string): EventInput {
+  return {
+    id: `notion-work-lock-${dateKey}`,
+    title: "予約不可",
+    start: dateKey,
+    allDay: true,
+    display: "block",
+    classNames: ["booking-calendar__busy", "booking-calendar__date-lock"],
+    editable: false,
+    startEditable: false,
+    durationEditable: false,
+    extendedProps: {
+      kind: "busy",
+      label: "予約不可",
+      canEdit: false,
+      lockedDate: true,
+      source: "notion_work",
+    } satisfies BusyEventProps,
   }
 }
 
@@ -613,6 +670,7 @@ export function BookingCalendar({
     return firstSlot ? toDateKey(new Date(firstSlot.start)) : null
   })
   const [selectedDateSelection, setSelectedDateSelection] = useState<BookingDateSelection | null>(initialDateSelectionState)
+  const [lockedDateKeys, setLockedDateKeys] = useState<string[]>([])
   const [modeKind, setModeKind] = useState<ModeKind>("normal")
   const [adjustingGroupId, setAdjustingGroupId] = useState<string | null>(null)
   const [adjustingTitle, setAdjustingTitle] = useState<string | null>(null)
@@ -925,7 +983,13 @@ export function BookingCalendar({
       lastEmittedCodeRef.current = nextCode
       onCodeChange?.(nextCode)
     }
-    const busyEvents = (data.busy ?? []).map((slot) => toBusyEvent(slot, isCalendarAdmin))
+    const nextLockedDateKeys = getLockedDateKeys(data)
+    setLockedDateKeys(nextLockedDateKeys)
+    const isMonthView = selectedViewRef.current === "dayGridMonth"
+    const busyEvents = (data.busy ?? [])
+      .filter((slot) => !(isMonthView && isNotionWorkBusySlot(slot)))
+      .map((slot) => toBusyEvent(slot, isCalendarAdmin))
+    const lockedDateEvents = isMonthView ? nextLockedDateKeys.map(toLockedDateEvent) : []
     const bookingEvents = (data.bookings ?? []).map((booking) =>
       toBookingEvent(
         booking,
@@ -1019,7 +1083,7 @@ export function BookingCalendar({
     }
     fullCalendarEventsSettledRef.current = true
     markFullCalendarReadyIfSettled()
-    return [...busyEvents, ...bookingEvents, ...bufferEvents]
+    return [...busyEvents, ...lockedDateEvents, ...bookingEvents, ...bufferEvents]
   }, [
     adjustingGroupId,
     isCalendarAdmin,
@@ -1496,9 +1560,14 @@ export function BookingCalendar({
   }, [overlapsBlockedEvent, overlapsConfirmedBufferZone])
 
   const selectedDateSelectionLabel = selectedDateSelection ? formatBookingDateSelection(selectedDateSelection) : null
+  const lockedDateKeySet = useMemo(() => new Set(lockedDateKeys), [lockedDateKeys])
 
   const selectMonthDate = useCallback((date: Date) => {
     const dateKey = toDateKey(date)
+    if (lockedDateKeySet.has(dateKey)) {
+      setActionError("この日は既存予定があるため選べません。")
+      return
+    }
     selectedViewRef.current = "dayGridMonth"
     setView("dayGridMonth")
     setSelectedMonthDate(dateKey)
@@ -1513,7 +1582,7 @@ export function BookingCalendar({
     setActionError(null)
     setActionPanelPosition(null)
     calendarRef.current?.getApi().changeView("dayGridMonth", dateKey)
-  }, [])
+  }, [lockedDateKeySet])
 
   const handleEventAllow = useCallback<AllowFunc>((span, movingEvent) => {
     const props = movingEvent?.extendedProps as AnyEventProps | undefined
@@ -1761,6 +1830,7 @@ export function BookingCalendar({
     if (getHolidayName(arg.date)) classes.push("booking-calendar__holiday")
     const dateKey = toDateKey(arg.date)
     const selectedDates = selectedDateSelection?.dates ?? []
+    if (lockedDateKeySet.has(dateKey)) classes.push("booking-calendar__locked-date")
     if (selectedMonthDate === dateKey && selectedDates.includes(dateKey)) classes.push("booking-calendar__selected-day")
     if (selectedDates.includes(dateKey)) {
       classes.push("booking-calendar__selected-date")
@@ -1785,6 +1855,17 @@ export function BookingCalendar({
       cellTop.appendChild(holidayLabel)
     }
   }
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    root.querySelectorAll<HTMLElement>(".fc-daygrid-day[data-date]").forEach((cell) => {
+      const locked = Boolean(cell.dataset.date && lockedDateKeySet.has(cell.dataset.date))
+      cell.setAttribute("aria-disabled", locked ? "true" : "false")
+      if (locked) cell.setAttribute("data-booking-locked", "true")
+      else cell.removeAttribute("data-booking-locked")
+    })
+  }, [lockedDateKeySet])
 
   const renderDayCellContent = (arg: DayCellContentArg) => {
     if (arg.view.type !== "dayGridMonth") return undefined
@@ -1869,19 +1950,23 @@ export function BookingCalendar({
       const rangeLabel = props.label ?? (arg.event.start && arg.event.end ? `${format(arg.event.start, "HH:mm")}-${format(arg.event.end, "HH:mm")}` : "")
       const monthTimeLabel = arg.event.allDay ? "終日" : arg.event.start ? format(arg.event.start, "HH:mm") : rangeLabel
       const title = props.projectTitle?.trim()
-      const canShowTitle = props.status === "CONFIRMED" && props.canView && title
-      const baseText = canShowTitle
-        ? isMonthView
-          ? `${monthTimeLabel} 本: ${title}`
-          : `本予約 ${rangeLabel}: ${title}`
-        : props.status === "CONFIRMED" && !props.canView
-          ? "本予約"
-          : isMonthView
-            ? `${monthTimeLabel} ${shortLabel}`
-            : `${statusLabel} ${rangeLabel}`.trim()
-      const text = !canShowTitle && !props.bookingId && title
-        ? `${baseText}: ${title}`
-        : baseText
+      const text = props.lockedDate
+        ? "予約不可"
+        : (() => {
+            const canShowTitle = props.status === "CONFIRMED" && props.canView && title
+            const baseText = canShowTitle
+              ? isMonthView
+                ? `${monthTimeLabel} 本: ${title}`
+                : `本予約 ${rangeLabel}: ${title}`
+              : props.status === "CONFIRMED" && !props.canView
+                ? "本予約"
+                : isMonthView
+                  ? `${monthTimeLabel} ${shortLabel}`
+                  : `${statusLabel} ${rangeLabel}`.trim()
+            return !canShowTitle && !props.bookingId && title
+              ? `${baseText}: ${title}`
+              : baseText
+          })()
       return (
         <span className="booking-calendar__busy-pill-content">
           {!props.canEdit && lockIcon}
@@ -2227,20 +2312,7 @@ export function BookingCalendar({
             <strong data-testid="booking-date-request-summary">
               {selectedDateSelectionLabel ?? "未選択"}
             </strong>
-            {selectedDateSelection ? (
-              <span className="booking-calendar__date-request-days">
-                {getBookingDateSelectionDayCount(selectedDateSelection)}日間
-              </span>
-            ) : null}
-            {selectedDateSelection ? (
-              <div className="booking-calendar__date-request-chips" data-testid="booking-date-request-chips">
-                {selectedDateSelection.dates.map((date) => (
-                  <span className="glass-badge booking-calendar__date-request-chip" data-testid="booking-date-request-chip" key={date}>
-                    {date.slice(5).replace("-", "/")}
-                  </span>
-                ))}
-              </div>
-            ) : (
+            {selectedDateSelection ? null : (
               <span className="booking-calendar__date-request-empty">相談希望日を 1 日以上選択してください。</span>
             )}
           </div>

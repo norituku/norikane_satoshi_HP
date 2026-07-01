@@ -72,6 +72,7 @@ test.describe("booking personal smoke", () => {
     await expect(page.getByTestId("booking-date-request-summary")).toContainText(displayDateKey(laterDate))
     await expect(page.getByTestId("booking-date-request-summary")).not.toContainText(displayDateKey(skippedDate))
     await expect(page.locator(`.fc-daygrid-day[data-date="${skippedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
+    await expect(page.getByTestId("booking-date-request-chips")).toHaveCount(0)
     await page.getByRole("button", { name: "この日程で相談する" }).click()
 
     await expect(page.getByLabel("案件名")).toBeVisible()

@@ -6,6 +6,13 @@ function isoDate(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
+function localDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
 function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
 }
@@ -37,14 +44,25 @@ function buildDailyBusySlots(startIso: string, endIso: string) {
   return busy
 }
 
-async function stubBookingCalendarApis(page: Page, options: { dailyBusy?: boolean } = {}) {
+async function stubBookingCalendarApis(page: Page, options: { dailyBusy?: boolean; notionWorkBusyDateKeys?: string[] } = {}) {
   await page.route("**/api/calendar/free-busy**", async (route) => {
     const url = new URL(route.request().url())
+    const notionWorkBusy = (options.notionWorkBusyDateKeys ?? []).map((date) => ({
+      start: `${date}T13:00:00+09:00`,
+      end: `${date}T13:30:00+09:00`,
+      summary: "IB_仕事",
+      source: "notion_work",
+      bufferBeforeHours: 0,
+      bufferAfterHours: 0,
+    }))
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        busy: options.dailyBusy ? buildDailyBusySlots(url.searchParams.get("start") ?? "", url.searchParams.get("end") ?? "") : [],
+        busy: [
+          ...(options.dailyBusy ? buildDailyBusySlots(url.searchParams.get("start") ?? "", url.searchParams.get("end") ?? "") : []),
+          ...notionWorkBusy,
+        ],
         bookings: [],
       }),
     })
@@ -58,7 +76,7 @@ async function stubBookingCalendarApis(page: Page, options: { dailyBusy?: boolea
   })
 }
 
-async function openAuthenticatedBooking(page: Page, options: { dailyBusy?: boolean; path?: string } = {}) {
+async function openAuthenticatedBooking(page: Page, options: { dailyBusy?: boolean; notionWorkBusyDateKeys?: string[]; path?: string } = {}) {
   await stubBookingCalendarApis(page, options)
   const prisma = prismaForE2E()
   await upsertUser(prisma, testUserEmail, "E2E Satoshi")
@@ -107,7 +125,7 @@ test.describe("booking calendar mobile layout and selection", () => {
     await expect(page.getByTestId("booking-date-request-summary")).not.toContainText(displayDateKey(skippedDate))
     await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(2)
     await expect(page.locator(`.fc-daygrid-day[data-date="${skippedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
-    await expect(page.getByTestId("booking-date-request-chip")).toHaveCount(2)
+    await expect(page.getByTestId("booking-date-request-chips")).toHaveCount(0)
 
     await page.locator(`.fc-daygrid-day[data-date="${targetDate}"] .fc-daygrid-day-number`).click()
     await expect(page.getByTestId("booking-date-request-summary")).toContainText("1日間")
@@ -140,6 +158,57 @@ test("booking calendar desktop hides view tabs and reaches the booking form from
   await expect(page.locator(".booking-calendar__selected-date")).toHaveCount(2)
   await page.getByRole("button", { name: "この日程で相談する" }).click()
   await expect(page.getByLabel("案件名")).toBeVisible()
+})
+
+test("booking calendar locks timed IB work dates without blocking date-only schedule days", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const lockedDate = localDateKey(new Date())
+  const dateOnlyScheduleDate = addDaysToDateKey(lockedDate, 1)
+  const submittedBodies: unknown[] = []
+  await page.route("**/api/booking", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    submittedBodies.push(route.request().postDataJSON())
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ bookingGroupId: "booking_e2e_lock" }),
+    })
+  })
+  await openAuthenticatedBooking(page, { notionWorkBusyDateKeys: [lockedDate, lockedDate] })
+
+  const lockedCell = page.locator(`.fc-daygrid-day[data-date="${lockedDate}"]`)
+  await expect(lockedCell).toHaveClass(/booking-calendar__locked-date/)
+  await expect(lockedCell).toHaveAttribute("aria-disabled", "true")
+  await expect(lockedCell.locator(".booking-calendar__date-lock")).toHaveCount(1)
+  await lockedCell.locator(".fc-daygrid-day-number").click()
+  await expect(page.locator(`.fc-daygrid-day[data-date="${lockedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
+  await expect(page.getByTestId("booking-date-request-summary")).toContainText("未選択")
+
+  await page.locator(`.fc-daygrid-day[data-date="${dateOnlyScheduleDate}"] .fc-daygrid-day-number`).click()
+  await expect(page.locator(`.fc-daygrid-day[data-date="${dateOnlyScheduleDate}"].booking-calendar__selected-date`)).toHaveCount(1)
+  await expect(page.getByTestId("booking-date-request-summary")).toContainText(displayDateKey(dateOnlyScheduleDate))
+  await expect(page.getByTestId("booking-date-request-chips")).toHaveCount(0)
+  await page.getByRole("button", { name: "この日程で相談する" }).click()
+  await expect(page.getByLabel("案件名")).toBeVisible()
+  await page.getByLabel("案件名").fill("Timed IB work lock E2E")
+  await page.getByLabel("納期").fill("2026-07-31")
+  await page.getByLabel("会社名").fill("NCS")
+  await page.getByLabel("担当者氏名").fill("E2E Satoshi")
+  await page.getByLabel("電話番号(任意)").fill("09000000000")
+  await page.getByLabel("補足メモ").fill("date lock e2e")
+  await page.getByRole("checkbox").check()
+  await page.getByRole("button", { name: "相談内容を確認" }).click()
+  await page.getByRole("button", { name: "日程相談を送信" }).click()
+
+  expect(submittedBodies).toHaveLength(1)
+  expect(submittedBodies[0]).toMatchObject({
+    requestedDates: [dateOnlyScheduleDate],
+    selectedSlots: [],
+  })
+  expect(JSON.stringify(submittedBodies[0])).not.toContain(lockedDate)
 })
 
 test("LINE LIFF booking entry uses the same month-only candidate flow", async ({ page }) => {

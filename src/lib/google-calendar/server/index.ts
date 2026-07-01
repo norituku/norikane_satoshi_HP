@@ -25,6 +25,7 @@ export type CalendarBusyEventWithBuffer = CalendarBusySlot & {
   bufferBeforeHours: number | null
   bufferAfterHours: number | null
   summary: string | null
+  source?: "google_calendar" | "notion_work"
 }
 
 export type CalendarEventWriteInput = {
@@ -232,6 +233,7 @@ export async function listBusyEventsWithBuffer(
         bufferBeforeHours: Number.isFinite(parsedBefore) && parsedBefore >= 0 ? parsedBefore : null,
         bufferAfterHours: Number.isFinite(parsedAfter) && parsedAfter >= 0 ? parsedAfter : null,
         summary: event.summary ?? null,
+        source: "google_calendar",
       })
     }
 

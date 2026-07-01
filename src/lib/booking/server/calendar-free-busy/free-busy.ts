@@ -9,6 +9,7 @@ import {
   clearCalendarAccessTokenCacheForTest,
   getCachedCalendarAccessToken,
 } from "./google-token-cache"
+import { getNotionWorkScheduleBusyIntervals } from "@/lib/chatbot/server/notion-work-schedule-busy"
 
 export type { CalendarBookingFromApi } from "./bookings-repository"
 
@@ -156,7 +157,20 @@ export async function getCalendarFreeBusyForUser(input: {
   let busy: CalendarBusyEventWithBuffer[]
   try {
     const gcalStarted = performance.now()
-    busy = await listBusyEventsWithBuffer(calendarId, timeMin, timeMax, accessToken)
+    const [calendarBusy, notionWorkBusy] = await Promise.all([
+      listBusyEventsWithBuffer(calendarId, timeMin, timeMax, accessToken),
+      getNotionWorkScheduleBusyIntervals({ from: timeMin, to: timeMax }),
+    ])
+    busy = [
+      ...calendarBusy,
+      ...notionWorkBusy.map((slot): CalendarBusyEventWithBuffer => ({
+        ...slot,
+        bufferHours: null,
+        bufferBeforeHours: 0,
+        bufferAfterHours: 0,
+        summary: "IB_仕事",
+      })),
+    ]
     timings.gcal = elapsedSince(gcalStarted)
   } catch (error) {
     if (error instanceof CalendarTokenRevokedError || error instanceof CalendarOAuthEnvMissingError) {
