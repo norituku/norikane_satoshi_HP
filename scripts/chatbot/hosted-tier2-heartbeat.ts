@@ -14,6 +14,7 @@ type IncidentClass =
   | "notion_runtime_trust_rule_denied"
   | "worker_error:auth"
   | "worker_error:connection"
+  | "worker_error:invalid-output"
   | "worker_http_502"
   | "http"
   | "timeout"
@@ -24,6 +25,7 @@ export type HeartbeatState = {
   consecutiveFailures: number
   lastGenerateAt?: string
   lastNotificationAt?: string
+  lastNotificationKind?: NotificationKind
   lastRepairAt?: string
   incidentClass?: IncidentClass
   incidentStartedAt?: string
@@ -57,6 +59,7 @@ export type HeartbeatConfig = {
   generateTimeoutMs: number
   generateIntervalMs: number
   failureThreshold: number
+  transientGenerateFailureThreshold: number
   notificationCooldownMs: number
   statePath: string
   logPath: string
@@ -97,6 +100,7 @@ const defaultGenerateTimeoutMs = 60_000
 const defaultGenerateIntervalMs = 2 * 60_000
 const defaultNotificationCooldownMs = 60 * 60_000
 const defaultFailureThreshold = 1
+const defaultTransientGenerateFailureThreshold = 3
 const repairCooldownMs = 20 * 60_000
 const stateDir = path.join(homedir(), ".local", "state", "norikane_satoshi_hp")
 const defaultStatePath = path.join(stateDir, "hosted-tier2-heartbeat-state.json")
@@ -128,12 +132,14 @@ export async function runHeartbeat(
   const primaryFailure = checks.find((check) => !check.ok)
   const incidentClass = classifyFailureOrigin(primaryFailure)
   const transientGenerateFailure = isTransientGenerateFailure(primaryFailure)
+  const delayedTransientGenerateFailure =
+    primaryFailure?.name === "generate" && incidentClass === "worker_error:invalid-output"
   let ok = checks.every((check) => check.ok)
   let nextState = buildNextState({
     previous,
     ok,
     now,
-    threshold: config.failureThreshold,
+    threshold: effectiveFailureThreshold(config, delayedTransientGenerateFailure),
     generateSucceeded: generate?.ok === true,
     generateFailed: generate?.ok === false,
     incidentClass,
@@ -153,7 +159,7 @@ export async function runHeartbeat(
       previous,
       ok,
       now,
-      threshold: config.failureThreshold,
+      threshold: effectiveFailureThreshold(config, delayedTransientGenerateFailure),
       generateSucceeded: generate?.ok === true,
       generateFailed: generate?.ok === false,
       incidentClass,
@@ -165,6 +171,7 @@ export async function runHeartbeat(
   const notification = await maybeNotify(config, previous, nextState, checks, repairActions, deps.fetch, now)
   if (notification?.status === "sent" || notification?.status === "dry-run") {
     nextState.lastNotificationAt = now.toISOString()
+    nextState.lastNotificationKind = notification.kind
   }
 
   await writeState(config.statePath, nextState)
@@ -357,7 +364,11 @@ async function maybeNotify(
     return sendNotification(config, "unhealthy", checks, repairActions, fetchClient, now)
   }
 
-  if (next.status === "healthy" && previous.status === "unhealthy") {
+  if (
+    next.status === "healthy" &&
+    previous.status === "unhealthy" &&
+    previous.lastNotificationKind === "unhealthy"
+  ) {
     return sendNotification(config, "recovered", checks, repairActions, fetchClient, now)
   }
 
@@ -550,6 +561,12 @@ function buildNextState(input: {
   }
 }
 
+function effectiveFailureThreshold(config: HeartbeatConfig, transientGenerateFailure: boolean): number {
+  return transientGenerateFailure
+    ? Math.max(config.failureThreshold, config.transientGenerateFailureThreshold)
+    : config.failureThreshold
+}
+
 function shouldAttemptRepair(
   previous: HeartbeatState,
   nextState: HeartbeatState,
@@ -629,6 +646,7 @@ async function readState(statePath: string): Promise<HeartbeatState> {
       consecutiveFailures: Number.isFinite(parsed.consecutiveFailures) ? Number(parsed.consecutiveFailures) : 0,
       lastGenerateAt: stringOrUndefined(parsed.lastGenerateAt),
       lastNotificationAt: stringOrUndefined(parsed.lastNotificationAt),
+      lastNotificationKind: isNotificationKind(parsed.lastNotificationKind) ? parsed.lastNotificationKind : undefined,
       lastRepairAt: stringOrUndefined(parsed.lastRepairAt),
       incidentClass: isIncidentClass(parsed.incidentClass) ? parsed.incidentClass : undefined,
       incidentStartedAt: stringOrUndefined(parsed.incidentStartedAt),
@@ -701,6 +719,11 @@ function resolveConfig(argv: string[]): { config: HeartbeatConfig; sendTestNotif
       failureThreshold: readPositiveInt(
         args["failure-threshold"] ?? process.env.CHATBOT_HOSTED_TIER2_HEARTBEAT_FAILURE_THRESHOLD,
         defaultFailureThreshold,
+      ),
+      transientGenerateFailureThreshold: readPositiveInt(
+        args["transient-generate-failure-threshold"] ??
+          process.env.CHATBOT_HOSTED_TIER2_HEARTBEAT_TRANSIENT_GENERATE_FAILURE_THRESHOLD,
+        defaultTransientGenerateFailureThreshold,
       ),
       notificationCooldownMs: readPositiveInt(
         args["notification-cooldown-ms"] ?? process.env.CHATBOT_HOSTED_TIER2_HEARTBEAT_NOTIFICATION_COOLDOWN_MS,
@@ -824,11 +847,16 @@ function isIncidentClass(value: unknown): value is IncidentClass {
     value === "notion_runtime_trust_rule_denied" ||
     value === "worker_error:auth" ||
     value === "worker_error:connection" ||
+    value === "worker_error:invalid-output" ||
     value === "worker_http_502" ||
     value === "http" ||
     value === "timeout" ||
     value === "unknown"
   )
+}
+
+function isNotificationKind(value: unknown): value is NotificationKind {
+  return value === "unhealthy" || value === "recovered" || value === "test"
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
@@ -867,6 +895,7 @@ function classifyFailureOrigin(check: CheckResult | undefined): IncidentClass {
   }
   if (check.detail.includes("error:connection")) return "worker_error:connection"
   if (check.detail.includes("error:auth")) return "worker_error:auth"
+  if (check.detail.includes("error:invalid-output")) return "worker_error:invalid-output"
   if (check.detail.includes("cdp_")) return "chrome_cdp"
   if (check.detail.includes("model_available:false")) return "notion_model"
   if (check.detail.includes("timeout")) return "timeout"
@@ -877,7 +906,7 @@ function classifyFailureOrigin(check: CheckResult | undefined): IncidentClass {
 }
 
 function isTransientGenerateIncident(incidentClass: IncidentClass | undefined): boolean {
-  return incidentClass === "notion_runtime_trust_rule_denied"
+  return incidentClass === "notion_runtime_trust_rule_denied" || incidentClass === "worker_error:invalid-output"
 }
 
 function isTransientGenerateFailure(check: CheckResult | undefined): boolean {

@@ -21,6 +21,7 @@ function config(dir: string, overrides: Partial<HeartbeatConfig> = {}): Heartbea
     generateTimeoutMs: 1000,
     generateIntervalMs: 15 * 60_000,
     failureThreshold: 3,
+    transientGenerateFailureThreshold: 3,
     notificationCooldownMs: 60 * 60_000,
     statePath: join(dir, "state.json"),
     logPath: join(dir, "heartbeat.jsonl"),
@@ -56,6 +57,21 @@ function trustRuleDeniedResponse(): Response {
         code: "invalid-output",
         message:
           'Notion AI response text could not be extracted. preview={"type":"patch-start","data":{"s":[{"type":"error","subType":"trust-rule-denied","message":"AI inference is not allowed."}]}}',
+        retryable: false,
+      },
+    },
+    502,
+  )
+}
+
+function invalidOutputResponse(): Response {
+  return jsonResponse(
+    {
+      ok: false,
+      tier: "tier-2-hosted-chrome-notion-ai",
+      error: {
+        code: "invalid-output",
+        message: "Notion AI response text could not be extracted.",
         retryable: false,
       },
     },
@@ -375,6 +391,135 @@ describe("hosted-tier2-heartbeat", () => {
     })
 
     expect(result.notification).toMatchObject({ kind: "unhealthy", status: "skipped", detail: "rate_limited" })
+  })
+
+  it("does not notify on a healthy steady-state check", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tier2-heartbeat-"))
+    dirs.push(dir)
+    writeFileSync(
+      join(dir, "state.json"),
+      JSON.stringify({
+        status: "healthy",
+        consecutiveFailures: 0,
+        lastGenerateAt: "2026-06-15T00:00:00.000Z",
+      }),
+    )
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ ok: true, status: "ready", preferredModel: { available: true } }, 200),
+    )
+
+    const result = await runHeartbeat(config(dir), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:10:00.000Z"),
+      runCommand: vi.fn(),
+    })
+
+    expect(result.status).toBe("healthy")
+    expect(result.notification).toBeUndefined()
+  })
+
+  it("sends recovered once after a notified unhealthy incident, then stays quiet", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tier2-heartbeat-"))
+    dirs.push(dir)
+    writeFileSync(
+      join(dir, "state.json"),
+      JSON.stringify({
+        status: "unhealthy",
+        consecutiveFailures: 1,
+        lastGenerateAt: "2026-06-15T00:00:00.000Z",
+        lastNotificationKind: "unhealthy",
+        lastNotificationAt: "2026-06-15T00:00:00.000Z",
+      }),
+    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ok: true, status: "ready", preferredModel: { available: true } }, 200))
+
+    const recovered = await runHeartbeat(config(dir), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:02:00.000Z"),
+      runCommand: vi.fn(),
+    })
+    const steady = await runHeartbeat(config(dir), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:04:00.000Z"),
+      runCommand: vi.fn(),
+    })
+
+    expect(recovered.notification).toMatchObject({ kind: "recovered", status: "dry-run" })
+    expect(steady.notification).toBeUndefined()
+    expect(readState(dir)).toMatchObject({ status: "healthy", lastNotificationKind: "recovered" })
+  })
+
+  it("does not send recovered after an unhealthy notification was only rate-limited", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tier2-heartbeat-"))
+    dirs.push(dir)
+    writeFileSync(
+      join(dir, "state.json"),
+      JSON.stringify({
+        status: "unhealthy",
+        consecutiveFailures: 1,
+        lastGenerateAt: "2026-06-15T00:00:00.000Z",
+        lastNotificationKind: "recovered",
+        lastNotificationAt: "2026-06-15T00:00:00.000Z",
+      }),
+    )
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ ok: true, status: "ready", preferredModel: { available: true } }, 200),
+    )
+
+    const result = await runHeartbeat(config(dir), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:02:00.000Z"),
+      runCommand: vi.fn(),
+    })
+
+    expect(result.status).toBe("healthy")
+    expect(result.notification).toBeUndefined()
+  })
+
+  it("keeps transient invalid-output generate failures suspect before notifying or repairing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tier2-heartbeat-"))
+    dirs.push(dir)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "ready", preferredModel: { available: true } }))
+      .mockResolvedValueOnce(invalidOutputResponse())
+    const runCommand = vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" }))
+
+    const result = await runHeartbeat(config(dir, { failureThreshold: 1, repair: true, forceGenerate: true }), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:00:00.000Z"),
+      runCommand,
+    })
+
+    expect(result.status).toBe("suspect")
+    expect(result.notification).toBeUndefined()
+    expect(result.repairActions).toEqual([])
+    expect(runCommand).not.toHaveBeenCalled()
+    expect(readState(dir)).toMatchObject({
+      status: "suspect",
+      consecutiveFailures: 1,
+      incidentClass: "worker_error:invalid-output",
+    })
+  })
+
+  it("notifies an actual non-transient generate failure as unhealthy", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tier2-heartbeat-"))
+    dirs.push(dir)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "ready", preferredModel: { available: true } }, 200))
+      .mockResolvedValueOnce(jsonResponse("bad gateway", 502))
+
+    const result = await runHeartbeat(config(dir, { failureThreshold: 1, forceGenerate: true }), {
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-06-15T00:00:00.000Z"),
+      runCommand: vi.fn(),
+    })
+
+    expect(result.status).toBe("unhealthy")
+    expect(result.notification).toMatchObject({ kind: "unhealthy", status: "dry-run" })
   })
 
   it("runs the bounded repair sequence once on an unhealthy transition", async () => {
