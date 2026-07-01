@@ -726,7 +726,9 @@
 .booking-calendar__day-cell {
   display: grid;
   gap: 4px;
+  justify-items: start;
   padding: 10px;
+  text-align: left;
 }
 
 .booking-calendar__day-number {
@@ -735,10 +737,12 @@
 }
 
 .booking-calendar__holiday-label {
+  display: block;
   color: var(--accent-primary);
   font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1.25;
+  text-align: left;
 }
 
 .booking-calendar .fc-event {
@@ -823,14 +827,20 @@
 
 .booking-calendar .fc-event.booking-calendar__date-lock .booking-calendar__busy-pill-content {
   display: inline-flex;
-  min-height: 0;
+  width: 100%;
+  min-height: 18px;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 0;
   padding: 0;
   background: transparent;
   font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.booking-calendar .fc-event.booking-calendar__date-lock .booking-calendar__busy-pill-content--lock-only {
+  color: var(--text-muted);
 }
 
 .booking-calendar .fc-event.booking-calendar__busy .fc-event-main,
@@ -1044,11 +1054,11 @@
 }
 
 .booking-month-skeleton__day-head {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 6px;
+  justify-items: start;
+  gap: 4px;
+  text-align: left;
 }
 
 .booking-month-skeleton__day-number {
@@ -1070,7 +1080,7 @@
   font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1.25;
-  text-align: right;
+  text-align: left;
 }
 
 .booking-month-skeleton__events {
@@ -1094,7 +1104,10 @@
   line-height: 1.2;
 }
 
-.booking-month-skeleton__event--busy {
+.booking-month-skeleton__event--lock {
+  width: fit-content;
+  min-width: 24px;
+  justify-content: center;
   background:
     repeating-linear-gradient(
       45deg,
@@ -1106,30 +1119,21 @@
     color-mix(in srgb, var(--text-primary) 18%, var(--glass-bg));
 }
 
-.booking-month-skeleton__event--booking {
-  background: color-mix(in srgb, var(--text-primary) 72%, var(--glass-bg));
-  color: var(--glass-bg);
-}
-
-.booking-month-skeleton__event--buffer {
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--text-primary) 14%, transparent) 0,
-    color-mix(in srgb, var(--text-primary) 14%, transparent) 4px,
-    transparent 4px,
-    transparent 12px
-  );
-}
-
 .booking-month-skeleton__lock {
   display: inline-flex;
   flex: 0 0 auto;
 }
 
 .booking-month-skeleton__event-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

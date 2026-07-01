@@ -81,6 +81,13 @@ type CachedRange = {
   startMs: number
   endMs: number
   data: FreeBusyResponse
+  fetchedAt: number
+}
+
+declare global {
+  interface Window {
+    __bookingTimeToLockVisibleMs?: number
+  }
 }
 
 type BookingStatus = "CONFIRMED"
@@ -451,12 +458,14 @@ async function fetchFreeBusy(
   start: string,
   end: string,
   teamId: string | null,
+  refresh = false,
 ): Promise<FreeBusyResponse> {
   const params = new URLSearchParams({
     start,
     end,
   })
   if (teamId) params.set("teamId", teamId)
+  if (refresh) params.set("refresh", String(Date.now()))
   const response = await fetch(`/api/calendar/free-busy?${params.toString()}`)
 
   if (!response.ok) {
@@ -690,7 +699,7 @@ export function BookingCalendar({
     return firstSlot ? toDateKey(new Date(firstSlot.start)) : null
   })
   const [selectedDateSelection, setSelectedDateSelection] = useState<BookingDateSelection | null>(initialDateSelectionState)
-  const [lockedDateKeys, setLockedDateKeys] = useState<string[]>([])
+  const [lockedDateKeys, setLockedDateKeys] = useState<string[]>(() => getLockedDateKeys({ busy: initialBusy, bookings: initialBookings }))
   const [modeKind, setModeKind] = useState<ModeKind>("normal")
   const [adjustingGroupId, setAdjustingGroupId] = useState<string | null>(null)
   const [adjustingTitle, setAdjustingTitle] = useState<string | null>(null)
@@ -715,6 +724,7 @@ export function BookingCalendar({
   const fullCalendarViewMountedRef = useRef(false)
   const fullCalendarEventsSettledRef = useRef(false)
   const fullCalendarReadyFrameRef = useRef<number | null>(null)
+  const lockVisibleMeasuredRef = useRef(false)
   const fetchedRef = useRef<CachedRange[]>(
     initialRange
       ? [{
@@ -722,10 +732,23 @@ export function BookingCalendar({
           startMs: toTime(initialRange.start),
           endMs: toTime(initialRange.end),
           data: { busy: initialBusy, bookings: initialBookings },
+          fetchedAt: 0,
         }]
       : [],
   )
+  const prefetchingRangesRef = useRef<Set<string>>(new Set())
+  const refreshingRangesRef = useRef<Set<string>>(new Set())
   const lastEmittedCodeRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (lockVisibleMeasuredRef.current || lockedDateKeys.length === 0) return
+    lockVisibleMeasuredRef.current = true
+    const value = Math.round(performance.now())
+    performance.mark("booking-lock-visible")
+    window.__bookingTimeToLockVisibleMs = value
+    rootRef.current?.setAttribute("data-lock-visible-ms", String(value))
+    console.info(`[booking] time-to-lock-visible=${value}ms`)
+  }, [lockedDateKeys.length])
 
   const initialDrafts = useMemo<DraftEvent[]>(() => {
     return initialSlots.map((slot) => ({ id: makeDraftId(), start: slot.start, end: slot.end }))
@@ -886,6 +909,53 @@ export function BookingCalendar({
     calendarRef.current?.getApi().getEventSourceById("remote-events")?.refetch()
   }, [])
 
+  const upsertFetchedRange = useCallback((
+    teamId: string | null,
+    startMs: number,
+    endMs: number,
+    data: FreeBusyResponse,
+  ) => {
+    fetchedRef.current = [
+      ...fetchedRef.current.filter((range) => !(range.teamId === teamId && range.startMs === startMs && range.endMs === endMs)),
+      { teamId, startMs, endMs, data, fetchedAt: Date.now() },
+    ]
+  }, [])
+
+  const refreshCachedRangeInBackground = useCallback((startMs: number, endMs: number, teamId: string | null) => {
+    const key = `${teamId ?? "self"}:${startMs}:${endMs}`
+    if (refreshingRangesRef.current.has(key)) return
+    refreshingRangesRef.current.add(key)
+    void fetchFreeBusy(new Date(startMs).toISOString(), new Date(endMs).toISOString(), teamId, true)
+      .then((data) => {
+        upsertFetchedRange(teamId, startMs, endMs, data)
+        refreshRemoteEventsFromCache()
+      })
+      .finally(() => {
+        refreshingRangesRef.current.delete(key)
+      })
+  }, [refreshRemoteEventsFromCache, upsertFetchedRange])
+
+  const prefetchRangeWhenIdle = useCallback((startMs: number, endMs: number, teamId: string | null) => {
+    const key = `${teamId ?? "self"}:${startMs}:${endMs}`
+    if (prefetchingRangesRef.current.has(key)) return
+    if (missingRanges(startMs, endMs, fetchedRef.current.filter((range) => range.teamId === teamId)).length === 0) return
+    prefetchingRangesRef.current.add(key)
+    const run = () => {
+      void fetchFreeBusy(new Date(startMs).toISOString(), new Date(endMs).toISOString(), teamId)
+        .then((data) => {
+          upsertFetchedRange(teamId, startMs, endMs, data)
+        })
+        .finally(() => {
+          prefetchingRangesRef.current.delete(key)
+        })
+    }
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(run, { timeout: 1200 })
+    } else {
+      globalThis.setTimeout(run, 250)
+    }
+  }, [upsertFetchedRange])
+
   const getCachedBooking = useCallback((bookingId: string): BookingFromApi | null => {
     for (const range of fetchedRef.current) {
       const booking = range.data.bookings?.find((item) => item.id === bookingId)
@@ -984,12 +1054,17 @@ export function BookingCalendar({
         new Date(range.endMs).toISOString(),
         selectedTeamId,
       )
-      fetchedRef.current.push({
-        teamId: selectedTeamId,
-        startMs: range.startMs,
-        endMs: range.endMs,
-        data,
-      })
+      upsertFetchedRange(selectedTeamId, range.startMs, range.endMs, data)
+    }
+    if (rangesToFetch.length === 0) {
+      const staleCutoff = Date.now() - 15_000
+      const hasStaleRange = teamRanges.some((range) => range.startMs < endMs && range.endMs > startMs && range.fetchedAt < staleCutoff)
+      if (hasStaleRange) refreshCachedRangeInBackground(startMs, endMs, selectedTeamId)
+    }
+    if (selectedViewRef.current === "dayGridMonth") {
+      const span = endMs - startMs
+      prefetchRangeWhenIdle(startMs - span, startMs, selectedTeamId)
+      prefetchRangeWhenIdle(endMs, endMs + span, selectedTeamId)
     }
     const data = mergeResponses(
       fetchedRef.current
@@ -1110,8 +1185,11 @@ export function BookingCalendar({
     markFullCalendarReadyIfSettled,
     modeKind,
     onCodeChange,
+    prefetchRangeWhenIdle,
+    refreshCachedRangeInBackground,
     selectedTeamId,
     teamMemberUserIds,
+    upsertFetchedRange,
     viewerUserId,
   ])
 
@@ -2002,6 +2080,17 @@ export function BookingCalendar({
               ? `${baseText}: ${title}`
               : baseText
           })()
+      if (props.lockedDate) {
+        return (
+          <span
+            className="booking-calendar__busy-pill-content booking-calendar__busy-pill-content--lock-only"
+            aria-label="予約不可"
+            title="予約不可"
+          >
+            {lockIcon}
+          </span>
+        )
+      }
       return (
         <span className="booking-calendar__busy-pill-content">
           {!props.canEdit && lockIcon}

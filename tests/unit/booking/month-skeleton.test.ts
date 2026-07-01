@@ -35,7 +35,7 @@ const bookings: CalendarBookingFromApi[] = [
 ]
 
 describe("BookingMonthSkeleton", () => {
-  it("places confirmed bookings and busy slots into their month day cells", () => {
+  it("compresses confirmed bookings and busy slots into one lock marker per day", () => {
     const days = buildBookingMonthSkeletonDays({
       initialBusy: busy,
       initialBookings: bookings,
@@ -44,8 +44,12 @@ describe("BookingMonthSkeleton", () => {
 
     expect(days).toHaveLength(42)
     expect(days[0]?.date).toBe("2026-04-26")
-    expect(days.find((day) => day.date === "2026-05-20")?.items.some((item) => item.kind === "booking")).toBe(true)
-    expect(days.find((day) => day.date === "2026-05-21")?.items.some((item) => item.kind === "busy")).toBe(true)
+    expect(days.find((day) => day.date === "2026-05-20")?.items).toEqual([
+      expect.objectContaining({ kind: "lock", label: "予約不可" }),
+    ])
+    expect(days.find((day) => day.date === "2026-05-21")?.items).toEqual([
+      expect.objectContaining({ kind: "lock", label: "予約不可" }),
+    ])
   })
 
   it("server-renders the static month grid with event markers", () => {
@@ -63,8 +67,10 @@ describe("BookingMonthSkeleton", () => {
     expect(html).toContain('data-testid="booking-month-skeleton"')
     expect(html).toContain('data-state="ready"')
     expect(html).toContain('data-date="2026-05-20"')
-    expect(html).toContain('data-kind="booking"')
-    expect(html).toContain('data-kind="busy"')
+    expect(html).toContain('data-kind="lock"')
+    expect(html).not.toContain(">予約不可<")
+    expect(html).not.toContain(">不<")
+    expect(html).not.toContain(">本<")
   })
 
   it("server-renders an empty pending grid for streaming fallback", () => {
@@ -84,7 +90,6 @@ describe("BookingMonthSkeleton", () => {
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('data-date="2026-04-26"')
     expect(html).toContain('data-date="2026-06-06"')
-    expect(html).not.toContain('data-kind="booking"')
-    expect(html).not.toContain('data-kind="busy"')
+    expect(html).not.toContain('data-kind="lock"')
   })
 })

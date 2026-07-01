@@ -4,7 +4,7 @@ import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar/server"
 
 type MonthSkeletonItem = {
   id: string
-  kind: "busy" | "booking" | "buffer"
+  kind: "lock"
   label: string
   startsAt: number
 }
@@ -31,8 +31,6 @@ type BookingMonthSkeletonProps = {
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"]
 const BOOKING_BUFFER_HOURS = 1
-const MAX_ITEMS_PER_DAY = 4
-
 function toDate(value: Date | string): Date {
   return value instanceof Date ? new Date(value.getTime()) : new Date(value)
 }
@@ -60,44 +58,12 @@ function formatMonthTitle(value: Date): string {
   return `${value.getFullYear()}年${value.getMonth() + 1}月`
 }
 
-function hasTimePart(value: string): boolean {
-  return /T\d{2}:\d{2}/.test(value)
-}
-
-function isFullDayRange(start: string, end: string): boolean {
-  if (!hasTimePart(start) || !hasTimePart(end)) return true
-
-  const startDate = new Date(start)
-  const endDate = new Date(end)
-  return (
-    startDate.getHours() === 0 &&
-    startDate.getMinutes() === 0 &&
-    endDate.getHours() === 0 &&
-    endDate.getMinutes() === 0 &&
-    endDate.getTime() - startDate.getTime() >= 24 * 60 * 60 * 1000
-  )
-}
-
-function formatTime(value: string): string {
-  const date = new Date(value)
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
-}
-
 function rangeOverlaps(startMs: number, endMs: number, dayStartMs: number, dayEndMs: number): boolean {
   return startMs < dayEndMs && endMs > dayStartMs
 }
 
 function toBufferMs(hours: number): number {
   return Math.max(0, hours) * 60 * 60 * 1000
-}
-
-function busyLabel(slot: CalendarBusyEventWithBuffer): string {
-  if (isFullDayRange(slot.start, slot.end)) return "終日 不"
-  return `${formatTime(slot.start)} 不`
-}
-
-function bookingLabel(booking: CalendarBookingFromApi): string {
-  return `${formatTime(booking.start)} 本`
 }
 
 function bufferItemsForDay(
@@ -118,7 +84,7 @@ function bufferItemsForDay(
     if (rangeOverlaps(startMs - bufferMs, startMs, dayStartMs, dayEndMs)) {
       items.push({
         id: `busy-buffer-before-${slot.start}-${slot.end}`,
-        kind: "buffer",
+        kind: "lock",
         label: "保護",
         startsAt: startMs - bufferMs,
       })
@@ -126,7 +92,7 @@ function bufferItemsForDay(
     if (rangeOverlaps(endMs, endMs + bufferMs, dayStartMs, dayEndMs)) {
       items.push({
         id: `busy-buffer-after-${slot.start}-${slot.end}`,
-        kind: "buffer",
+        kind: "lock",
         label: "保護",
         startsAt: endMs,
       })
@@ -142,7 +108,7 @@ function bufferItemsForDay(
     if (rangeOverlaps(startMs - bufferMs, startMs, dayStartMs, dayEndMs)) {
       items.push({
         id: `booking-buffer-before-${booking.id}`,
-        kind: "buffer",
+        kind: "lock",
         label: "保護",
         startsAt: startMs - bufferMs,
       })
@@ -150,7 +116,7 @@ function bufferItemsForDay(
     if (rangeOverlaps(endMs, endMs + bufferMs, dayStartMs, dayEndMs)) {
       items.push({
         id: `booking-buffer-after-${booking.id}`,
-        kind: "buffer",
+        kind: "lock",
         label: "保護",
         startsAt: endMs,
       })
@@ -177,14 +143,14 @@ export function buildBookingMonthSkeletonDays(input: {
     const dayEnd = addDays(dayStart, 1)
     const dayStartMs = dayStart.getTime()
     const dayEndMs = dayEnd.getTime()
-    const dayItems: MonthSkeletonItem[] = [
+    const dayItems = [
       ...bufferItemsForDay(dayStartMs, dayEndMs, input.initialBusy, input.initialBookings),
       ...input.initialBusy
         .filter((slot) => rangeOverlaps(new Date(slot.start).getTime(), new Date(slot.end).getTime(), dayStartMs, dayEndMs))
         .map((slot) => ({
           id: `busy-${slot.start}-${slot.end}`,
-          kind: "busy" as const,
-          label: busyLabel(slot),
+          kind: "lock" as const,
+          label: "予約不可",
           startsAt: new Date(slot.start).getTime(),
         })),
       ...input.initialBookings
@@ -192,12 +158,19 @@ export function buildBookingMonthSkeletonDays(input: {
         .filter((booking) => rangeOverlaps(new Date(booking.start).getTime(), new Date(booking.end).getTime(), dayStartMs, dayEndMs))
         .map((booking) => ({
           id: `booking-${booking.id}`,
-          kind: "booking" as const,
-          label: bookingLabel(booking),
+          kind: "lock" as const,
+          label: "予約不可",
           startsAt: new Date(booking.start).getTime(),
         })),
     ].sort((a, b) => a.startsAt - b.startsAt)
-    const visibleItems = dayItems.slice(0, MAX_ITEMS_PER_DAY)
+    const visibleItems: MonthSkeletonItem[] = dayItems.length > 0
+      ? [{
+          id: `date-lock-${toDateKey(date)}`,
+          kind: "lock",
+          label: "予約不可",
+          startsAt: dayItems[0]?.startsAt ?? dayStartMs,
+        }]
+      : []
 
     days.push({
       key: toDateKey(date),
@@ -207,7 +180,7 @@ export function buildBookingMonthSkeletonDays(input: {
       isToday: toDateKey(date) === todayKey,
       holidayName: getHolidayName(date),
       items: visibleItems,
-      hiddenItemCount: Math.max(0, dayItems.length - visibleItems.length),
+      hiddenItemCount: 0,
     })
   }
 
@@ -275,6 +248,8 @@ export function BookingMonthSkeleton({
                   className={`booking-month-skeleton__event booking-month-skeleton__event--${item.kind}`}
                   data-testid="booking-month-skeleton-event"
                   data-kind={item.kind}
+                  aria-label={item.label}
+                  title={item.label}
                 >
                   <span className="booking-month-skeleton__lock" aria-hidden="true">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -282,7 +257,7 @@ export function BookingMonthSkeleton({
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </span>
-                  <span className="booking-month-skeleton__event-label">{item.label}</span>
+                  <span className="booking-month-skeleton__event-label" aria-hidden="true" />
                 </div>
               ))}
               {day.hiddenItemCount > 0 ? (

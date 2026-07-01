@@ -226,7 +226,20 @@ test("booking calendar locks timed IB work dates without blocking date-only sche
   await expect(lockedCell).toHaveClass(/booking-calendar__locked-date/)
   await expect(lockedCell).toHaveAttribute("aria-disabled", "true")
   await expect(lockedCell.locator(".booking-calendar__date-lock")).toHaveCount(1)
+  await expect(lockedCell.locator(".booking-calendar__date-lock svg")).toHaveCount(1)
+  await expect(lockedCell.locator(".booking-calendar__date-lock")).not.toContainText(/用|予約不可|予約|不|本/)
   await expect(lockedCell.locator(".fc-event.booking-calendar__busy:not(.booking-calendar__date-lock)")).toHaveCount(0)
+  const lockedNumberBox = await lockedCell.locator(".booking-calendar__day-number").boundingBox()
+  const lockedIconBox = await lockedCell.locator(".booking-calendar__date-lock").boundingBox()
+  expect(lockedNumberBox).not.toBeNull()
+  expect(lockedIconBox).not.toBeNull()
+  expect(lockedIconBox!.y).toBeGreaterThan(lockedNumberBox!.y)
+  const lockVisibleMs = await page.waitForFunction(
+    () => (window as Window & { __bookingTimeToLockVisibleMs?: number }).__bookingTimeToLockVisibleMs,
+    null,
+    { timeout: 1000 },
+  )
+  expect(await lockVisibleMs.jsonValue()).toBeGreaterThan(0)
   await lockedCell.locator(".fc-daygrid-day-number").click()
   await expect(page.locator(`.fc-daygrid-day[data-date="${lockedDate}"].booking-calendar__selected-date`)).toHaveCount(0)
   await expect(page.getByTestId("booking-date-request-summary")).toContainText("未選択")

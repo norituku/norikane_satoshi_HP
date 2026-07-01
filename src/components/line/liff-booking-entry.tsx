@@ -5,6 +5,8 @@ import { ExternalLink, MessageCircle } from "lucide-react"
 import { signIn } from "next-auth/react"
 
 import { BookingClientShell } from "@/components/booking/booking-client-shell"
+import type { CalendarBookingFromApi } from "@/lib/booking/server/calendar-free-busy/bookings-repository"
+import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar/server"
 
 type LiffProfile = {
   userId: string
@@ -20,6 +22,10 @@ type LiffState =
 type LiffBookingEntryProps = {
   monthSkeleton: ReactNode
   isCalendarAdmin: boolean
+  initialSession?: SessionPayload | null
+  initialBusy?: CalendarBusyEventWithBuffer[]
+  initialBookings?: CalendarBookingFromApi[]
+  initialRange?: { start: string; end: string }
 }
 
 type SessionPayload = {
@@ -47,7 +53,14 @@ export function shouldStartLineProviderSignIn({
   return liffReady && inClient && hpSessionLoaded && !userId && !authStarted
 }
 
-export function LiffBookingEntry({ monthSkeleton, isCalendarAdmin }: LiffBookingEntryProps) {
+export function LiffBookingEntry({
+  monthSkeleton,
+  isCalendarAdmin,
+  initialSession,
+  initialBusy = [],
+  initialBookings = [],
+  initialRange,
+}: LiffBookingEntryProps) {
   const [state, setState] = useState<LiffState>(
     LIFF_ID ? { status: "loading" } : { status: "skipped", reason: "missing_liff_id" },
   )
@@ -199,6 +212,10 @@ export function LiffBookingEntry({ monthSkeleton, isCalendarAdmin }: LiffBooking
           callbackUrl="/line/booking"
           entryPoint="line_liff"
           isCalendarAdmin={isCalendarAdmin}
+          initialSession={initialSession}
+          initialBusy={initialBusy}
+          initialBookings={initialBookings}
+          initialRange={initialRange}
           monthSkeleton={monthSkeleton}
           redirectUnauthenticated={false}
         />

@@ -3,6 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react"
 
 import { BookingSection } from "@/components/booking/booking-section"
+import type { CalendarBookingFromApi } from "@/lib/booking/server/calendar-free-busy/bookings-repository"
+import type { CalendarBusyEventWithBuffer } from "@/lib/google-calendar/server"
 
 type SessionPayload = {
   user?: {
@@ -14,6 +16,10 @@ type SessionPayload = {
 type BookingClientShellProps = {
   monthSkeleton: ReactNode
   isCalendarAdmin: boolean
+  initialSession?: SessionPayload | null
+  initialBusy?: CalendarBusyEventWithBuffer[]
+  initialBookings?: CalendarBookingFromApi[]
+  initialRange?: { start: string; end: string }
   callbackUrl?: string
   entryPoint?: "web" | "line_liff"
   redirectUnauthenticated?: boolean
@@ -26,14 +32,19 @@ export function shouldRedirectUnauthenticated(loaded: boolean, userId: string | 
 export function BookingClientShell({
   monthSkeleton,
   isCalendarAdmin,
+  initialSession,
+  initialBusy = [],
+  initialBookings = [],
+  initialRange,
   callbackUrl = "/booking",
   entryPoint = "web",
   redirectUnauthenticated = true,
 }: BookingClientShellProps) {
-  const [session, setSession] = useState<SessionPayload | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  const [session, setSession] = useState<SessionPayload | null>(initialSession ?? null)
+  const [loaded, setLoaded] = useState(initialSession !== undefined)
 
   useEffect(() => {
+    if (initialSession !== undefined) return
     let cancelled = false
     async function loadSession() {
       try {
@@ -50,7 +61,7 @@ export function BookingClientShell({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [initialSession])
 
   const userId = session?.user?.id
 
@@ -72,6 +83,9 @@ export function BookingClientShell({
       userEmail={session.user?.email ?? ""}
       isCalendarAdmin={isCalendarAdmin}
       entryPoint={entryPoint}
+      initialBusy={initialBusy}
+      initialBookings={initialBookings}
+      initialRange={initialRange}
       monthSkeleton={monthSkeleton}
     />
   )

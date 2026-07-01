@@ -192,6 +192,18 @@ describe("GET /api/calendar/free-busy", () => {
     expect(second.headers.get("server-timing")).toContain('cache;desc="hit"')
   })
 
+  it("coalesces concurrent cold requests for the same visible range", async () => {
+    mockCalendar()
+
+    const [first, second] = await Promise.all([GET(request()), GET(request())])
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(mocks.prisma.bookingTimeSlot.findMany).toHaveBeenCalledTimes(1)
+    expect(mocks.refreshCalendarAccessToken).toHaveBeenCalledTimes(1)
+    expect(mocks.listBusyEventsWithBuffer).toHaveBeenCalledTimes(1)
+  })
+
   it("bypasses the in-memory cache when refresh nonce is present", async () => {
     mockCalendar()
 
