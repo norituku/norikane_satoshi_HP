@@ -183,7 +183,7 @@ type NotionAiInferenceResult =
       parsedPartial: boolean
       parsedFinal: boolean
     }
-  | { ok: false; status?: number; code: "auth" | "invalid-output" | "unknown"; message: string }
+  | { ok: false; status?: number; code: "auth" | "invalid-output" | "rate-limit" | "unknown"; message: string }
 
 export type ParsedInferenceNdjsonChunk = {
   raw: unknown
@@ -547,7 +547,7 @@ export class Tier1ChromeNotionAiClient implements ChatbotLlmClient {
     return this.toLlmError({
       message: result.message,
       code: result.code,
-      isRetryable: result.code !== "auth" && result.code !== "invalid-output",
+      isRetryable: result.code !== "auth" && result.code !== "invalid-output" && result.code !== "rate-limit",
     })
   }
 
@@ -1357,6 +1357,14 @@ async function runInferenceInPage(input: {
 
     const rawText = finalText || partialText
     if (!rawText) {
+      if (isNotionAiRateLimitResponse(responseText)) {
+        return {
+          ok: false,
+          code: "rate-limit",
+          message: `Notion AI rate limit response was returned. bytes=${responseText.length} preview=${responseText.slice(0, 300)}`,
+        }
+      }
+
       return {
         ok: false,
         code: "invalid-output",
@@ -1382,6 +1390,14 @@ async function runInferenceInPage(input: {
       message: error instanceof Error ? error.message : "Notion AI request failed.",
     }
   }
+}
+
+export function isNotionAiRateLimitResponse(responseText: string): boolean {
+  return (
+    responseText.includes("UserRateLimitResponse") ||
+    responseText.includes("fairUseAIRateLimit") ||
+    responseText.includes('"message":"Please try again later."')
+  )
 }
 
 function globalFetch(input: string, init?: RequestInit): Promise<Response> {

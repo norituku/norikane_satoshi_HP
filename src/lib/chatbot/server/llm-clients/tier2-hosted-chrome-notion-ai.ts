@@ -418,7 +418,7 @@ export class Tier2HostedChromeNotionAiClient implements ChatbotLlmClient {
         return this.toLlmError({
           message: "Hosted Notion AI worker was rate limited.",
           code: "rate-limit",
-          isRetryable: true,
+          isRetryable: error.summary.retryable === true,
           cause: error.summary,
         })
       }
@@ -487,7 +487,12 @@ function summarizeGenerateFailure(error: unknown): {
       return { reason: "auth", retryable: false, httpStatus: error.status, errorCode: error.summary.errorCode }
     }
     if (error.status === httpStatusTooManyRequests) {
-      return { reason: "rate-limit", retryable: true, httpStatus: error.status, errorCode: error.summary.errorCode }
+      return {
+        reason: "rate-limit",
+        retryable: error.summary.retryable === true,
+        httpStatus: error.status,
+        errorCode: error.summary.errorCode,
+      }
     }
     if (error.status >= firstServerErrorStatus) {
       return { reason: "server-error", retryable: true, httpStatus: error.status, errorCode: error.summary.errorCode }

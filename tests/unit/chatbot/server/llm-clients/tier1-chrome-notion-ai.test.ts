@@ -10,6 +10,7 @@ import {
   buildWorkflowValue,
   createTier1ChromeNotionAiClient,
   extractAssistantTextFromNdjson,
+  isNotionAiRateLimitResponse,
   isNotionAiChatbotTargetUrl,
   parseInferenceNdjsonStream,
   Tier1ChromeNotionAiClient,
@@ -787,6 +788,48 @@ describe("Tier1ChromeNotionAiClient", () => {
 
     await expectLlmError(client.generate(llmRequest()), {
       code: "invalid-output",
+      isRetryable: false,
+    })
+  })
+
+  it("classifies Notion fair-use error patches as non-retryable rate limits", async () => {
+    expect(
+      isNotionAiRateLimitResponse(
+        JSON.stringify({
+          type: "patch-start",
+          data: {
+            s: [
+              {
+                type: "error",
+                message: "Please try again later.",
+                stack: "UserRateLimitResponse: Please try again later.\\n    at fairUseAIRateLimit (...)",
+              },
+            ],
+          },
+        }),
+      ),
+    ).toBe(true)
+
+    const client = new Tier1ChromeNotionAiClient({
+      fetchClient: cdpFetch(),
+      sessionFactory: async () =>
+        sessionReturning([
+          {
+            spaceId: "space-id",
+            userId: "user-id",
+            selectedModel: "notion-current-model",
+            availableModels: ["apricot-sorbet-high"],
+          },
+          {
+            ok: false,
+            code: "rate-limit",
+            message: "Notion AI rate limit response was returned.",
+          },
+        ]),
+    })
+
+    await expectLlmError(client.generate(llmRequest()), {
+      code: "rate-limit",
       isRetryable: false,
     })
   })
