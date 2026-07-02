@@ -78,12 +78,12 @@ export function BookingForm({
               type="button"
               className="glass-badge booking-form__slot-pill"
               onClick={() => onReselectDate()}
-              aria-label={`${formatBookingDateSelection(requestedDateSelection)} の相談希望日に戻って調整`}
+              aria-label={`${formatBookingDateSelection(requestedDateSelection)} の希望日に戻って調整`}
             >
               {formatBookingDateSelection(requestedDateSelection)}
             </button>
           ) : selectedSlots.length === 0 ? (
-            <span className="glass-badge booking-form__slot-pill">相談希望日未選択</span>
+            <span className="glass-badge booking-form__slot-pill">希望日未選択</span>
           ) : (
             selectedSlots.map((slot, index) => (
               <button
@@ -99,7 +99,7 @@ export function BookingForm({
           )}
         </div>
         <button className="booking-form__text-link" type="button" onClick={() => onReselectDate()}>
-          相談希望日
+          希望日
         </button>
       </div>
       {selectedSlots.length > 0 ? (
@@ -110,7 +110,7 @@ export function BookingForm({
       ) : null}
 
       <p className="booking-form__callout glass-flat">
-        送信時点では確定予約ではありません。相談希望日として内容をお預かりし、確認後に直接ご連絡します。
+        送信時点では確定予約ではありません。希望日として内容をお預かりし、確認後に直接ご連絡します。
       </p>
 
       <label className="booking-form__group">
@@ -132,12 +132,12 @@ export function BookingForm({
 
       <div className="booking-form__grid">
         <label className="booking-form__group">
-          <span className="booking-form__label">担当者氏名</span>
+          <span className="booking-form__label">氏名</span>
           <input className="glass-input booking-form__control" {...register("contactName")} />
           {errors.contactName ? <span className="booking-form__error">{errors.contactName.message}</span> : null}
         </label>
         <label className="booking-form__group">
-          <span className="booking-form__label">メールアドレス</span>
+          <span className="booking-form__label">メール</span>
           <input
             className={`glass-input booking-form__control${sessionEmailReadOnly ? " booking-form__control--readonly" : ""}`}
             readOnly={sessionEmailReadOnly}
@@ -150,7 +150,7 @@ export function BookingForm({
       <div className="booking-form__grid">
         <label className="booking-form__group">
           <span className="booking-form__label">
-            電話番号
+            TEL
             <span className="booking-form__label-optional">(任意)</span>
           </span>
           <input className="glass-input booking-form__control" type="tel" {...register("phone")} />
@@ -158,7 +158,7 @@ export function BookingForm({
       </div>
 
       <label className="booking-form__group">
-        <span className="booking-form__label">補足メモ</span>
+        <span className="booking-form__label">補足</span>
         <textarea className="glass-input booking-form__control" maxLength={1000} rows={5} {...register("memo")} />
         {errors.memo ? <span className="booking-form__error">{errors.memo.message}</span> : null}
       </label>

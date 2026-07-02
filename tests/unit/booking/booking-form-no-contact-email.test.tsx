@@ -18,7 +18,7 @@ describe("BookingForm email fields", () => {
     )
 
     expect(markup).not.toContain("連絡用メール")
-    expect(markup).toContain("メールアドレス")
+    expect(markup).toContain("メール")
     expect(markup).toContain('readOnly=""')
     expect(markup).toContain('name="sessionEmail"')
   })

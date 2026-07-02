@@ -38,7 +38,7 @@ function valueOrDash(value: string | string[]): string {
 
 function formatSlots(slots: BookingSlot[], requestedDateSelection?: BookingDateSelection | null): string {
   if (requestedDateSelection) return formatBookingDateSelection(requestedDateSelection)
-  if (slots.length === 0) return "相談希望日未選択"
+  if (slots.length === 0) return "希望日未選択"
   return slots.map((slot) => formatSlot(slot)).join(" / ")
 }
 
@@ -52,14 +52,14 @@ export function BookingConfirm({
 }: BookingConfirmProps) {
   const rows = [
     ["案件名", formData.projectTitle],
-    ["相談希望日", formatSlots(selectedSlots, requestedDateSelection)],
+    ["希望日", formatSlots(selectedSlots, requestedDateSelection)],
     ...(selectedSlots.length > 0 ? [["想定作業時間合計", formatDurationMinutes(getTotalDurationMinutes(selectedSlots))] as const] : []),
     ["納期", formData.dueDate],
     ["会社名", formData.companyName],
-    ["担当者氏名", formData.contactName],
-    ["メールアドレス", formData.sessionEmail],
-    ["電話番号", formData.phone],
-    ["補足メモ", formData.memo],
+    ["氏名", formData.contactName],
+    ["メール", formData.sessionEmail],
+    ["TEL", formData.phone],
+    ["補足", formData.memo],
   ] as const
 
   return (
@@ -72,7 +72,7 @@ export function BookingConfirm({
             <div className="booking-confirm__submit-actions">
               {onReselectDate ? (
                 <button className="booking-section__text-button" type="button" onClick={() => onReselectDate()}>
-                  相談希望日を選び直す
+                  希望日を選び直す
                 </button>
               ) : null}
               {onDismissSubmitError ? (

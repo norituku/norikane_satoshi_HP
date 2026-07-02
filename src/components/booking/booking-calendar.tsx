@@ -27,7 +27,6 @@ import type {
 } from "@fullcalendar/core"
 import { format } from "date-fns"
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
-import { signOut } from "next-auth/react"
 
 import { mapErrorCodeToJa, type BookingConflictsResponse } from "@/lib/booking/domain/api-schema"
 import { getHolidayName } from "@/lib/booking/domain/holidays"
@@ -707,8 +706,6 @@ export function BookingCalendar({
   const [slotMaxTime, setSlotMaxTime] = useState("19:00:00")
   const [moveCopyPopup, setMoveCopyPopup] = useState<MoveCopyPopupState>(null)
   const [adminMoveConfirm, setAdminMoveConfirm] = useState<AdminMoveConfirmState>(null)
-  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [actionPanelPosition, setActionPanelPosition] = useState<{ top: number; left: number } | null>(null)
   const calendarRef = useRef<FullCalendar | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -1730,11 +1727,6 @@ export function BookingCalendar({
     [createDraftFromRange, selectMonthDate],
   )
 
-  const handleLogoutConfirm = useCallback(async () => {
-    setIsLoggingOut(true)
-    await signOut({ callbackUrl: "/" })
-  }, [])
-
   const handleEventClick = useCallback((arg: EventClickArg) => {
     const props = arg.event.extendedProps as AnyEventProps
     if (props.kind === "draft" && props.draftId) {
@@ -2150,7 +2142,7 @@ export function BookingCalendar({
     setActionError(null)
     const dates = normalizeBookingDateKeys(selectedDateSelection.dates.filter(isSelectableMonthDateKey))
     if (dates.length === 0) {
-      setActionError("相談希望日を 1 日以上選択してください。")
+      setActionError("希望日を 1 日以上選択してください。")
       return
     }
     onCommit({ slots: [], requestedDateSelection: { dates } })
@@ -2259,13 +2251,10 @@ export function BookingCalendar({
           ) : null}
           {onSelectedTeamIdChange ? (
             <div className="booking-calendar__scope">
-              <label className="booking-calendar__scope-label" htmlFor="booking-team-scope">
-                <span className="booking-calendar__scope-label-full">ログイン状態</span>
-                <span className="booking-calendar__scope-label-compact">ログイン状態</span>
-              </label>
               <select
                 id="booking-team-scope"
                 className="booking-calendar__scope-select glass-input"
+                aria-label="表示対象"
                 value={selectedTeamId ?? ""}
                 onChange={(event) => {
                   onSelectedTeamIdChange(event.target.value || null)
@@ -2278,52 +2267,10 @@ export function BookingCalendar({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                className="booking-calendar__logout-button"
-                onClick={() => setIsLogoutConfirmOpen(true)}
-              >
-                ログアウト
-              </button>
             </div>
           ) : null}
         </div>
       </div>
-      {isLogoutConfirmOpen ? (
-        <div
-          className="booking-calendar__modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="booking-logout-title"
-        >
-          <div className="booking-calendar__modal-card glass-flat">
-            <h2 id="booking-logout-title" className="booking-calendar__modal-title">
-              ログアウトしますか？
-            </h2>
-            <p className="booking-calendar__modal-message">
-              予約カレンダーを使うには再ログインが必要になります。
-            </p>
-            <div className="booking-calendar__modal-actions">
-              <button
-                type="button"
-                className="booking-calendar__action-button"
-                onClick={() => setIsLogoutConfirmOpen(false)}
-                disabled={isLoggingOut}
-              >
-                キャンセル
-              </button>
-              <button
-                type="button"
-                className="booking-calendar__action-button booking-calendar__action-button--primary"
-                onClick={handleLogoutConfirm}
-                disabled={isLoggingOut}
-              >
-                {isLoggingOut ? "ログアウト中..." : "ログアウト"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {activePanelDraft && isSelectableView(view) && actionPanelPosition ? (
         <div
           ref={actionPanelRef}
@@ -2431,9 +2378,9 @@ export function BookingCalendar({
         </div>
         <div className="booking-calendar__date-request glass-flat" data-testid="booking-date-request-panel">
           <div className="booking-calendar__date-request-head">
-            <h2 className="booking-calendar__date-request-title">相談希望日</h2>
+            <h2 className="booking-calendar__date-request-title">希望日</h2>
             <p className="booking-calendar__date-request-note">
-              日付をタップして相談希望日を選んでください。もう一度タップすると解除できます。
+              日付をタップして希望日を選んでください。もう一度タップすると解除できます。
             </p>
           </div>
           <div className="booking-calendar__date-request-summary" aria-live="polite">
@@ -2442,7 +2389,7 @@ export function BookingCalendar({
               {selectedDateSelectionLabel ?? "未選択"}
             </strong>
             {selectedDateSelection ? null : (
-              <span className="booking-calendar__date-request-empty">相談希望日を 1 日以上選択してください。</span>
+              <span className="booking-calendar__date-request-empty">希望日を 1 日以上選択してください。</span>
             )}
           </div>
           <div className="booking-calendar__date-request-actions">

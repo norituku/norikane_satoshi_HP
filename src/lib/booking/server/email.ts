@@ -222,11 +222,11 @@ export async function sendChatbotBookingOwnerNotification(
       "HPチャットボット経由で Booking Order が送信されました。",
       "",
       `案件名: ${args.projectTitle}`,
-      `担当者氏名: ${args.contactName}`,
-      `メールアドレス: ${args.contactEmail}`,
+      `氏名: ${args.contactName}`,
+      `メール: ${args.contactEmail}`,
       `会社名: ${formatOptional(args.companyName)}`,
-      `候補日: ${schedule}`,
-      `補足ノート: ${formatOptional(args.memo)}`,
+      `希望日: ${schedule}`,
+      `補足: ${formatOptional(args.memo)}`,
       `予約番号: ${args.bookingGroupId}`,
       `送信日時: ${formatDateTime(submittedAt)}`,
       "経由: HPチャットボット Booking Order",
@@ -242,12 +242,12 @@ export async function sendBookingConfirmedEmail(args: BookingEmailArgs): Promise
   const scheduleLine = slots.length > 0
     ? `仮キープ候補日:\n${schedule}`
     : args.requestedDates?.length || args.requestedDateRange
-      ? `相談希望日: ${schedule}`
+      ? `希望日: ${schedule}`
       : "候補日: 候補日未選択（候補日未選択の相談として受け付けました）"
   const scheduleNote = slots.length > 0
     ? "選択された日程は実施日ではなく、仮キープ候補としてお預かりしています。"
     : args.requestedDates?.length || args.requestedDateRange
-      ? "選択された日程は確定予約ではなく、相談希望日としてお預かりしています。"
+      ? "選択された日程は確定予約ではなく、希望日としてお預かりしています。"
       : "候補日は未選択のため、日程は後ほど相談させてください。"
   const bookingGroupLine = args.bookingGroupId ? [`予約番号: ${args.bookingGroupId}`] : []
   return sendBookingEmail({

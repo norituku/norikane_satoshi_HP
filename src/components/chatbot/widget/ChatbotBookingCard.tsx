@@ -196,11 +196,11 @@ function BookingCompletionView({ booking }: { booking: BookingCompletionSummary 
             <dd className="mt-0.5 whitespace-pre-wrap text-hp">{booking.projectTitle}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-hp-muted">担当者氏名</dt>
+            <dt className="text-xs font-medium text-hp-muted">氏名</dt>
             <dd className="mt-0.5 text-hp">{booking.contactName}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-hp-muted">メールアドレス</dt>
+            <dt className="text-xs font-medium text-hp-muted">メール</dt>
             <dd className="mt-0.5 break-all text-hp">{booking.contactEmail}</dd>
           </div>
           <div>
@@ -208,11 +208,11 @@ function BookingCompletionView({ booking }: { booking: BookingCompletionSummary 
             <dd className="mt-0.5 text-hp">{displayOptionalValue(booking.companyName)}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-hp-muted">候補日</dt>
+            <dt className="text-xs font-medium text-hp-muted">希望日</dt>
             <dd className="mt-0.5 text-hp">{booking.scheduleLabel}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-hp-muted">補足ノート</dt>
+            <dt className="text-xs font-medium text-hp-muted">補足</dt>
             <dd className="mt-0.5 whitespace-pre-wrap text-hp">{displayOptionalValue(booking.memo)}</dd>
           </div>
         </dl>
@@ -429,7 +429,7 @@ export function ChatbotBookingCard({
       const result = {
         bookingGroupId: payload.bookingGroupId,
         bookingIds: payload.bookingIds,
-        scheduleLabel: payload.scheduleLabel ?? (selectedSlots.length > 0 ? formatSelectedSlots(selectedSlots) : "候補日未選択"),
+        scheduleLabel: payload.scheduleLabel ?? (selectedSlots.length > 0 ? formatSelectedSlots(selectedSlots) : "希望日未選択"),
         ...submission,
       }
       setBooked(result)
@@ -609,7 +609,7 @@ export function ChatbotBookingCard({
             ) : null}
             <p className="mt-3 text-xs leading-relaxed text-hp-muted" aria-live="polite">
               <span className="font-semibold text-hp">
-                {selectedSlots.length > 0 ? `${selectedSlots.length}／${requiredDays}` : "候補日未選択"}
+                {selectedSlots.length > 0 ? `${selectedSlots.length}／${requiredDays}` : "希望日未選択"}
               </span>
               {selectedSlots.length > 0 ? <span className="ml-2">{formatSelectedSlots(selectedSlots)}</span> : null}
             </p>
@@ -651,19 +651,19 @@ export function ChatbotBookingCard({
             />
           </label>
           <label className="block text-sm font-medium text-hp">
-            担当者氏名
+            氏名
             <RequiredMark />
             <input
               value={contactName}
               onChange={(event) => setContactName(event.target.value)}
               className="glass-input mt-2 w-full px-4 py-3 text-sm"
               placeholder="氏名"
-              aria-label="担当者氏名"
+              aria-label="氏名"
               required
             />
           </label>
           <label className="block text-sm font-medium text-hp sm:col-span-2">
-            メールアドレス
+            メール
             <RequiredMark />
             <input
               value={contactEmail}
@@ -672,33 +672,33 @@ export function ChatbotBookingCard({
               type="email"
               placeholder="client@example.jp"
               aria-invalid={contactEmailErrorVisible ? "true" : undefined}
-              aria-label="メールアドレス"
+              aria-label="メール"
               required
             />
           </label>
           {contactEmailErrorVisible ? (
             <p className="text-xs text-red-500 sm:col-span-2" role="alert">
-              メールアドレスの形式を確認してください
+              メールの形式を確認してください
             </p>
           ) : null}
           <label className="block text-sm font-medium text-hp sm:col-span-2">
-            電話番号
+            TEL
             <input
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               className="glass-input mt-2 w-full px-4 py-3 text-sm"
-              placeholder="連絡可能な電話番号"
-              aria-label="電話番号"
+              placeholder="連絡可能な TEL"
+              aria-label="TEL"
             />
           </label>
           <label className="block text-sm font-medium text-hp sm:col-span-2">
-            補足ノート
+            補足
             <textarea
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
               className="glass-input mt-2 min-h-24 w-full px-4 py-3 text-sm"
               placeholder="入力欄に入りきらない共有事項"
-              aria-label="補足ノート"
+              aria-label="補足"
             />
           </label>
         </div>

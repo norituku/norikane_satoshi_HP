@@ -22,7 +22,7 @@ function formatSlot(slot: BookingSlot): string {
 
 function formatSlots(slots: BookingSlot[], requestedDateSelection?: BookingDateSelection | null): string {
   if (requestedDateSelection) return formatBookingDateSelection(requestedDateSelection)
-  if (slots.length === 0) return "相談希望日未選択"
+  if (slots.length === 0) return "希望日未選択"
   return slots.map((slot) => formatSlot(slot)).join(" / ")
 }
 

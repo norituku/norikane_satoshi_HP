@@ -97,8 +97,8 @@ export const bookingFormSchema = z.object({
   projectTitle: z.string().trim().min(1, "案件名を入力してください").max(200, "200 字以内で入力してください"),
   dueDate: z.string(),
   companyName: z.string().trim().max(120, "120 字以内で入力してください"),
-  contactName: z.string().trim().min(1, "担当者氏名を入力してください").max(80, "80 字以内で入力してください"),
-  sessionEmail: z.string().email("認証済みメールアドレスを確認できません").max(254, "254 字以内で入力してください"),
+  contactName: z.string().trim().min(1, "氏名を入力してください").max(80, "80 字以内で入力してください"),
+  sessionEmail: z.string().email("認証済みメールを確認できません").max(254, "254 字以内で入力してください"),
   phone: z.string().trim().max(32, "32 字以内で入力してください"),
   memo: z.string().trim().max(2000, "2000 字以内で入力してください"),
   agreed: z.boolean().refine((value) => value, {

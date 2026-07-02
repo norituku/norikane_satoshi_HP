@@ -41,10 +41,10 @@ function createDescription(input: BookingApiInput): string {
     ["案件名", input.projectTitle],
     ["納期", input.dueDate],
     ["会社名", input.companyName],
-    ["担当者氏名", input.contactName],
-    ["メールアドレス", input.sessionEmail],
-    ["電話番号", input.phone],
-    ["補足メモ", input.memo],
+    ["氏名", input.contactName],
+    ["メール", input.sessionEmail],
+    ["TEL", input.phone],
+    ["補足", input.memo],
   ]
     .map(([label, value]) => `${label}: ${value.trim() || "-"}`)
     .join("\n")
@@ -135,7 +135,7 @@ export async function createBookingFromApiInput({
   const scheduleLabel = getScheduleLabel(input)
   const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
   const teamId = input.teamId ?? null
-  const storedMemo = [input.memo, hasSelectedSlots ? undefined : `相談希望日: ${scheduleLabel}`]
+  const storedMemo = [input.memo, hasSelectedSlots ? undefined : `希望日: ${scheduleLabel}`]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
     .join("\n")

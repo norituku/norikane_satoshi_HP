@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ExternalLink, MessageCircle } from "lucide-react"
 import { signIn } from "next-auth/react"
 
 import { BookingClientShell } from "@/components/booking/booking-client-shell"
@@ -34,7 +33,6 @@ type SessionPayload = {
   } | null
 }
 
-const LINE_OFFICIAL_ACCOUNT_URL = "https://line.me/R/ti/p/@044ucnym"
 const LIFF_ID = process.env.NEXT_PUBLIC_LINE_LIFF_ID ?? ""
 
 export function shouldStartLineProviderSignIn({
@@ -145,23 +143,6 @@ export function LiffBookingEntry({
     }
   }, [hpSession?.user?.id, hpSessionLoaded, state])
 
-  const openFriendAdd = async () => {
-    try {
-      const { default: liff } = await import("@line/liff")
-      if (liff.isInClient() && liff.isApiAvailable("requestFriendship")) {
-        await liff.requestFriendship()
-        return
-      }
-      if (liff.isInClient()) {
-        liff.openWindow({ url: LINE_OFFICIAL_ACCOUNT_URL, external: false })
-        return
-      }
-    } catch {
-      // Fall through to normal browser navigation.
-    }
-    window.location.href = LINE_OFFICIAL_ACCOUNT_URL
-  }
-
   return (
     <section className="mx-auto w-full max-w-[1440px] px-4 py-12 md:px-8 md:py-16 xl:px-12">
       <div className="glass-card p-8 md:p-10 xl:p-14">
@@ -177,15 +158,6 @@ export function LiffBookingEntry({
               </p>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="glass-btn inline-flex min-h-11 items-center gap-2 px-4 py-3 text-sm font-semibold text-hp"
-            onClick={() => void openFriendAdd()}
-          >
-            <MessageCircle aria-hidden="true" size={18} />
-            <span>友だち追加</span>
-            <ExternalLink aria-hidden="true" size={16} />
-          </button>
         </div>
 
         {state.status === "loading" ? (

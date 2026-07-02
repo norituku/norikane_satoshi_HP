@@ -386,7 +386,10 @@
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
   padding: 8px 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 button.booking-form__slot-pill {
@@ -500,6 +503,7 @@ button.booking-form__slot-pill:focus-visible {
 
 .booking-confirm {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 18px;
 }
@@ -537,6 +541,7 @@ button.booking-form__slot-pill:focus-visible {
 
 .booking-confirm__list {
   display: grid;
+  min-width: 0;
   gap: 0;
   padding: 18px;
 }
@@ -544,6 +549,7 @@ button.booking-form__slot-pill:focus-visible {
 .booking-confirm__row {
   display: grid;
   grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+  min-width: 0;
   gap: 16px;
   border-bottom: 1px solid var(--glass-border);
   padding: 12px 0;
@@ -555,7 +561,10 @@ button.booking-form__slot-pill:focus-visible {
 
 .booking-confirm__row dt,
 .booking-confirm__row dd {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .booking-done {
@@ -608,6 +617,11 @@ button.booking-form__slot-pill:focus-visible {
   .booking-form__checkbox-grid,
   .booking-footer {
     grid-template-columns: 1fr;
+  }
+
+  .booking-confirm__row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .booking-settings__button {

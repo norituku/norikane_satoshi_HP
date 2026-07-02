@@ -159,7 +159,7 @@ describe("createBookingFromApiInput", () => {
         data: expect.objectContaining({
           status: "NEEDS_SCHEDULE",
           pendingExpiresAt: null,
-          memo: "相談希望日: 候補日未選択",
+          memo: "希望日: 候補日未選択",
           timeSlots: { create: [] },
         }),
       }),
@@ -205,7 +205,7 @@ describe("createBookingFromApiInput", () => {
         data: expect.objectContaining({
           status: "NEEDS_SCHEDULE",
           pendingExpiresAt: null,
-          memo: expect.stringContaining("相談希望日:"),
+          memo: expect.stringContaining("希望日:"),
           timeSlots: { create: [] },
         }),
       }),

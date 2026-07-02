@@ -125,12 +125,12 @@ describe("booking email sender", () => {
     const message = mocks.send.mock.calls[0][0]
     expect(message.subject).toContain("【仮キープ受付】Date request")
     expect(message.subject).toContain("3日間")
-    expect(message.text).toContain("相談希望日:")
+    expect(message.text).toContain("希望日:")
     expect(message.text).toContain("2026/07/10")
     expect(message.text).not.toContain("2026/07/11")
     expect(message.text).toContain("2026/07/12")
     expect(message.text).toContain("2026/07/15")
-    expect(message.text).toContain("確定予約ではなく、相談希望日としてお預かりしています")
+    expect(message.text).toContain("確定予約ではなく、希望日としてお預かりしています")
     expect(message.subject).not.toMatch(/予約確定|本予約として確定|確定しました/)
     expect(message.text).not.toMatch(/予約確定|本予約として確定|確定しました/)
   })
@@ -201,7 +201,7 @@ describe("booking email sender", () => {
       html: expect.stringContaining("&lt;Color grading&gt;"),
     }))
     expect(mocks.send.mock.calls[0][0].text).toEqual(expect.stringContaining("予約番号: group_1"))
-    expect(mocks.send.mock.calls[0][0].text).toEqual(expect.stringContaining("候補日: 2026/06/10"))
+    expect(mocks.send.mock.calls[0][0].text).toEqual(expect.stringContaining("希望日: 2026/06/10"))
     expect(mocks.send.mock.calls[0][0].text).toEqual(expect.stringContaining("2026/06/12"))
   })
 
@@ -221,7 +221,7 @@ describe("booking email sender", () => {
 
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       to: "owner@example.com",
-      text: expect.stringContaining("候補日: 候補日未選択"),
+      text: expect.stringContaining("希望日: 候補日未選択"),
     }))
     delete process.env.CHATBOT_BOOKING_OWNER_EMAIL
   })
@@ -243,7 +243,7 @@ describe("booking email sender", () => {
 
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       to: "owner@example.com",
-      text: expect.stringContaining("候補日: 2026/07/10"),
+      text: expect.stringContaining("希望日: 2026/07/10"),
     }))
     expect(mocks.send.mock.calls[0][0].text).not.toContain("2026/07/11")
     expect(mocks.send.mock.calls[0][0].text).toContain("2026/07/12")

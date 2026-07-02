@@ -25,14 +25,14 @@ export const bookingApiSchema = bookingFormSchema
     if (value.selectedSlots.length === 0 && value.requestedDates.length === 0 && !value.requestedDateRange) {
       context.addIssue({
         code: "custom",
-        message: "相談希望日を選択してください",
+        message: "希望日を選択してください",
         path: ["requestedDates"],
       })
     }
     if (value.requestedDateRange && !isValidBookingDateRange(value.requestedDateRange)) {
       context.addIssue({
         code: "custom",
-        message: "相談希望日の終了日は開始日以降にしてください",
+        message: "希望日の終了日は開始日以降にしてください",
         path: ["requestedDateRange", "endDate"],
       })
     }
