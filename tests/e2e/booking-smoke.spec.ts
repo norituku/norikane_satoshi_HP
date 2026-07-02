@@ -113,6 +113,18 @@ test.describe("booking personal smoke", () => {
     await page.getByRole("button", { name: "日程相談を送信" }).click()
 
     await expect(page.getByRole("heading", { name: "日程相談を受け付けました" })).toBeVisible()
+    await expect(page.getByText("確認メールをお送りしました。内容を確認後、直接ご連絡します。")).toBeVisible()
+    await expect(page.getByRole("link", { name: "マイページで予約一覧を見る" })).toHaveAttribute("href", "/booking/history")
+    const overflowingDoneNodes = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth
+      return Array.from(document.querySelectorAll(".booking-done, .booking-done *"))
+        .map((node) => {
+          const rect = (node as HTMLElement).getBoundingClientRect()
+          return { tag: node.nodeName, className: (node as HTMLElement).className, left: rect.left, right: rect.right }
+        })
+        .filter((rect) => rect.left < -1 || rect.right > viewportWidth + 1)
+    })
+    expect(overflowingDoneNodes).toEqual([])
     await expect(page.getByText("カレンダー連携に一時的な問題が発生しています。時間をおいて再度お試しください")).toHaveCount(0)
     await expect(page.getByText("予約申込で予期せぬエラーが発生しました")).toHaveCount(0)
 
@@ -136,6 +148,12 @@ test.describe("booking personal smoke", () => {
       where: { projectTitle: `${prefix} personal`, status: "NEEDS_SCHEDULE" },
     })
     expect(scheduleRequestCount).toBe(1)
+    await page.goto("/booking/history")
+    await expect(page.getByRole("heading", { name: "予約一覧" })).toBeVisible()
+    const historyCard = page.locator(".booking-history__card", { hasText: `${prefix} personal` })
+    await expect(historyCard).toBeVisible()
+    await expect(historyCard).toContainText("受付済み")
+    await expect(historyCard).toContainText("希望日一覧")
     const scheduleRequest = await prisma.bookingGroup.findFirst({
       where: { projectTitle: `${prefix} personal`, status: "NEEDS_SCHEDULE" },
       select: { memo: true, timeSlots: { select: { id: true } } },

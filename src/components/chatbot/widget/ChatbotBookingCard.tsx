@@ -180,40 +180,40 @@ function displayOptionalValue(value: string | undefined): string {
 
 function BookingCompletionView({ booking }: { booking: BookingCompletionSummary }) {
   return (
-    <section className="glass-card space-y-5 p-5" aria-label="予約送信完了">
+    <section className="glass-card min-w-0 space-y-5 overflow-hidden p-5" aria-label="予約送信完了">
       <div>
         <p className="text-xs uppercase tracking-[0.18em] text-hp-muted">Booking</p>
-        <h2 className="mt-1 text-base font-semibold text-hp">予約を受け付けました</h2>
+        <h2 className="mt-1 break-words text-base font-semibold text-hp">予約を受け付けました</h2>
       </div>
 
-      <div className="glass-inset space-y-3 p-4" role="status">
+      <div className="glass-inset min-w-0 space-y-3 overflow-hidden p-4" role="status">
         <div>
           <p className="break-all text-sm font-semibold text-hp">予約番号: {booking.bookingGroupId}</p>
         </div>
-        <dl className="grid gap-2 text-sm">
+        <dl className="grid min-w-0 gap-2 text-sm">
           <div>
             <dt className="text-xs font-medium text-hp-muted">案件名</dt>
-            <dd className="mt-0.5 whitespace-pre-wrap text-hp">{booking.projectTitle}</dd>
+            <dd className="mt-0.5 min-w-0 whitespace-pre-wrap break-words text-hp">{booking.projectTitle}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-hp-muted">氏名</dt>
-            <dd className="mt-0.5 text-hp">{booking.contactName}</dd>
+            <dd className="mt-0.5 min-w-0 break-words text-hp">{booking.contactName}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-hp-muted">メール</dt>
-            <dd className="mt-0.5 break-all text-hp">{booking.contactEmail}</dd>
+            <dd className="mt-0.5 min-w-0 break-all text-hp">{booking.contactEmail}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-hp-muted">会社名</dt>
-            <dd className="mt-0.5 text-hp">{displayOptionalValue(booking.companyName)}</dd>
+            <dd className="mt-0.5 min-w-0 break-words text-hp">{displayOptionalValue(booking.companyName)}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-hp-muted">希望日</dt>
-            <dd className="mt-0.5 text-hp">{booking.scheduleLabel}</dd>
+            <dd className="mt-0.5 min-w-0 break-words text-hp">{booking.scheduleLabel}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-hp-muted">補足</dt>
-            <dd className="mt-0.5 whitespace-pre-wrap text-hp">{displayOptionalValue(booking.memo)}</dd>
+            <dd className="mt-0.5 min-w-0 whitespace-pre-wrap break-words text-hp">{displayOptionalValue(booking.memo)}</dd>
           </div>
         </dl>
       </div>

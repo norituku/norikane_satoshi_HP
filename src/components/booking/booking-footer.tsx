@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import type { BookingStep } from "@/lib/booking/domain/form-schema"
 
 type BookingFooterProps = {
@@ -22,9 +24,9 @@ export function BookingFooter({ step, canGoNext, submitting = false, onBack, onN
         <button className="booking-footer__secondary glass-flat" type="button" onClick={onReset}>
           カレンダーに戻る
         </button>
-        <button className="booking-footer__primary glass-btn" type="button" onClick={() => undefined}>
+        <Link className="booking-footer__primary glass-btn" href="/booking/history">
           マイページで予約一覧を見る
-        </button>
+        </Link>
       </footer>
     )
   }

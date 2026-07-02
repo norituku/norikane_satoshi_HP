@@ -346,7 +346,7 @@ export function BookingSection({
         />
       </div>
       <div className={step === "done" ? "booking-section__pane" : "booking-section__pane booking-section__pane--hidden"}>
-        <BookingDone selectedSlots={selectedSlots} requestedDateSelection={requestedDateSelection} />
+        <BookingDone selectedSlots={selectedSlots} requestedDateSelection={requestedDateSelection} entryPoint={entryPoint} />
       </div>
     </>
   )
