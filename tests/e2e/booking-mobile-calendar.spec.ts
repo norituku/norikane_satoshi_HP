@@ -305,6 +305,8 @@ test("LINE LIFF booking entry uses the same month-only candidate flow", async ({
   await expect(page.getByRole("button", { name: /友だち追加/ })).toHaveCount(0)
   await expect(page.getByText("ログイン状態")).toHaveCount(0)
   await expect(page.getByText("ログアウト")).toHaveCount(0)
+  await expect(page.locator("#booking-team-scope")).toHaveCount(0)
+  await expect(page.getByLabel("表示対象")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "週" })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "日", exact: true })).toHaveCount(0)
   await page.locator(`.fc-daygrid-day[data-date="${addDaysToDateKey(currentDateKey(), 1)}"] .fc-daygrid-day-number`).click()

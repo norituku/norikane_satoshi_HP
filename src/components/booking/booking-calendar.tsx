@@ -2230,6 +2230,7 @@ export function BookingCalendar({
   }, [markFullCalendarReadyIfSettled])
 
   const hideFullCalendarForMonthSkeleton = view === "dayGridMonth" && !isFullCalendarReady && Boolean(monthSkeleton)
+  const handleSelectedTeamIdChange = teams.length > 0 ? onSelectedTeamIdChange : undefined
 
   return (
     <div
@@ -2250,7 +2251,7 @@ export function BookingCalendar({
               {(adjustingTitle ?? projectTitle)?.trim() ? `${(adjustingTitle ?? projectTitle)!.trim()}案件の日時調整中` : "日時調整中"}
             </div>
           ) : null}
-          {onSelectedTeamIdChange ? (
+          {handleSelectedTeamIdChange ? (
             <div className="booking-calendar__scope">
               <select
                 id="booking-team-scope"
@@ -2258,7 +2259,7 @@ export function BookingCalendar({
                 aria-label="表示対象"
                 value={selectedTeamId ?? ""}
                 onChange={(event) => {
-                  onSelectedTeamIdChange(event.target.value || null)
+                  handleSelectedTeamIdChange(event.target.value || null)
                 }}
               >
                 <option value="">{viewerEmail || "個人"}</option>
