@@ -1,6 +1,11 @@
 import type { BookingApiInput } from "@/lib/booking/domain/api-schema"
 import { resolveConflictForFinalSubmit } from "@/lib/booking/domain/conflicts"
-import { bookingDateRangeToSelection, formatBookingDateSelection, type BookingDateSelection } from "@/lib/booking/domain/form-schema"
+import {
+  bookingDateRangeToSelection,
+  formatBookingDateSelection,
+  normalizeBookingDateKeys,
+  type BookingDateSelection,
+} from "@/lib/booking/domain/form-schema"
 import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/server/calendar-free-busy/free-busy"
 import { findConflictingBookings } from "@/lib/booking/server/conflicts"
 import { BookingConflictError } from "@/lib/booking/server/errors"
@@ -89,6 +94,37 @@ function nextDateKey(dateKey: string): string {
   const date = new Date(Date.UTC(year, month - 1, day))
   date.setUTCDate(date.getUTCDate() + 1)
   return date.toISOString().slice(0, 10)
+}
+
+type RequestedDateRange = {
+  start: string
+  end: string
+}
+
+function requestedDateRanges(dates: string[]): RequestedDateRange[] {
+  const normalizedDates = normalizeBookingDateKeys(dates)
+  if (normalizedDates.length === 0) return []
+
+  const ranges: RequestedDateRange[] = []
+  let start = normalizedDates[0]
+  let last = start
+
+  for (const date of normalizedDates.slice(1)) {
+    if (date === nextDateKey(last)) {
+      last = date
+      continue
+    }
+    ranges.push({ start, end: nextDateKey(last) })
+    start = date
+    last = date
+  }
+
+  ranges.push({ start, end: nextDateKey(last) })
+  return ranges
+}
+
+function requestedDateEventId(baseEventId: string, range: RequestedDateRange, index: number): string {
+  return index === 0 ? baseEventId : `${baseEventId}${range.start.replaceAll("-", "")}`
 }
 
 async function warnOnEmailFailure(task: Promise<unknown>, tag: string) {
@@ -308,30 +344,32 @@ export async function createBookingFromApiInput({
 
     try {
       const accessToken = await refreshStoredCalendarToken()
-      const firstDate = requestedDateSelection.dates[0]
-      const createEvent = () => createCalendarEvent({
-        calendarId,
-        summary,
-        description,
-        start: firstDate,
-        end: nextDateKey(firstDate),
-        colorId: "4",
-        accessToken,
-        eventId,
-        notionTaskType: notionTaskType ?? "仮押さえ",
-        dateOnly: true,
-        transparency: "transparent",
-      })
-      let event
-      try {
-        event = await createEvent()
-      } catch {
-        await wait(500)
-        event = await createEvent()
+      const ranges = requestedDateRanges(requestedDateSelection.dates)
+      const events: Array<{ id: string }> = []
+      for (const [index, range] of ranges.entries()) {
+        const createEvent = () => createCalendarEvent({
+          calendarId,
+          summary,
+          description,
+          start: range.start,
+          end: range.end,
+          colorId: "4",
+          accessToken,
+          eventId: requestedDateEventId(eventId, range, index),
+          notionTaskType: notionTaskType ?? "仮押さえ",
+          dateOnly: true,
+          transparency: "transparent",
+        })
+        try {
+          events.push(await createEvent())
+        } catch {
+          await wait(500)
+          events.push(await createEvent())
+        }
       }
       await prisma.bookingGroup.update({
         where: { id: bookingGroup.id },
-        data: { gcalEventId: event.id ?? null },
+        data: { gcalEventId: events[0]?.id ?? null },
       })
     } catch (error) {
       logPrivacySafeChatbotEvent({

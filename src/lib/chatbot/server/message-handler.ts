@@ -915,7 +915,19 @@ function contextualizeStoredActiveChoices(conversation: ChatbotConversation): Su
 
   const jobKind = resolveStoredOrHistoricalJobKind(conversation)
   if (!jobKind) return activeChoices
-  return projectLengthChoicesForJobKind(jobKind)
+  const knownGenericChoices =
+    activeChoices.question === projectLengthChoices.question &&
+    activeChoices.choices.length === projectLengthChoices.choices.length &&
+    activeChoices.choices.every((choice, index) => {
+      const knownChoice = projectLengthChoices.choices[index]
+      return choice.id === knownChoice?.id && choice.label === knownChoice.label
+    })
+  const choiceSetText = [activeChoices.question, ...activeChoices.choices.map((choice) => choice.label)].join(" ")
+
+  if (knownGenericChoices || hasProjectTypeTextMismatch(choiceSetText, jobKind)) {
+    return projectLengthChoicesForJobKind(jobKind)
+  }
+  return activeChoices
 }
 
 function resolveStoredOrHistoricalJobKind(conversation: ChatbotConversation): JobContext["jobKind"] | undefined {
