@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
-import type { CandidateWindow, ChatbotConversation, ChatbotMessage, ConversationState, JobContext } from "@/lib/chatbot/domain"
+import type {
+  CandidateWindow,
+  ChatbotConversation,
+  ChatbotMessage,
+  ConversationState,
+  JobContext,
+  SurveyChoiceSet,
+} from "@/lib/chatbot/domain"
 import {
   additionalWorkChoices,
   bookingFinalConfirmationChoices,
@@ -401,6 +408,59 @@ describe("handleChatbotMessage user context", () => {
           }),
         }),
         jobContext: expect.objectContaining({ jobKind: "drama-first" }),
+      }),
+    )
+  })
+
+  it("keeps an LLM-authored project-length panel stable until its displayed choice is answered", async () => {
+    const authoredChoices = {
+      id: "project-length",
+      question: "映像の長さはどのくらいですか？（例: 60分、120分など）",
+      choices: [
+        { id: "live-authored-60m", label: "60分" },
+        { id: "live-authored-90m", label: "90分" },
+        { id: "live-authored-120m", label: "120分" },
+      ],
+    } satisfies SurveyChoiceSet
+    const harness = setup({
+      existingConversation: conversation({
+        context: {
+          sessionId: "session_1",
+          userId: "user_a",
+          activeChoices: authoredChoices,
+          currentQuestion: authoredChoices.question,
+          conversationState: {
+            hasJobKind: true,
+            hasProjectLength: false,
+            turnCount: 2,
+          },
+          jobContext: { jobKind: "live-60m" },
+        },
+      }),
+    })
+
+    await handleChatbotMessage(
+      {
+        sessionId: "session_1",
+        userId: "user_a",
+        message: "選択: 120分",
+      },
+      harness.options,
+    )
+
+    expect(harness.repository.updateConversationRouting).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationState: expect.objectContaining({
+          hasProjectLength: true,
+          activeIntakeClarification: undefined,
+        }),
+        jobContext: expect.objectContaining({ projectLengthMinutes: 120 }),
+      }),
+    )
+    expect(harness.slackNotifier).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        flowStep: "choice-clarification",
+        flowStepReason: "project-length-choice-mismatch",
       }),
     )
   })

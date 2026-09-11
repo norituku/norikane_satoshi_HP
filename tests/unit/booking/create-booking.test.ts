@@ -271,7 +271,8 @@ describe("createBookingFromApiInput", () => {
         }),
       }),
     )
-    expect(service.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(service.createCalendarEvent).toHaveBeenCalledTimes(3)
+    expect(service.createCalendarEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
       summary: "【仮キープ】Color grading / Satoshi",
       start: "2026-07-10",
       end: "2026-07-11",
@@ -280,6 +281,16 @@ describe("createBookingFromApiInput", () => {
       notionTaskType: "仮押さえ",
       dateOnly: true,
       transparency: "transparent",
+    }))
+    expect(service.createCalendarEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      start: "2026-07-12",
+      end: "2026-07-13",
+      eventId: "group120260712",
+    }))
+    expect(service.createCalendarEvent).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      start: "2026-07-15",
+      end: "2026-07-16",
+      eventId: "group120260715",
     }))
     expect(service.prisma.bookingGroup.update).toHaveBeenCalledWith({
       where: { id: "group_1" },
@@ -290,5 +301,43 @@ describe("createBookingFromApiInput", () => {
       requestedDates: ["2026-07-10", "2026-07-12", "2026-07-15"],
       selectedSlots: [],
     }))
+  })
+
+  it("coalesces consecutive requested dates without holding unrequested gap days", async () => {
+    const service = await loadCreateBooking()
+    service.createCalendarEvent
+      .mockResolvedValueOnce({ id: "gcal_primary" })
+      .mockResolvedValueOnce({ id: "gcal_secondary" })
+
+    await service.createBookingFromApiInput({
+      input: bookingInput({
+        selectedSlots: [],
+        requestedDates: [
+          "2026-11-01",
+          "2026-11-03",
+          "2026-11-04",
+          "2026-11-05",
+          "2026-11-06",
+        ],
+      }),
+      userId: "user_1",
+      userEmail: "satoshi@example.com",
+    })
+
+    expect(service.createCalendarEvent).toHaveBeenCalledTimes(2)
+    expect(service.createCalendarEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      start: "2026-11-01",
+      end: "2026-11-02",
+      eventId: "group1",
+    }))
+    expect(service.createCalendarEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      start: "2026-11-03",
+      end: "2026-11-07",
+      eventId: "group120261103",
+    }))
+    expect(service.prisma.bookingGroup.update).toHaveBeenCalledWith({
+      where: { id: "group_1" },
+      data: { gcalEventId: "gcal_primary" },
+    })
   })
 })
