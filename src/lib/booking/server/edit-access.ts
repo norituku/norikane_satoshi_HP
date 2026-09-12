@@ -31,6 +31,69 @@ export type AccessibleBooking = {
   timeSlots: EditableBookingTimeSlot[]
 }
 
+export type AccessibleBookingGroup = {
+  bookingGroupId: string
+  scope: BookingAccessScope
+  details: EditableBookingDetails
+  timeSlots: EditableBookingTimeSlot[]
+}
+
+export async function findAccessibleBookingGroup(
+  bookingGroupId: string,
+  userId: string,
+  isAdmin: boolean,
+): Promise<AccessibleBookingGroup | null> {
+  const group = await prisma.bookingGroup.findUnique({
+    where: { id: bookingGroupId },
+    select: {
+      id: true,
+      projectTitle: true,
+      contactName: true,
+      customerEmail: true,
+      phone: true,
+      companyName: true,
+      memo: true,
+      dueDate: true,
+      teamId: true,
+      status: true,
+      customer: { select: { userId: true } },
+      team: { select: { members: { select: { userId: true } } } },
+      timeSlots: {
+        orderBy: { startTime: "asc" },
+        select: { id: true, startTime: true, endTime: true, status: true },
+      },
+    },
+  })
+  if (!group) return null
+  const customerUserId = group.customer.userId
+  const isOwner = customerUserId === userId
+  const isTeamMember = group.team?.members.some((member) => member.userId === userId) ?? false
+  const scope: BookingAccessScope | null = isAdmin ? "admin" : isOwner ? "owner" : isTeamMember ? "team" : null
+  if (!scope) return null
+  return {
+    bookingGroupId: group.id,
+    scope,
+    details: {
+      projectTitle: group.projectTitle,
+      contactName: group.contactName,
+      customerEmail: group.customerEmail,
+      phone: group.phone,
+      companyName: group.companyName,
+      memo: group.memo,
+      dueDate: group.dueDate,
+      teamId: group.teamId,
+      customerUserId,
+      status: group.status,
+    },
+    timeSlots: group.timeSlots.map((slot) => ({
+      id: slot.id,
+      startTime: slot.startTime.toISOString(),
+      endTime: slot.endTime.toISOString(),
+      status: slot.status,
+    })),
+  }
+}
+
 export async function findAccessibleSlot(
   slotId: string,
   userId: string,

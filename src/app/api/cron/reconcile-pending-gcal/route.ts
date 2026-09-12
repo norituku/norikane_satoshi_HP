@@ -9,6 +9,11 @@ import {
   CALENDAR_TOKEN_USER_ID,
   getCalendarEvent,
 } from "@/lib/google-calendar/server"
+import {
+  BOOKING_CALENDAR_EVENT_STATUS,
+  continueBookingGroupCalendarReplacement,
+  syncCalendarEventIntent,
+} from "@/lib/booking/server/calendar-event-lifecycle"
 import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
@@ -20,6 +25,11 @@ type ReconcileCounters = {
   reconciledCount: number
   failedCount: number
   rollbackCount: number
+  eventVerifiedCount: number
+  eventRecreatedCount: number
+  eventUpdatedCount: number
+  eventDeletedCount: number
+  eventPendingCount: number
 }
 
 type ChatbotCleanupSummary =
@@ -112,6 +122,47 @@ async function runChatbotCleanup(): Promise<ChatbotCleanupSummary> {
   }
 }
 
+async function settleBookingGroupFromManagedEvents(bookingGroupId: string): Promise<void> {
+  const [group, events] = await Promise.all([
+    prisma.bookingGroup.findUnique({
+      where: { id: bookingGroupId },
+      select: { id: true, status: true },
+    }),
+    prisma.bookingCalendarEvent.findMany({
+      where: { bookingGroupId },
+      orderBy: { createdAt: "asc" },
+      select: { eventId: true, status: true },
+    }),
+  ])
+  if (!group || events.length === 0) return
+
+  if (events.every((event) => event.status === BOOKING_CALENDAR_EVENT_STATUS.cancelled)) {
+    await prisma.$transaction([
+      prisma.bookingTimeSlot.updateMany({
+        where: { bookingGroupId },
+        data: { status: "CANCELLED" },
+      }),
+      prisma.bookingGroup.update({
+        where: { id: bookingGroupId },
+        data: { status: "CANCELLED", gcalEventId: null, pendingExpiresAt: null },
+      }),
+    ])
+    return
+  }
+
+  if (group.status === "PENDING_GCAL_REPLACE") return
+  if (!events.every((event) => event.status === BOOKING_CALENDAR_EVENT_STATUS.confirmed)) return
+  const primaryEventId = events[0]?.eventId ?? null
+  if (group.status === "PENDING_GCAL") {
+    await markConfirmed(bookingGroupId, primaryEventId)
+    return
+  }
+  await prisma.bookingGroup.update({
+    where: { id: bookingGroupId },
+    data: { gcalEventId: primaryEventId, pendingExpiresAt: null },
+  })
+}
+
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
@@ -122,6 +173,11 @@ export async function GET(request: NextRequest) {
     reconciledCount: 0,
     failedCount: 0,
     rollbackCount: 0,
+    eventVerifiedCount: 0,
+    eventRecreatedCount: 0,
+    eventUpdatedCount: 0,
+    eventDeletedCount: 0,
+    eventPendingCount: 0,
   }
 
   let chatbotCleanup: ChatbotCleanupSummary
@@ -131,10 +187,66 @@ export async function GET(request: NextRequest) {
       console.error("[RECONCILE_PENDING]", "GOOGLE_CALENDAR_BUSY_SOURCE_ID is not set")
     } else {
       const { token } = await getCachedCalendarAccessToken(CALENDAR_TOKEN_USER_ID)
+      const verifyBefore = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const managedEvents = await prisma.bookingCalendarEvent.findMany({
+        where: {
+          OR: [
+            { status: { in: [
+              BOOKING_CALENDAR_EVENT_STATUS.pendingCreate,
+              BOOKING_CALENDAR_EVENT_STATUS.pendingUpdate,
+              BOOKING_CALENDAR_EVENT_STATUS.pendingDelete,
+            ] } },
+            {
+              status: BOOKING_CALENDAR_EVENT_STATUS.confirmed,
+              OR: [
+                { lastVerifiedAt: null },
+                { lastVerifiedAt: { lt: verifyBefore } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ lastAttemptAt: "asc" }, { createdAt: "asc" }],
+        take: 100,
+      })
+      const affectedGroupIds = new Set<string>()
+      for (const event of managedEvents) {
+        affectedGroupIds.add(event.bookingGroupId)
+        const result = await syncCalendarEventIntent({
+          event,
+          calendarId,
+          accessToken: token,
+          verifyConfirmed: event.status === BOOKING_CALENDAR_EVENT_STATUS.confirmed,
+        })
+        if (!result.ok) counters.eventPendingCount += 1
+        else if (result.action === "verified") counters.eventVerifiedCount += 1
+        else if (result.action === "created") counters.eventRecreatedCount += 1
+        else if (result.action === "updated") counters.eventUpdatedCount += 1
+        else if (result.action === "deleted") counters.eventDeletedCount += 1
+      }
+      for (const bookingGroupId of affectedGroupIds) {
+        await settleBookingGroupFromManagedEvents(bookingGroupId)
+      }
+      const pendingReplacements = await prisma.bookingGroup.findMany({
+        where: { status: "PENDING_GCAL_REPLACE" },
+        orderBy: { pendingExpiresAt: "asc" },
+        select: { id: true },
+        take: 50,
+      })
+      for (const group of pendingReplacements) {
+        const replacement = await continueBookingGroupCalendarReplacement({
+          bookingGroupId: group.id,
+          calendarId,
+          accessToken: token,
+        })
+        counters.eventDeletedCount += replacement.deleteResults.filter((result) => result.ok).length
+        counters.eventPendingCount += replacement.deleteResults.filter((result) => !result.ok).length
+      }
+
       const expiredGroups = await prisma.bookingGroup.findMany({
         where: {
           status: { in: [...PENDING_STATUSES] },
           pendingExpiresAt: { lt: new Date() },
+          calendarEvents: { none: {} },
         },
         include: {
           timeSlots: {

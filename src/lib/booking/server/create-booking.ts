@@ -3,19 +3,24 @@ import { resolveConflictForFinalSubmit } from "@/lib/booking/domain/conflicts"
 import {
   bookingDateRangeToSelection,
   formatBookingDateSelection,
-  normalizeBookingDateKeys,
   type BookingDateSelection,
 } from "@/lib/booking/domain/form-schema"
 import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/server/calendar-free-busy/free-busy"
 import { findConflictingBookings } from "@/lib/booking/server/conflicts"
 import { BookingConflictError } from "@/lib/booking/server/errors"
 import {
+  allCalendarEventSyncsSucceeded,
+  buildRequestedDateCalendarEventIntents,
+  persistCalendarEventIntents,
+  syncBookingGroupCalendarEvents,
+  type BookingCalendarEventIntent,
+} from "@/lib/booking/server/calendar-event-lifecycle"
+import {
   sendBookingConfirmedEmail,
   type BookingEmailArgs,
 } from "@/lib/booking/server/email"
 import {
   CALENDAR_TOKEN_USER_ID,
-  createCalendarEvent,
   refreshCalendarAccessToken,
   type CalendarEventWriteInput,
 } from "@/lib/google-calendar/server"
@@ -87,44 +92,6 @@ function getScheduleLabel(input: BookingApiInput): string {
   }
   const requestedDateSelection = getRequestedDateSelection(input)
   return requestedDateSelection ? formatBookingDateSelection(requestedDateSelection) : "候補日未選択"
-}
-
-function nextDateKey(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString().slice(0, 10)
-}
-
-type RequestedDateRange = {
-  start: string
-  end: string
-}
-
-function requestedDateRanges(dates: string[]): RequestedDateRange[] {
-  const normalizedDates = normalizeBookingDateKeys(dates)
-  if (normalizedDates.length === 0) return []
-
-  const ranges: RequestedDateRange[] = []
-  let start = normalizedDates[0]
-  let last = start
-
-  for (const date of normalizedDates.slice(1)) {
-    if (date === nextDateKey(last)) {
-      last = date
-      continue
-    }
-    ranges.push({ start, end: nextDateKey(last) })
-    start = date
-    last = date
-  }
-
-  ranges.push({ start, end: nextDateKey(last) })
-  return ranges
-}
-
-function requestedDateEventId(baseEventId: string, range: RequestedDateRange, index: number): string {
-  return index === 0 ? baseEventId : `${baseEventId}${range.start.replaceAll("-", "")}`
 }
 
 async function warnOnEmailFailure(task: Promise<unknown>, tag: string) {
@@ -205,10 +172,6 @@ function operationalErrorCode(error: unknown): string {
   return "unknown_error"
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export async function createBookingFromApiInput({
   input,
   notionTaskType,
@@ -223,6 +186,7 @@ export async function createBookingFromApiInput({
   const scheduleLabel = getScheduleLabel(input)
   const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
   const teamId = input.teamId ?? null
+  const requestedDateSelection = hasSelectedSlots ? null : getRequestedDateSelection(input)
   const storedMemo = [input.memo, hasSelectedSlots ? undefined : `希望日: ${scheduleLabel}`]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
@@ -231,9 +195,9 @@ export async function createBookingFromApiInput({
   if (idempotencyKey) {
     const existing = await prisma.bookingGroup.findUnique({
       where: { chatbotIdempotencyKey: idempotencyKey },
-      include: { timeSlots: true },
+      include: { timeSlots: true, calendarEvents: true },
     })
-    if (existing) return existingIdempotentBookingResult(existing)
+    if (existing) return existingIdempotentBookingResult(existing, calendarId)
   }
 
   const customer = await prisma.customer.upsert({
@@ -266,7 +230,7 @@ export async function createBookingFromApiInput({
       const conflict = resolveConflictForFinalSubmit(conflicts)
       if (conflict) throw new BookingConflictError(conflict)
 
-      return tx.bookingGroup.create({
+      const created = await tx.bookingGroup.create({
         data: {
           customerId: customer.id,
           teamId,
@@ -292,15 +256,38 @@ export async function createBookingFromApiInput({
         },
         include: { timeSlots: true },
       })
+      const baseEventId = sanitizeGcalEventId(created.id)
+      const calendarEventIntents: BookingCalendarEventIntent[] = hasSelectedSlots
+        ? [{
+            eventId: baseEventId,
+            startValue: primarySlot.start,
+            endValue: primarySlot.end,
+            dateOnly: false,
+            summary: createSummary(input),
+            description: createDescription(input),
+            colorId: "9",
+            notionTaskType: notionTaskType ?? "仮押さえ",
+          }]
+        : (requestedDateSelection?.dates.length
+            ? buildRequestedDateCalendarEventIntents({
+                bookingGroupId: created.id,
+                dates: requestedDateSelection.dates,
+                summary: createSummary(input),
+                description: createDescription(input),
+                notionTaskType: notionTaskType ?? "仮押さえ",
+              })
+            : [])
+      await persistCalendarEventIntents(tx, created.id, calendarEventIntents)
+      return created
     }, { maxWait: 5000, timeout: 10000 })
   } catch (error) {
     if (!idempotencyKey || !isUniqueConstraintViolation(error)) throw error
     const existing = await prisma.bookingGroup.findUnique({
       where: { chatbotIdempotencyKey: idempotencyKey },
-      include: { timeSlots: true },
+      include: { timeSlots: true, calendarEvents: true },
     })
     if (!existing) throw error
-    return existingIdempotentBookingResult(existing)
+    return existingIdempotentBookingResult(existing, calendarId)
   }
 
   const bookingIds = bookingGroup.timeSlots.map((slot) => slot.id)
@@ -320,12 +307,7 @@ export async function createBookingFromApiInput({
     })
   }
 
-  const description = createDescription(input)
-  const summary = createSummary(input)
-  const eventId = sanitizeGcalEventId(bookingGroup.id)
-
   if (!hasSelectedSlots) {
-    const requestedDateSelection = getRequestedDateSelection(input)
     if (!calendarId || !requestedDateSelection?.dates.length) {
       await sendCustomerReceipt(input, userEmail, bookingGroup.id, scheduleLabel)
       return {
@@ -344,33 +326,30 @@ export async function createBookingFromApiInput({
 
     try {
       const accessToken = await refreshStoredCalendarToken()
-      const ranges = requestedDateRanges(requestedDateSelection.dates)
-      const events: Array<{ id: string }> = []
-      for (const [index, range] of ranges.entries()) {
-        const createEvent = () => createCalendarEvent({
-          calendarId,
-          summary,
-          description,
-          start: range.start,
-          end: range.end,
-          colorId: "4",
-          accessToken,
-          eventId: requestedDateEventId(eventId, range, index),
-          notionTaskType: notionTaskType ?? "仮押さえ",
-          dateOnly: true,
-          transparency: "transparent",
-        })
-        try {
-          events.push(await createEvent())
-        } catch {
-          await wait(500)
-          events.push(await createEvent())
-        }
-      }
+      const results = await syncBookingGroupCalendarEvents({ bookingGroupId: bookingGroup.id, calendarId, accessToken })
+      const primaryEventId = results.find((result) => result.ok)?.eventId ?? null
       await prisma.bookingGroup.update({
         where: { id: bookingGroup.id },
-        data: { gcalEventId: events[0]?.id ?? null },
+        data: {
+          gcalEventId: primaryEventId,
+          pendingExpiresAt: allCalendarEventSyncsSucceeded(results) ? null : new Date(Date.now() + 60_000),
+        },
       })
+      if (!allCalendarEventSyncsSucceeded(results)) {
+        await sendCustomerReceipt(input, userEmail, bookingGroup.id, scheduleLabel)
+        return {
+          body: {
+            status: "pending_reconcile",
+            bookingGroupId: bookingGroup.id,
+            bookingIds,
+            bookingStatus: "NEEDS_SCHEDULE",
+            scheduleStatus: "processing",
+            scheduleLabel,
+          },
+          status: 202,
+          headers: { "Retry-After": "60" },
+        }
+      }
     } catch (error) {
       logPrivacySafeChatbotEvent({
         event: "booking_calendar_write_failed",
@@ -379,15 +358,20 @@ export async function createBookingFromApiInput({
       })
       await prisma.bookingGroup.update({
         where: { id: bookingGroup.id },
-        data: { status: "FAILED", pendingExpiresAt: null },
+        data: { pendingExpiresAt: new Date(Date.now() + 60_000) },
       })
 
       return {
         body: {
-          error: "calendar_unavailable",
+          status: "pending_reconcile",
           bookingGroupId: bookingGroup.id,
+          bookingIds,
+          bookingStatus: "NEEDS_SCHEDULE",
+          scheduleStatus: "processing",
+          scheduleLabel,
         },
-        status: 502,
+        status: 202,
+        headers: { "Retry-After": "60" },
       }
     }
 
@@ -428,46 +412,25 @@ export async function createBookingFromApiInput({
   let gcalEventId: string | null
   try {
     const accessToken = await refreshStoredCalendarToken()
-    const createEvent = () => createCalendarEvent({
-      calendarId,
-      summary,
-      description,
-      start: primarySlot.start,
-      end: primarySlot.end,
-      colorId: "9",
-      accessToken,
-      eventId,
-      notionTaskType: notionTaskType ?? "仮押さえ",
-    })
-    let event
-    try {
-      event = await createEvent()
-    } catch {
-      await wait(500)
-      event = await createEvent()
+    const results = await syncBookingGroupCalendarEvents({ bookingGroupId: bookingGroup.id, calendarId, accessToken })
+    gcalEventId = results.find((result) => result.ok)?.eventId ?? null
+    if (!allCalendarEventSyncsSucceeded(results)) {
+      return {
+        body: { status: "pending_reconcile", bookingGroupId: bookingGroup.id, gcalEventId },
+        status: 202,
+        headers: { "Retry-After": "60" },
+      }
     }
-    gcalEventId = event.id ?? null
   } catch (error) {
     logPrivacySafeChatbotEvent({
       event: "booking_calendar_write_failed",
       dateOnly: false,
       errorCode: operationalErrorCode(error),
     })
-    await prisma.bookingGroup.update({
-      where: { id: bookingGroup.id },
-      data: { status: "FAILED", pendingExpiresAt: null },
-    })
-    await prisma.bookingTimeSlot.updateMany({
-      where: { bookingGroupId: bookingGroup.id },
-      data: { status: "FAILED" },
-    })
-
     return {
-      body: {
-        error: "calendar_unavailable",
-        bookingGroupId: bookingGroup.id,
-      },
-      status: 502,
+      body: { status: "pending_reconcile", bookingGroupId: bookingGroup.id, gcalEventId: null },
+      status: 202,
+      headers: { "Retry-After": "60" },
     }
   }
 
@@ -519,12 +482,14 @@ export async function createBookingFromApiInput({
   }
 }
 
-function existingIdempotentBookingResult(existing: {
+async function existingIdempotentBookingResult(existing: {
   id: string
   status: string
   timeSlots: Array<{ id: string; startTime?: Date; endTime?: Date }>
-}): CreateBookingResult {
+  calendarEvents?: Array<{ status: string }>
+}, calendarId?: string): Promise<CreateBookingResult> {
   const bookingIds = existing.timeSlots.map((slot) => slot.id)
+  let effectiveStatus = existing.status
   const scheduleLabel = existing.timeSlots.length > 0
     ? existing.timeSlots
         .map((slot) => slot.startTime && slot.endTime ? `${slot.startTime.toISOString()} - ${slot.endTime.toISOString()}` : "")
@@ -532,40 +497,99 @@ function existingIdempotentBookingResult(existing: {
         .join(" / ")
     : "候補日未選択"
 
-  if (existing.status === "FAILED") {
+  const hasPendingCalendarEvents = existing.calendarEvents?.some((event) =>
+    event.status === "PENDING_CREATE" || event.status === "PENDING_UPDATE" || event.status === "PENDING_DELETE") ?? false
+  if (hasPendingCalendarEvents && calendarId) {
+    try {
+      const accessToken = await refreshStoredCalendarToken()
+      const results = await syncBookingGroupCalendarEvents({ bookingGroupId: existing.id, calendarId, accessToken })
+      if (!allCalendarEventSyncsSucceeded(results)) {
+        return {
+          status: 202,
+          headers: { "Retry-After": "60" },
+          body: {
+            status: "processing",
+            bookingGroupId: existing.id,
+            bookingIds,
+            bookingStatus: effectiveStatus,
+            scheduleLabel,
+            idempotentReplay: true,
+          },
+        }
+      }
+      const primaryEventId = results[0]?.eventId ?? null
+      if (existing.timeSlots.length > 0 && effectiveStatus === "PENDING_GCAL") {
+        await prisma.$transaction([
+          prisma.bookingGroup.update({
+            where: { id: existing.id },
+            data: {
+              status: "CONFIRMED",
+              gcalEventId: primaryEventId,
+              pendingExpiresAt: null,
+            },
+          }),
+          prisma.bookingTimeSlot.updateMany({
+            where: { bookingGroupId: existing.id },
+            data: { status: "CONFIRMED" },
+          }),
+        ])
+        effectiveStatus = "CONFIRMED"
+      } else {
+        await prisma.bookingGroup.update({
+          where: { id: existing.id },
+          data: { gcalEventId: primaryEventId, pendingExpiresAt: null },
+        })
+      }
+    } catch {
+      return {
+        status: 202,
+        headers: { "Retry-After": "60" },
+        body: {
+          status: "processing",
+          bookingGroupId: existing.id,
+          bookingIds,
+          bookingStatus: effectiveStatus,
+          scheduleLabel,
+          idempotentReplay: true,
+        },
+      }
+    }
+  }
+
+  if (effectiveStatus === "FAILED") {
     return {
       status: 502,
       body: { error: "calendar_unavailable", bookingGroupId: existing.id, idempotentReplay: true },
     }
   }
-  if (existing.status === "CANCELLED") {
+  if (effectiveStatus === "CANCELLED") {
     return {
       status: 409,
       body: { error: "booking_cancelled", bookingGroupId: existing.id, idempotentReplay: true },
     }
   }
-  if (existing.status === "PENDING_GCAL") {
+  if (effectiveStatus === "PENDING_GCAL") {
     return {
       status: 202,
       body: {
         status: "processing",
         bookingGroupId: existing.id,
         bookingIds,
-        bookingStatus: existing.status,
+        bookingStatus: effectiveStatus,
         scheduleLabel,
         idempotentReplay: true,
       },
     }
   }
 
-  const needsSchedule = existing.status === "NEEDS_SCHEDULE"
+  const needsSchedule = effectiveStatus === "NEEDS_SCHEDULE"
   return {
     status: 200,
     body: {
       status: needsSchedule ? "schedule_unselected" : "ok",
       bookingGroupId: existing.id,
       bookingIds,
-      bookingStatus: existing.status,
+      bookingStatus: effectiveStatus,
       ...(needsSchedule ? { scheduleStatus: "unscheduled" } : {}),
       scheduleLabel,
       idempotentReplay: true,

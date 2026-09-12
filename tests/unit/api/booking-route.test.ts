@@ -12,14 +12,22 @@ const mocks = vi.hoisted(() => ({
   sendLineBookingReceipt: vi.fn(),
   refreshCalendarAccessToken: vi.fn(),
   createCalendarEvent: vi.fn(),
-  deleteCalendarEvent: vi.fn(),
+  cancelBookingGroupCalendarEvents: vi.fn(),
+  getCachedCalendarAccessToken: vi.fn(),
+  calendarEventRows: [] as Array<Record<string, unknown>>,
   prisma: {
     $transaction: vi.fn(),
     customer: {
       upsert: vi.fn(),
     },
     bookingGroup: {
+      findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
+    },
+    bookingCalendarEvent: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
     },
     bookingTimeSlot: {
@@ -50,12 +58,21 @@ vi.mock("@/lib/booking/server/team-access", () => ({ isTeamMember: mocks.isTeamM
 vi.mock("@/lib/booking/server/calendar-free-busy/free-busy", () => ({
   invalidateCalendarFreeBusyCacheForUser: mocks.invalidateCalendarFreeBusyCacheForUser,
 }))
+vi.mock("@/lib/booking/server/calendar-free-busy/google-token-cache", () => ({
+  getCachedCalendarAccessToken: mocks.getCachedCalendarAccessToken,
+}))
+vi.mock("@/lib/booking/server/calendar-event-lifecycle", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/booking/server/calendar-event-lifecycle")>()
+  return {
+    ...original,
+    cancelBookingGroupCalendarEvents: mocks.cancelBookingGroupCalendarEvents,
+  }
+})
 vi.mock("@/lib/booking/server/email", () => ({ sendBookingConfirmedEmail: mocks.sendBookingConfirmedEmail }))
 vi.mock("@/lib/line/messaging", () => ({ sendLineBookingReceipt: mocks.sendLineBookingReceipt }))
 vi.mock("@/lib/google-calendar/server", () => ({
   CALENDAR_TOKEN_USER_ID: "satoshi-calendar-owner",
   createCalendarEvent: mocks.createCalendarEvent,
-  deleteCalendarEvent: mocks.deleteCalendarEvent,
   refreshCalendarAccessToken: mocks.refreshCalendarAccessToken,
 }))
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }))
@@ -92,6 +109,7 @@ function validBooking(overrides: Record<string, unknown> = {}) {
 }
 
 function mockHappyPath() {
+  mocks.calendarEventRows.length = 0
   mocks.auth.mockResolvedValue({
     user: { id: "user_1", email: "satoshi@example.com" },
   })
@@ -99,6 +117,30 @@ function mockHappyPath() {
   mocks.findConflictingBookings.mockResolvedValue([])
   mocks.resolveConflictForFinalSubmit.mockReturnValue(null)
   mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.prisma))
+  mocks.prisma.bookingGroup.findUnique.mockResolvedValue(null)
+  mocks.prisma.bookingCalendarEvent.createMany.mockImplementation(({ data }) => {
+    mocks.calendarEventRows.push(...data.map((row: Record<string, unknown>, index: number) => ({
+      id: `intent_${mocks.calendarEventRows.length + index + 1}`,
+      attemptCount: 0,
+      lastErrorCode: null,
+      lastAttemptAt: null,
+      lastVerifiedAt: null,
+      createdAt: new Date("2099-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2099-01-01T00:00:00.000Z"),
+      ...row,
+    })))
+    return { count: data.length }
+  })
+  mocks.prisma.bookingCalendarEvent.findMany.mockImplementation(({ where }) => mocks.calendarEventRows.filter((row) => {
+    if (row.bookingGroupId !== where.bookingGroupId) return false
+    if (where.status?.in && !where.status.in.includes(row.status)) return false
+    return true
+  }))
+  mocks.prisma.bookingCalendarEvent.update.mockImplementation(({ where, data }) => {
+    const row = mocks.calendarEventRows.find((candidate) => candidate.eventId === where.eventId)
+    if (row) Object.assign(row, data)
+    return row ?? {}
+  })
   mocks.sendBookingConfirmedEmail.mockResolvedValue({ skipped: true })
   mocks.sendLineBookingReceipt.mockResolvedValue({ ok: true, method: "push" })
   mocks.prisma.calendarToken.findUnique.mockResolvedValue({
@@ -110,6 +152,8 @@ function mockHappyPath() {
     scope: "scope",
   })
   mocks.createCalendarEvent.mockResolvedValue({ id: "gcal_1" })
+  mocks.getCachedCalendarAccessToken.mockResolvedValue({ token: "access_token", refreshMs: 0 })
+  mocks.cancelBookingGroupCalendarEvents.mockResolvedValue({ complete: true, results: [] })
   mocks.prisma.bookingGroup.create.mockResolvedValue({
     id: "group_1",
     timeSlots: [{ id: "slot_1" }],
@@ -436,7 +480,7 @@ describe("POST /api/booking", () => {
     vi.unstubAllEnvs()
   })
 
-  it("returns 502 when the Google Calendar write fails after the pending hold", async () => {
+  it("keeps a durable pending hold when the Google Calendar write fails", async () => {
     vi.stubEnv("NODE_ENV", "production")
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined)
     mockHappyPath()
@@ -445,18 +489,11 @@ describe("POST /api/booking", () => {
     const response = await POST(request(validBooking()))
     const json = await response.json()
 
-    expect(response.status).toBe(502)
+    expect(response.status).toBe(202)
     expect(json).toEqual({
-      error: "calendar_unavailable",
+      status: "pending_reconcile",
       bookingGroupId: "group_1",
-    })
-    expect(mocks.prisma.bookingGroup.update).toHaveBeenCalledWith({
-      where: { id: "group_1" },
-      data: { status: "FAILED", pendingExpiresAt: null },
-    })
-    expect(mocks.prisma.bookingTimeSlot.updateMany).toHaveBeenCalledWith({
-      where: { bookingGroupId: "group_1" },
-      data: { status: "FAILED" },
+      gcalEventId: null,
     })
     expect(String(info.mock.calls[0]?.[0])).not.toContain("group_1")
     expect(String(info.mock.calls[0]?.[0])).not.toContain("gcal down")
@@ -464,7 +501,7 @@ describe("POST /api/booking", () => {
     vi.unstubAllEnvs()
   })
 
-  it("returns 502 when the shared Google Calendar token is missing", async () => {
+  it("keeps a durable pending hold when the shared Google Calendar token is missing", async () => {
     vi.stubEnv("NODE_ENV", "production")
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined)
     mockHappyPath()
@@ -473,10 +510,11 @@ describe("POST /api/booking", () => {
     const response = await POST(request(validBooking()))
     const json = await response.json()
 
-    expect(response.status).toBe(502)
+    expect(response.status).toBe(202)
     expect(json).toEqual({
-      error: "calendar_unavailable",
+      status: "pending_reconcile",
       bookingGroupId: "group_1",
+      gcalEventId: null,
     })
     expect(mocks.refreshCalendarAccessToken).not.toHaveBeenCalled()
     expect(String(info.mock.calls[0]?.[0])).not.toContain("group_1")
@@ -563,7 +601,10 @@ describe("POST /api/booking/conflicts", () => {
 describe("/api/booking/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID = "calendar_1"
     mocks.findConflictingBookings.mockResolvedValue([])
+    mocks.getCachedCalendarAccessToken.mockResolvedValue({ token: "access_token", refreshMs: 0 })
+    mocks.cancelBookingGroupCalendarEvents.mockResolvedValue({ complete: true, results: [] })
   })
 
   function context(id = "slot_1") {
@@ -612,14 +653,17 @@ describe("/api/booking/[id]", () => {
       ownedSlot({ bookingGroup: { status: "CONFIRMED", gcalEventId: "gcal_1", customer: { userId: "user_1" } } }),
     )
     mocks.prisma.bookingTimeSlot.update.mockResolvedValue({})
-    mocks.deleteCalendarEvent.mockResolvedValue({})
     mocks.prisma.bookingGroup.update.mockResolvedValue({})
 
     const response = await DELETE(new NextRequest("http://localhost/api/booking/slot_1"), context())
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({ status: "ok", mode: "cancel", bookingId: "slot_1" })
-    expect(mocks.deleteCalendarEvent).toHaveBeenCalledWith("gcal_1")
+    expect(mocks.cancelBookingGroupCalendarEvents).toHaveBeenCalledWith({
+      bookingGroupId: "group_1",
+      calendarId: "calendar_1",
+      accessToken: "access_token",
+    })
   })
 
   it("returns 401 for unauthenticated slot deletion", async () => {

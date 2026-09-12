@@ -42,6 +42,12 @@ describe("GET /api/booking/history", () => {
         memo: "共有事項\n希望日: 7/10(金)、1日間",
         customerEmail: "satoshi@example.com",
         timeSlots: [],
+        calendarEvents: [{
+          startValue: "2026-07-10",
+          endValue: "2026-07-11",
+          dateOnly: true,
+          status: "CONFIRMED",
+        }],
       },
       {
         id: "group_2",
@@ -53,6 +59,7 @@ describe("GET /api/booking/history", () => {
         memo: null,
         customerEmail: "satoshi@example.com",
         timeSlots: [{ startTime: new Date("2026-07-12T01:00:00.000Z") }],
+        calendarEvents: [],
       },
       ...[
         ["PENDING_GCAL", "連携中"],
@@ -69,6 +76,7 @@ describe("GET /api/booking/history", () => {
         memo: index === 0 ? "希望日:   " : null,
         customerEmail: null,
         timeSlots: [],
+        calendarEvents: [],
       })),
     ])
 
@@ -83,7 +91,7 @@ describe("GET /api/booking/history", () => {
       {
         id: "group_1",
         statusLabel: "受付済み",
-        requestedDates: ["7/10(金)、1日間"],
+        requestedDates: ["2026-07-10"],
       },
       {
         id: "group_2",

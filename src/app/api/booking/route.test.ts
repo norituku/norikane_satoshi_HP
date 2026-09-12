@@ -84,6 +84,7 @@ async function loadPost() {
     scope: "scope",
   })
   const createCalendarEvent = vi.fn().mockResolvedValue({ id: "gcal_1" })
+  const calendarEventRows: Array<Record<string, unknown>> = []
   const prisma = {
     $transaction: vi.fn((callback) => callback(prisma)),
     customer: {
@@ -94,11 +95,37 @@ async function loadPost() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     bookingGroup: {
+      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({
         id: "clwxyz123abc",
         timeSlots: [{ id: "slot_1" }],
       }),
       update: vi.fn().mockResolvedValue({}),
+    },
+    bookingCalendarEvent: {
+      createMany: vi.fn().mockImplementation(({ data }) => {
+        calendarEventRows.push(...data.map((row: Record<string, unknown>, index: number) => ({
+          id: `intent_${calendarEventRows.length + index + 1}`,
+          attemptCount: 0,
+          lastErrorCode: null,
+          lastAttemptAt: null,
+          lastVerifiedAt: null,
+          createdAt: new Date("2026-06-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-01T00:00:00.000Z"),
+          ...row,
+        })))
+        return { count: data.length }
+      }),
+      findMany: vi.fn().mockImplementation(({ where }) => calendarEventRows.filter((row) => {
+        if (row.bookingGroupId !== where.bookingGroupId) return false
+        if (where.status?.in && !where.status.in.includes(row.status)) return false
+        return true
+      })),
+      update: vi.fn().mockImplementation(({ where, data }) => {
+        const row = calendarEventRows.find((candidate) => candidate.eventId === where.eventId)
+        if (row) Object.assign(row, data)
+        return row ?? {}
+      }),
     },
     calendarToken: {
       findUnique: vi.fn().mockResolvedValue({ refreshToken: "refresh_token" }),
@@ -128,6 +155,7 @@ async function loadPost() {
     prisma,
     createCalendarEvent,
     invalidateCalendarFreeBusyCacheForUser,
+    calendarEventRows,
   }
 }
 
@@ -200,7 +228,7 @@ describe("POST /api/booking Saga", () => {
     }))
     expect(route.prisma.bookingGroup.update).toHaveBeenCalledWith({
       where: { id: "clwxyz123abc" },
-      data: { gcalEventId: "gcal_1" },
+      data: { gcalEventId: "cl123abc", pendingExpiresAt: null },
     })
     expect(route.prisma.bookingGroup.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -213,27 +241,20 @@ describe("POST /api/booking Saga", () => {
     )
   })
 
-  it("marks bookingGroup and timeSlots FAILED when Google Calendar fails twice", async () => {
+  it("leaves a durable event intent pending when Google Calendar is unavailable", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const route = await loadPost()
     route.createCalendarEvent.mockRejectedValue(new Error("gcal down"))
 
     const response = await route.POST(request(validBooking()))
 
-    expect(response.status).toBe(502)
+    expect(response.status).toBe(202)
     await expect(response.json()).resolves.toEqual({
-      error: "calendar_unavailable",
+      status: "pending_reconcile",
       bookingGroupId: "clwxyz123abc",
+      gcalEventId: null,
     })
-    expect(route.createCalendarEvent).toHaveBeenCalledTimes(2)
-    expect(route.prisma.bookingGroup.update).toHaveBeenCalledWith({
-      where: { id: "clwxyz123abc" },
-      data: { status: "FAILED", pendingExpiresAt: null },
-    })
-    expect(route.prisma.bookingTimeSlot.updateMany).toHaveBeenCalledWith({
-      where: { bookingGroupId: "clwxyz123abc" },
-      data: { status: "FAILED" },
-    })
+    expect(route.createCalendarEvent).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
 
@@ -249,7 +270,7 @@ describe("POST /api/booking Saga", () => {
     await expect(response.json()).resolves.toEqual({
       status: "pending_reconcile",
       bookingGroupId: "clwxyz123abc",
-      gcalEventId: "gcal_1",
+      gcalEventId: "cl123abc",
     })
     expect(route.prisma.adminActionLog.create).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   get: vi.fn(),
+  patch: vi.fn(),
   setCredentials: vi.fn(),
 }))
 
@@ -15,7 +16,7 @@ vi.mock("googleapis", () => {
     google: {
       auth: { OAuth2 },
       calendar: () => ({
-        events: { insert: mocks.insert, get: mocks.get },
+        events: { insert: mocks.insert, get: mocks.get, patch: mocks.patch },
       }),
     },
   }
@@ -23,7 +24,11 @@ vi.mock("googleapis", () => {
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 
-import { createCalendarEvent } from "@/lib/google-calendar/server"
+import {
+  createCalendarEvent,
+  requestCalendarEventCancellation,
+  updateCalendarEvent,
+} from "@/lib/google-calendar/server"
 
 const baseInput = {
   calendarId: "primary",
@@ -39,6 +44,7 @@ describe("createCalendarEvent", () => {
   beforeEach(() => {
     mocks.insert.mockReset()
     mocks.get.mockReset()
+    mocks.patch.mockReset()
     mocks.setCredentials.mockReset()
     process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_ID = "client-id"
     process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET = "client-secret"
@@ -66,6 +72,18 @@ describe("createCalendarEvent", () => {
     expect(args.requestBody.extendedProperties.private).toEqual({
       source: "hp-booking",
       notion_task_type: "仮押さえ",
+    })
+  })
+
+  it("stamps the non-PII booking group identity used for full-group reconciliation", async () => {
+    mocks.insert.mockResolvedValue({ data: { id: "evt-1" } })
+
+    await createCalendarEvent({ ...baseInput, bookingGroupId: "booking_group_1" })
+
+    const args = mocks.insert.mock.calls[0][0]
+    expect(args.requestBody.extendedProperties.private).toEqual({
+      source: "hp-booking",
+      booking_group_id: "booking_group_1",
     })
   })
 
@@ -133,9 +151,73 @@ describe("createCalendarEvent", () => {
     expect(mocks.get).toHaveBeenCalledWith({ calendarId: "primary", eventId: "eventid1" })
   })
 
+  it("rejects a 409 event id collision owned by another booking group", async () => {
+    mocks.insert.mockRejectedValue({ response: { status: 409 } })
+    mocks.get.mockResolvedValue({
+      data: {
+        id: "eventid1",
+        extendedProperties: { private: { booking_group_id: "another_group" } },
+      },
+    })
+
+    await expect(createCalendarEvent({
+      ...baseInput,
+      eventId: "eventid1",
+      bookingGroupId: "booking_group_1",
+    })).rejects.toMatchObject({ code: "calendar_event_ownership_mismatch" })
+  })
+
   it("throws when the API does not return an id", async () => {
     mocks.insert.mockResolvedValue({ data: {} })
 
     await expect(createCalendarEvent(baseInput)).rejects.toThrow(/did not return event id/)
+  })
+
+  it("patches date-only ranges as all-day events instead of invalid dateTime values", async () => {
+    mocks.patch.mockResolvedValue({ data: { id: "evt-date-hold" } })
+
+    await updateCalendarEvent({
+      calendarId: "primary",
+      eventId: "evt-date-hold",
+      accessToken: "ya29.access-token",
+      start: "2026-07-12",
+      end: "2026-07-14",
+      dateOnly: true,
+    })
+
+    expect(mocks.patch).toHaveBeenCalledWith({
+      calendarId: "primary",
+      eventId: "evt-date-hold",
+      requestBody: {
+        start: { date: "2026-07-12" },
+        end: { date: "2026-07-14" },
+      },
+    })
+  })
+
+  it("makes a cancellation non-blocking and requests the Notion archive handshake", async () => {
+    mocks.patch.mockResolvedValue({ data: { id: "evt-date-hold" } })
+
+    await requestCalendarEventCancellation({
+      calendarId: "primary",
+      eventId: "evt-date-hold",
+      bookingGroupId: "booking_group_1",
+      accessToken: "ya29.access-token",
+    })
+
+    expect(mocks.patch).toHaveBeenCalledWith({
+      calendarId: "primary",
+      eventId: "evt-date-hold",
+      requestBody: {
+        transparency: "transparent",
+        extendedProperties: {
+          private: {
+            source: "hp-booking",
+            booking_group_id: "booking_group_1",
+            hp_booking_cancel_requested: "1",
+          },
+        },
+      },
+    })
   })
 })
