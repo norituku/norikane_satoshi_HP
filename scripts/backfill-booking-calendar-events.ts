@@ -48,22 +48,15 @@ function requestedDateKeysFromMemo(memo: string | null, primaryStart: string): s
   })
 }
 
-function rangeStartDateKeys(dateKeys: string[]): string[] {
-  return dateKeys.filter((dateKey, index) => index === 0 || nextDateKey(dateKeys[index - 1]) !== dateKey)
-}
-
 function dateRanges(dateKeys: string[]): Array<{ start: string; end: string }> {
-  const starts = new Set(rangeStartDateKeys(dateKeys))
   const ranges: Array<{ start: string; end: string }> = []
-  let start = ""
   for (const dateKey of dateKeys) {
-    if (starts.has(dateKey)) {
-      if (start && ranges.length > 0) ranges[ranges.length - 1].end = dateKey
+    const previous = ranges[ranges.length - 1]
+    if (!previous || previous.end !== dateKey) {
       ranges.push({ start: dateKey, end: nextDateKey(dateKey) })
-      start = dateKey
       continue
     }
-    ranges[ranges.length - 1].end = nextDateKey(dateKey)
+    previous.end = nextDateKey(dateKey)
   }
   return ranges
 }
@@ -104,7 +97,15 @@ async function main() {
           orderBy: { startTime: "asc" },
           select: { startTime: true, endTime: true },
         },
-        calendarEvents: { select: { eventId: true } },
+        calendarEvents: {
+          select: {
+            eventId: true,
+            startValue: true,
+            endValue: true,
+            dateOnly: true,
+            status: true,
+          },
+        },
       },
     }),
     listManagedCalendarEvents({ calendarId, accessToken: token }),
@@ -134,16 +135,22 @@ async function main() {
     }]
   }
   const primaryEvents = primarySnapshots.flatMap(toCandidateEvent)
-  const derivedDescriptors = groups.flatMap((group, index) => {
+  const desiredDateOnlyDescriptors = groups.flatMap((group, index) => {
     const primary = primarySnapshots[index]
     if (!primary?.dateOnly || !primary.start || !group.memo) return []
     const ranges = dateRanges(requestedDateKeysFromMemo(group.memo, primary.start))
-    return ranges.slice(1).map((range) => ({
+    return ranges.map((range, rangeIndex) => ({
       groupId: group.id,
-      eventId: `${sanitizeEventId(group.id)}${range.start.replaceAll("-", "")}`,
+      eventId: rangeIndex === 0
+        ? group.gcalEventId ?? sanitizeEventId(group.id)
+        : `${sanitizeEventId(group.id)}${range.start.replaceAll("-", "")}`,
       range,
       primary,
     }))
+  })
+  const derivedDescriptors = desiredDateOnlyDescriptors.filter(({ eventId, groupId }) => {
+    const group = groups.find(({ id }) => groupId === id)
+    return eventId !== group?.gcalEventId
   })
   const derivedEvents = (await Promise.all(derivedDescriptors.map(async ({ eventId }) => (
     getCalendarEvent({ calendarId, eventId, accessToken: token })
@@ -151,39 +158,70 @@ async function main() {
   const candidateEvents = Array.from(new Map(
     [...managedEvents, ...primaryEvents, ...derivedEvents].map((event) => [event.id, event]),
   ).values())
+  const candidateById = new Map(candidateEvents.map((event) => [event.id, event]))
+  const desiredDateOnlyEventIds = new Set(desiredDateOnlyDescriptors.map(({ eventId }) => eventId))
+
+  const desiredDateOnlyPlans = desiredDateOnlyDescriptors.flatMap((descriptor) => {
+    const group = groups.find(({ id }) => id === descriptor.groupId)
+    if (!group) return []
+    const existing = group.calendarEvents.find(({ eventId }) => eventId === descriptor.eventId)
+    const live = candidateById.get(descriptor.eventId)
+    const projectionMatches = live?.start === descriptor.range.start
+      && live.end === descriptor.range.end
+      && live.dateOnly
+    const targetStatus = !live
+      ? BOOKING_CALENDAR_EVENT_STATUS.pendingCreate
+      : projectionMatches && live.bookingGroupId === group.id
+        ? BOOKING_CALENDAR_EVENT_STATUS.confirmed
+        : BOOKING_CALENDAR_EVENT_STATUS.pendingUpdate
+    if (
+      existing?.startValue === descriptor.range.start
+      && existing.endValue === descriptor.range.end
+      && existing.dateOnly
+      && existing.status === targetStatus
+    ) return []
+    return [{
+      groupId: group.id,
+      event: {
+        id: descriptor.eventId,
+        start: descriptor.range.start,
+        end: descriptor.range.end,
+        dateOnly: true,
+        summary: descriptor.primary.summary ?? "【仮キープ】予約希望日",
+        description: descriptor.primary.description ?? "",
+        colorId: descriptor.primary.colorId ?? "4",
+        notionTaskType: descriptor.primary.notionTaskType === "本予約" ? "本予約" : "仮押さえ",
+        transparency: "transparent" as const,
+      },
+      targetStatus,
+    }]
+  })
 
   const confirmedPlans = groups.flatMap((group) => {
     const primaryId = group.gcalEventId ?? ""
     const known = new Set(group.calendarEvents.map((event) => event.eventId))
     return candidateEvents
-      .filter((event) => belongsToGroup(event, group.id, primaryId) && !known.has(event.id))
+      .filter((event) => (
+        belongsToGroup(event, group.id, primaryId)
+        && !known.has(event.id)
+        && !desiredDateOnlyEventIds.has(event.id)
+      ))
       .map((event) => ({
         groupId: group.id,
         event,
         targetStatus: BOOKING_CALENDAR_EVENT_STATUS.confirmed,
       }))
   })
-  const knownOrDiscoveredEventIds = new Set([
-    ...candidateEvents.map((event) => event.id),
-    ...groups.flatMap((group) => group.calendarEvents.map((event) => event.eventId)),
-  ])
-  const pendingCreatePlans = derivedDescriptors
-    .filter(({ eventId }) => !knownOrDiscoveredEventIds.has(eventId))
-    .map(({ groupId, eventId, range, primary }) => ({
-      groupId,
-      event: {
-        id: eventId,
-        start: range.start,
-        end: range.end,
-        dateOnly: true,
-        summary: primary.summary ?? "【仮キープ】予約希望日",
-        description: primary.description ?? "",
-        colorId: primary.colorId ?? "4",
-        notionTaskType: primary.notionTaskType === "本予約" ? "本予約" : "仮押さえ",
-        transparency: "transparent" as const,
-      },
-      targetStatus: BOOKING_CALENDAR_EVENT_STATUS.pendingCreate,
-    }))
+  const ownershipRepairPlans = groups.flatMap((group) => group.calendarEvents.flatMap((existing) => {
+    if (desiredDateOnlyEventIds.has(existing.eventId)) return []
+    const live = candidateById.get(existing.eventId)
+    if (!live || live.bookingGroupId === group.id) return []
+    return [{
+      groupId: group.id,
+      event: live,
+      targetStatus: BOOKING_CALENDAR_EVENT_STATUS.pendingUpdate,
+    }]
+  }))
   const now = new Date()
   const cancelledTombstones = groups.flatMap((group, index) => {
     if (!group.gcalEventId || primarySnapshots[index] || group.calendarEvents.length > 0) return []
@@ -205,7 +243,12 @@ async function main() {
       targetStatus: BOOKING_CALENDAR_EVENT_STATUS.cancelled,
     }]
   })
-  const plans = [...confirmedPlans, ...pendingCreatePlans, ...cancelledTombstones]
+  const plans = [
+    ...desiredDateOnlyPlans,
+    ...confirmedPlans,
+    ...ownershipRepairPlans,
+    ...cancelledTombstones,
+  ]
   const matchedEventIds = new Set(plans.map((plan) => plan.event.id))
   for (const group of groups) {
     for (const event of group.calendarEvents) matchedEventIds.add(event.eventId)
@@ -234,7 +277,12 @@ async function main() {
     derivedEventCount: derivedEvents.length,
     createCount: plans.length,
     confirmedCreateCount: confirmedPlans.length,
-    pendingCreateCount: pendingCreatePlans.length,
+    pendingCreateCount: plans.filter((plan) => (
+      plan.targetStatus === BOOKING_CALENDAR_EVENT_STATUS.pendingCreate
+    )).length,
+    pendingUpdateCount: plans.filter((plan) => (
+      plan.targetStatus === BOOKING_CALENDAR_EVENT_STATUS.pendingUpdate
+    )).length,
     cancelledTombstoneCount: cancelledTombstones.length,
     unresolvedGroupCount: unresolvedGroups.length,
     unresolvedByStatus,
