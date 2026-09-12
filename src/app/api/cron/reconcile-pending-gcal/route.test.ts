@@ -5,13 +5,20 @@ const mocks = vi.hoisted(() => ({
   cleanupExpiredChatbotConversations: vi.fn(),
   getCachedCalendarAccessToken: vi.fn(),
   getCalendarEvent: vi.fn(),
+  continueBookingGroupCalendarReplacement: vi.fn(),
   prisma: {
     bookingGroup: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    bookingCalendarEvent: {
       findMany: vi.fn(),
       update: vi.fn(),
     },
     bookingTimeSlot: { updateMany: vi.fn() },
     adminActionLog: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -25,6 +32,13 @@ vi.mock("@/lib/google-calendar/server", () => ({
   CALENDAR_TOKEN_USER_ID: "satoshi-calendar-owner",
   getCalendarEvent: mocks.getCalendarEvent,
 }))
+vi.mock("@/lib/booking/server/calendar-event-lifecycle", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/booking/server/calendar-event-lifecycle")>()
+  return {
+    ...original,
+    continueBookingGroupCalendarReplacement: mocks.continueBookingGroupCalendarReplacement,
+  }
+})
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }))
 
 import { GET } from "./route"
@@ -43,6 +57,14 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
     vi.stubEnv("GOOGLE_CALENDAR_BUSY_SOURCE_ID", "primary")
     mocks.getCachedCalendarAccessToken.mockResolvedValue({ token: "access-token" })
     mocks.prisma.bookingGroup.findMany.mockResolvedValue([])
+    mocks.prisma.bookingGroup.findUnique.mockResolvedValue(null)
+    mocks.prisma.bookingCalendarEvent.findMany.mockResolvedValue([])
+    mocks.prisma.bookingCalendarEvent.update.mockResolvedValue({})
+    mocks.continueBookingGroupCalendarReplacement.mockResolvedValue({
+      complete: true,
+      deleteResults: [],
+    })
+    mocks.prisma.$transaction.mockImplementation(async (input) => Promise.all(input))
     mocks.prisma.adminActionLog.create.mockResolvedValue({})
     mocks.cleanupExpiredChatbotConversations.mockResolvedValue({
       cutoffIso: "2026-04-26T00:00:00.000Z",
@@ -66,6 +88,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 0,
       failedCount: 0,
       rollbackCount: 0,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: {
         ok: true,
         cutoffIso: "2026-04-26T00:00:00.000Z",
@@ -107,6 +134,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 0,
       failedCount: 0,
       rollbackCount: 0,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: { ok: false, error: "cleanup_failed" },
     })
   })
@@ -123,6 +155,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 0,
       failedCount: 0,
       rollbackCount: 0,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: {
         ok: true,
         cutoffIso: "2026-04-26T00:00:00.000Z",
@@ -135,6 +172,21 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
         deletedInquiryCount: 1,
         unlinkedBookingGroupCount: 1,
       },
+    })
+  })
+
+  it("resumes a durable calendar replacement even when no event is currently pending", async () => {
+    mocks.prisma.bookingGroup.findMany
+      .mockResolvedValueOnce([{ id: "group_replace" }])
+      .mockResolvedValueOnce([])
+
+    const response = await GET(request())
+
+    expect(response.status).toBe(200)
+    expect(mocks.continueBookingGroupCalendarReplacement).toHaveBeenCalledWith({
+      bookingGroupId: "group_replace",
+      calendarId: "primary",
+      accessToken: "access-token",
     })
   })
 })

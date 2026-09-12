@@ -163,6 +163,7 @@ model BookingGroup {
   customer  Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
   team      Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
   timeSlots BookingTimeSlot[]
+  calendarEvents BookingCalendarEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,6 +171,37 @@ model BookingGroup {
   @@index([status])
   @@index([teamId])
   @@index([lineUserId])
+}
+
+// BookingGroup が Google Calendar に持つべき全イベントの durable intent。
+// 外部 API より先に行を作り、部分成功・再試行・取消・存在確認をイベント単位で管理する。
+// BookingGroup.gcalEventId は移行期間の primary event 互換用であり、正本はこの relation。
+model BookingCalendarEvent {
+  id             String    @id @default(cuid())
+  bookingGroupId String
+  eventId        String    @unique
+  startValue     String
+  endValue       String
+  dateOnly       Boolean   @default(false)
+  summary        String
+  description    String
+  colorId        String
+  notionTaskType String?
+  transparency   String?
+  status         String    @default("PENDING_CREATE")
+  attemptCount   Int       @default(0)
+  lastErrorCode  String?
+  lastAttemptAt  DateTime?
+  lastVerifiedAt DateTime?
+
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingGroupId])
+  @@index([status, lastAttemptAt])
+  @@index([status, lastVerifiedAt])
 }
 
 model BookingTimeSlot {

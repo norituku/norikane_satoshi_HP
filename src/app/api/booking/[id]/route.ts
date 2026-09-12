@@ -5,12 +5,12 @@ import { enforceBodyLimit } from "@/lib/api/server/body-limit"
 import { isAdmin } from "@/lib/auth/server/is-admin"
 import { findConflictingBookings } from "@/lib/booking/server/conflicts"
 import { findAccessibleSlot, type AccessibleBooking } from "@/lib/booking/server/edit-access"
+import { cancelBookingGroupCalendarEvents } from "@/lib/booking/server/calendar-event-lifecycle"
 import { sendBookingTimeChangedEmail } from "@/lib/booking/server/email"
 import { invalidateCalendarFreeBusyCacheForUser } from "@/lib/booking/server/calendar-free-busy/free-busy"
 import { getCachedCalendarAccessToken } from "@/lib/booking/server/calendar-free-busy/google-token-cache"
 import {
   CALENDAR_TOKEN_USER_ID,
-  deleteCalendarEvent,
   updateCalendarEvent,
 } from "@/lib/google-calendar/server"
 import { prisma } from "@/lib/prisma"
@@ -48,6 +48,18 @@ function invalidateBookingFreeBusyCaches(booking: AccessibleBooking, viewerUserI
   if (booking.details.customerUserId !== viewerUserId) {
     invalidateCalendarFreeBusyCacheForUser(booking.details.customerUserId, booking.details.teamId)
   }
+}
+
+async function cancelCalendarProjection(booking: AccessibleBooking) {
+  const calendarId = process.env.GOOGLE_CALENDAR_BUSY_SOURCE_ID
+  if (!calendarId) return { complete: false, unavailable: true }
+  const { token } = await getCachedCalendarAccessToken(CALENDAR_TOKEN_USER_ID)
+  const result = await cancelBookingGroupCalendarEvents({
+    bookingGroupId: booking.bookingGroupId,
+    calendarId,
+    accessToken: token,
+  })
+  return { ...result, unavailable: false }
 }
 
 type AccessibleBookingResult =
@@ -117,8 +129,15 @@ export async function DELETE(
     if (booking.scope !== "admin") {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
-    if (booking.gcalEventId) {
-      await deleteCalendarEvent(booking.gcalEventId)
+    const cancellation = await cancelCalendarProjection(booking)
+    if (cancellation.unavailable) {
+      return NextResponse.json({ error: "calendar_unavailable" }, { status: 503 })
+    }
+    if (!cancellation.complete) {
+      return NextResponse.json(
+        { status: "pending_reconcile", bookingGroupId: booking.bookingGroupId },
+        { status: 202, headers: { "Retry-After": "60" } },
+      )
     }
     await prisma.bookingGroup.delete({
       where: { id: booking.bookingGroupId },
@@ -126,19 +145,18 @@ export async function DELETE(
     return NextResponse.json({ status: "ok", mode: "hard", bookingGroupId: booking.bookingGroupId })
   }
 
-  await prisma.bookingTimeSlot.update({
-    where: { id },
-    data: { status: "CANCELLED" },
-  })
-
-  if (booking.gcalEventId) {
-    await deleteCalendarEvent(booking.gcalEventId)
-    await prisma.bookingGroup.update({
-      where: { id: booking.bookingGroupId },
-      data: { gcalEventId: null },
-    })
+  const cancellation = await cancelCalendarProjection(booking)
+  if (cancellation.unavailable) {
+    return NextResponse.json({ error: "calendar_unavailable" }, { status: 503 })
+  }
+  if (!cancellation.complete) {
+    return NextResponse.json(
+      { status: "pending_reconcile", bookingGroupId: booking.bookingGroupId },
+      { status: 202, headers: { "Retry-After": "60" } },
+    )
   }
 
+  invalidateBookingFreeBusyCaches(booking, result.userId)
   return NextResponse.json({ status: "ok", mode: "cancel", bookingId: id })
 }
 

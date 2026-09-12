@@ -25,6 +25,7 @@ async function loadCreateBooking() {
   const createCalendarEvent = vi.fn().mockResolvedValue({ id: "gcal_1" })
   const invalidateCalendarFreeBusyCacheForUser = vi.fn()
   const sendBookingConfirmedEmail = vi.fn().mockResolvedValue({ skipped: true })
+  const calendarEventRows: Array<Record<string, unknown>> = []
   const prisma = {
     $transaction: vi.fn((callback) => callback(prisma)),
     customer: {
@@ -41,6 +42,37 @@ async function loadCreateBooking() {
         timeSlots: [],
       }),
       update: vi.fn().mockResolvedValue({}),
+    },
+    bookingCalendarEvent: {
+      createMany: vi.fn().mockImplementation(({ data }) => {
+        calendarEventRows.push(...data.map((row: Record<string, unknown>, index: number) => ({
+          id: `intent_${calendarEventRows.length + index + 1}`,
+          attemptCount: 0,
+          lastErrorCode: null,
+          lastAttemptAt: null,
+          lastVerifiedAt: null,
+          createdAt: new Date("2026-06-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-01T00:00:00.000Z"),
+          ...row,
+        })))
+        return { count: data.length }
+      }),
+      findMany: vi.fn().mockImplementation(({ where }) => calendarEventRows.filter((row) => {
+        if (row.bookingGroupId !== where.bookingGroupId) return false
+        if (where.eventId?.in && !where.eventId.in.includes(row.eventId)) return false
+        if (where.status?.in && !where.status.in.includes(row.status)) return false
+        if (where.status?.not && row.status === where.status.not) return false
+        return true
+      })),
+      update: vi.fn().mockImplementation(({ where, data }) => {
+        const row = calendarEventRows.find((candidate) => candidate.eventId === where.eventId)
+        if (row) Object.assign(row, data, {
+          attemptCount: typeof data.attemptCount?.increment === "number"
+            ? Number(row.attemptCount ?? 0) + data.attemptCount.increment
+            : data.attemptCount ?? row.attemptCount,
+        })
+        return row ?? {}
+      }),
     },
     calendarToken: {
       findUnique: vi.fn().mockResolvedValue({ refreshToken: "refresh_token" }),
@@ -73,6 +105,7 @@ async function loadCreateBooking() {
     createCalendarEvent,
     invalidateCalendarFreeBusyCacheForUser,
     sendBookingConfirmedEmail,
+    calendarEventRows,
   }
 }
 
@@ -294,7 +327,7 @@ describe("createBookingFromApiInput", () => {
     }))
     expect(service.prisma.bookingGroup.update).toHaveBeenCalledWith({
       where: { id: "group_1" },
-      data: { gcalEventId: "gcal_1" },
+      data: { gcalEventId: "group1", pendingExpiresAt: null },
     })
     expect(service.sendBookingConfirmedEmail).toHaveBeenCalledWith(expect.objectContaining({
       bookingGroupId: "group_1",
@@ -337,7 +370,44 @@ describe("createBookingFromApiInput", () => {
     }))
     expect(service.prisma.bookingGroup.update).toHaveBeenCalledWith({
       where: { id: "group_1" },
-      data: { gcalEventId: "gcal_primary" },
+      data: { gcalEventId: "group1", pendingExpiresAt: null },
     })
+  })
+
+  it("retries only an unfinished requested-date event on an idempotent replay", async () => {
+    const service = await loadCreateBooking()
+    service.createCalendarEvent
+      .mockResolvedValueOnce({ id: "group1" })
+      .mockRejectedValueOnce(Object.assign(new Error("temporary"), { code: "ETIMEDOUT" }))
+      .mockResolvedValueOnce({ id: "group120260712" })
+
+    const args = {
+      input: bookingInput({ requestedDates: ["2026-07-10", "2026-07-12"] }),
+      originatedFrom: "chatbot" as const,
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      userId: "public_chatbot_user_1",
+      userEmail: "client@example.com",
+    }
+    const first = await service.createBookingFromApiInput(args)
+    expect(first).toMatchObject({ status: 202, body: { status: "pending_reconcile" } })
+
+    service.prisma.bookingGroup.findUnique.mockResolvedValueOnce({
+      id: "group_1",
+      status: "NEEDS_SCHEDULE",
+      timeSlots: [],
+      calendarEvents: service.calendarEventRows,
+    })
+    const replay = await service.createBookingFromApiInput(args)
+
+    expect(replay).toMatchObject({
+      status: 200,
+      body: { bookingGroupId: "group_1", idempotentReplay: true },
+    })
+    expect(service.createCalendarEvent).toHaveBeenCalledTimes(3)
+    expect(service.createCalendarEvent.mock.calls.map(([call]) => call.eventId)).toEqual([
+      "group1",
+      "group120260712",
+      "group120260712",
+    ])
   })
 })

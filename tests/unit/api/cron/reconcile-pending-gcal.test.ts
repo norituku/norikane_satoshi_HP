@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     bookingGroup: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    bookingCalendarEvent: {
+      findMany: vi.fn(),
       update: vi.fn(),
     },
     bookingTimeSlot: {
@@ -17,6 +22,7 @@ const mocks = vi.hoisted(() => ({
     adminActionLog: {
       create: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -81,10 +87,14 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
     mocks.cleanupExpiredChatbotConversations.mockResolvedValue(chatbotCleanup)
     mocks.getCachedCalendarAccessToken.mockResolvedValue({ token: "access_token" })
     mocks.prisma.bookingGroup.findMany.mockResolvedValue([])
+    mocks.prisma.bookingGroup.findUnique.mockResolvedValue(null)
     mocks.prisma.bookingGroup.update.mockResolvedValue({})
+    mocks.prisma.bookingCalendarEvent.findMany.mockResolvedValue([])
+    mocks.prisma.bookingCalendarEvent.update.mockResolvedValue({})
     mocks.prisma.bookingTimeSlot.update.mockResolvedValue({})
     mocks.prisma.bookingTimeSlot.updateMany.mockResolvedValue({ count: 1 })
     mocks.prisma.adminActionLog.create.mockResolvedValue({ id: "log_1" })
+    mocks.prisma.$transaction.mockImplementation((operations) => Promise.all(operations))
   })
 
   it("repairs PENDING_GCAL to CONFIRMED when the Google Calendar event exists", async () => {
@@ -100,6 +110,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 1,
       failedCount: 0,
       rollbackCount: 0,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: { ok: true, ...chatbotCleanup },
     })
     expect(mocks.getCalendarEvent).toHaveBeenCalledWith({
@@ -130,6 +145,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 0,
       failedCount: 1,
       rollbackCount: 0,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: { ok: true, ...chatbotCleanup },
     })
     expect(mocks.prisma.bookingGroup.update).toHaveBeenCalledWith({
@@ -166,6 +186,11 @@ describe("GET /api/cron/reconcile-pending-gcal", () => {
       reconciledCount: 0,
       failedCount: 0,
       rollbackCount: 1,
+      eventVerifiedCount: 0,
+      eventRecreatedCount: 0,
+      eventUpdatedCount: 0,
+      eventDeletedCount: 0,
+      eventPendingCount: 0,
       chatbotCleanup: { ok: true, ...chatbotCleanup },
     })
     expect(mocks.prisma.bookingTimeSlot.update).toHaveBeenCalledWith({

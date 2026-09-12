@@ -83,7 +83,7 @@ async function loadRoute(
   vi.stubEnv("GOOGLE_CALENDAR_BUSY_SOURCE_ID", "calendar_id_test")
 
   const auth = vi.fn().mockResolvedValue(session)
-  const deleteCalendarEvent = vi.fn().mockResolvedValue(undefined)
+  const cancelBookingGroupCalendarEvents = vi.fn().mockResolvedValue({ complete: true, results: [] })
   const updateCalendarEvent = options.updateCalendarEventImpl
     ? vi.fn().mockImplementation(options.updateCalendarEventImpl)
     : vi.fn().mockResolvedValue(undefined)
@@ -117,8 +117,10 @@ async function loadRoute(
   vi.doMock("@/lib/prisma", () => ({ prisma }))
   vi.doMock("@/lib/google-calendar/server", () => ({
     CALENDAR_TOKEN_USER_ID: "satoshi-calendar-owner",
-    deleteCalendarEvent,
     updateCalendarEvent,
+  }))
+  vi.doMock("@/lib/booking/server/calendar-event-lifecycle", () => ({
+    cancelBookingGroupCalendarEvents,
   }))
   vi.doMock("@/lib/booking/server/calendar-free-busy/google-token-cache", () => ({
     getCachedCalendarAccessToken,
@@ -130,7 +132,7 @@ async function loadRoute(
   vi.doMock("@/lib/booking/server/email", () => ({ sendBookingTimeChangedEmail }))
 
   const route = await import("./route")
-  return { ...route, prisma, deleteCalendarEvent, updateCalendarEvent, getCachedCalendarAccessToken, invalidateCalendarFreeBusyCacheForUser, findConflictingBookings, sendBookingTimeChangedEmail }
+  return { ...route, prisma, cancelBookingGroupCalendarEvents, updateCalendarEvent, getCachedCalendarAccessToken, invalidateCalendarFreeBusyCacheForUser, findConflictingBookings, sendBookingTimeChangedEmail }
 }
 
 function context(id = "slot_1") {
@@ -187,7 +189,11 @@ describe("/api/booking/[id] access control", () => {
     const response = await route.DELETE(request("DELETE", "/api/booking/slot_1?mode=hard"), context())
 
     expect(response.status).toBe(200)
-    expect(route.deleteCalendarEvent).toHaveBeenCalledWith("gcal_1")
+    expect(route.cancelBookingGroupCalendarEvents).toHaveBeenCalledWith({
+      bookingGroupId: "group_1",
+      calendarId: "calendar_id_test",
+      accessToken: "access_token",
+    })
     expect(route.prisma.bookingGroup.delete).toHaveBeenCalledWith({ where: { id: "group_1" } })
   })
 

@@ -8,6 +8,8 @@ const CALENDAR_SCOPES = [
 ]
 
 export const CALENDAR_TOKEN_USER_ID = "satoshi-calendar-owner"
+export const HP_BOOKING_CANCEL_REQUESTED_KEY = "hp_booking_cancel_requested"
+export const HP_BOOKING_CANCEL_ACK_KEY = "hp_booking_cancel_acknowledged"
 
 type CalendarOAuthEnv = {
   clientId: string
@@ -39,6 +41,7 @@ export type CalendarEventWriteInput = {
   colorId: string
   accessToken: string
   eventId?: string
+  bookingGroupId?: string
   notionTaskType?: "仮押さえ" | "本予約"
   dateOnly?: boolean
   transparency?: "opaque" | "transparent"
@@ -50,8 +53,43 @@ export type CalendarEventUpdateInput = {
   accessToken: string
   start: string
   end: string
+  dateOnly?: boolean
+  summary?: string
+  description?: string
+  colorId?: string
+  notionTaskType?: "仮押さえ" | "本予約"
+  bookingGroupId?: string
+  transparency?: "opaque" | "transparent"
   bufferBeforeHours?: number | null
   bufferAfterHours?: number | null
+}
+
+export type ManagedCalendarEventSnapshot = {
+  id: string
+  start: string
+  end: string
+  dateOnly: boolean
+  summary: string
+  description: string
+  colorId: string
+  notionTaskType?: string
+  transparency?: string
+  bookingGroupId?: string
+  privateProperties: Record<string, string>
+}
+
+export type CalendarEventSnapshot = {
+  id: string
+  privateProperties: Record<string, string>
+  start?: string
+  end?: string
+  dateOnly?: boolean
+  summary?: string
+  description?: string
+  colorId?: string
+  notionTaskType?: string
+  transparency?: string
+  bookingGroupId?: string
 }
 
 export type RefreshedCalendarToken = {
@@ -360,6 +398,7 @@ export async function createCalendarEvent(input: CalendarEventWriteInput): Promi
         extendedProperties: {
           private: {
             source: "hp-booking",
+            ...(input.bookingGroupId ? { booking_group_id: input.bookingGroupId } : {}),
             ...(input.notionTaskType ? { notion_task_type: input.notionTaskType } : {}),
           },
         },
@@ -380,6 +419,12 @@ export async function createCalendarEvent(input: CalendarEventWriteInput): Promi
       if (!existing.data.id) {
         throw new Error("Google Calendar event get did not return event id")
       }
+      const owner = existing.data.extendedProperties?.private?.booking_group_id
+      if (input.bookingGroupId && owner && owner !== input.bookingGroupId) {
+        throw Object.assign(new Error("Google Calendar event belongs to another booking group"), {
+          code: "calendar_event_ownership_mismatch",
+        })
+      }
       return { id: existing.data.id }
     }
     throw error
@@ -390,14 +435,19 @@ export async function getCalendarEvent(input: {
   calendarId: string
   eventId: string
   accessToken: string
-}): Promise<{ id: string } | null> {
+}): Promise<CalendarEventSnapshot | null> {
   const calendar = createCalendarWriteClient(input.accessToken)
   try {
     const response = await calendar.events.get({
       calendarId: input.calendarId,
       eventId: input.eventId,
     })
-    return response.data.id ? { id: response.data.id } : null
+    if (!response.data.id) return null
+    const snapshot = managedEventSnapshot(response.data)
+    return snapshot ?? {
+      id: response.data.id,
+      privateProperties: response.data.extendedProperties?.private ?? {},
+    }
   } catch (error) {
     const status = getGoogleErrorStatus(error)
     if (status === 404 || status === 410) return null
@@ -405,9 +455,96 @@ export async function getCalendarEvent(input: {
   }
 }
 
+export async function requestCalendarEventCancellation(input: {
+  calendarId: string
+  eventId: string
+  bookingGroupId: string
+  accessToken: string
+}): Promise<void> {
+  const calendar = createCalendarWriteClient(input.accessToken)
+  await calendar.events.patch({
+    calendarId: input.calendarId,
+    eventId: input.eventId,
+    requestBody: {
+      transparency: "transparent",
+      extendedProperties: {
+        private: {
+          source: "hp-booking",
+          booking_group_id: input.bookingGroupId,
+          [HP_BOOKING_CANCEL_REQUESTED_KEY]: "1",
+        },
+      },
+    },
+  })
+}
+
+function managedEventSnapshot(event: {
+  id?: string | null
+  start?: { date?: string | null; dateTime?: string | null } | null
+  end?: { date?: string | null; dateTime?: string | null } | null
+  summary?: string | null
+  description?: string | null
+  colorId?: string | null
+  transparency?: string | null
+  extendedProperties?: { private?: Record<string, string> | null } | null
+}): ManagedCalendarEventSnapshot | null {
+  const id = event.id ?? ""
+  const start = event.start?.date ?? event.start?.dateTime ?? ""
+  const end = event.end?.date ?? event.end?.dateTime ?? ""
+  if (!id || !start || !end) return null
+  return {
+    id,
+    start,
+    end,
+    dateOnly: Boolean(event.start?.date),
+    summary: event.summary ?? "",
+    description: event.description ?? "",
+    colorId: event.colorId ?? "9",
+    notionTaskType: event.extendedProperties?.private?.notionTaskType
+      ?? event.extendedProperties?.private?.notion_task_type,
+    transparency: event.transparency ?? undefined,
+    bookingGroupId: event.extendedProperties?.private?.booking_group_id,
+    privateProperties: event.extendedProperties?.private ?? {},
+  }
+}
+
+export async function listManagedCalendarEvents(input: {
+  calendarId: string
+  accessToken: string
+}): Promise<ManagedCalendarEventSnapshot[]> {
+  const calendar = createCalendarWriteClient(input.accessToken)
+  const events: ManagedCalendarEventSnapshot[] = []
+  let pageToken: string | undefined
+
+  do {
+    const response = await calendar.events.list({
+      calendarId: input.calendarId,
+      privateExtendedProperty: ["source=hp-booking"],
+      singleEvents: true,
+      showDeleted: false,
+      maxResults: 250,
+      pageToken,
+    })
+    for (const event of response.data.items ?? []) {
+      const snapshot = managedEventSnapshot(event)
+      if (snapshot) events.push(snapshot)
+    }
+    pageToken = response.data.nextPageToken ?? undefined
+  } while (pageToken)
+
+  return events
+}
+
 export async function updateCalendarEvent(input: CalendarEventUpdateInput): Promise<void> {
   const calendar = createCalendarWriteClient(input.accessToken)
   const privateProperties: Record<string, string> = {}
+  if (input.bookingGroupId) {
+    privateProperties.source = "hp-booking"
+    privateProperties.booking_group_id = input.bookingGroupId
+  }
+  if (input.notionTaskType) {
+    privateProperties.notion_task_type = input.notionTaskType
+  }
   if (Number.isFinite(input.bufferBeforeHours)) {
     privateProperties.bufferBeforeHours = String(input.bufferBeforeHours)
   }
@@ -418,12 +555,12 @@ export async function updateCalendarEvent(input: CalendarEventUpdateInput): Prom
     calendarId: input.calendarId,
     eventId: input.eventId,
     requestBody: {
-      start: {
-        dateTime: input.start,
-      },
-      end: {
-        dateTime: input.end,
-      },
+      ...(input.summary !== undefined ? { summary: input.summary } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.colorId !== undefined ? { colorId: input.colorId } : {}),
+      ...(input.transparency !== undefined ? { transparency: input.transparency } : {}),
+      start: input.dateOnly ? { date: input.start } : { dateTime: input.start },
+      end: input.dateOnly ? { date: input.end } : { dateTime: input.end },
       ...(Object.keys(privateProperties).length > 0
         ? {
             extendedProperties: {
@@ -460,16 +597,28 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
     },
   })
 
-  const calendar = createCalendarWriteClient(refreshed.accessToken)
+  await deleteCalendarEventWithAccessToken({
+    calendarId,
+    eventId,
+    accessToken: refreshed.accessToken,
+  })
+}
+
+export async function deleteCalendarEventWithAccessToken(input: {
+  calendarId: string
+  eventId: string
+  accessToken: string
+}): Promise<void> {
+  const calendar = createCalendarWriteClient(input.accessToken)
   try {
     await calendar.events.delete({
-      calendarId,
-      eventId,
+      calendarId: input.calendarId,
+      eventId: input.eventId,
     })
   } catch (error) {
     const status = getGoogleErrorStatus(error)
     if (status === 404 || status === 410) {
-      console.warn(`[gcal delete skipped] eventId=${eventId} status=${status}`)
+      console.warn(`[gcal delete skipped] eventId=${input.eventId} status=${status}`)
       return
     }
     throw error

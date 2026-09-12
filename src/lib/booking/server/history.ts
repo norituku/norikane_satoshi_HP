@@ -32,6 +32,18 @@ function extractRequestedDatesFromMemo(memo: string | null): string[] {
   return match?.[1]?.trim() ? [match[1].trim()] : []
 }
 
+function expandDateOnlyRange(start: string, endExclusive: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(endExclusive)) return []
+  const dates: string[] = []
+  const cursor = new Date(`${start}T00:00:00.000Z`)
+  const end = new Date(`${endExclusive}T00:00:00.000Z`)
+  while (cursor < end) {
+    dates.push(cursor.toISOString().slice(0, 10))
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return dates
+}
+
 export async function listBookingHistoryForUser(userId: string): Promise<BookingHistoryItem[]> {
   const rows = await prisma.bookingGroup.findMany({
     where: {
@@ -54,17 +66,29 @@ export async function listBookingHistoryForUser(userId: string): Promise<Booking
           startTime: true,
         },
       },
+      calendarEvents: {
+        where: { dateOnly: true, status: { not: "CANCELLED" } },
+        orderBy: { startValue: "asc" },
+        select: { startValue: true, endValue: true },
+      },
     },
   })
 
   return rows.map((row) => {
     const slotDateKeys = Array.from(new Set(row.timeSlots.map((slot) => dateKey(slot.startTime))))
+    const requestedDateKeys = Array.from(new Set(
+      row.calendarEvents.flatMap((event) => expandDateOnlyRange(event.startValue, event.endValue)),
+    )).sort()
     return {
       id: row.id,
       createdAt: row.createdAt.toISOString(),
       status: row.status,
       statusLabel: statusLabel(row.status),
-      requestedDates: slotDateKeys.length > 0 ? slotDateKeys : extractRequestedDatesFromMemo(row.memo),
+      requestedDates: slotDateKeys.length > 0
+        ? slotDateKeys
+        : requestedDateKeys.length > 0
+          ? requestedDateKeys
+          : extractRequestedDatesFromMemo(row.memo),
       projectTitle: row.projectTitle,
       contactName: row.contactName,
       companyName: row.companyName,
